@@ -1,0 +1,14 @@
+{
+  "conversion_pct": 0.4,
+  "sale_value": 18000,
+  "show_pct_adjustment": 0,
+  "new_city_default_show_pct": 0.2,
+  "same_city_ntb_scaling": 0.5,
+  "new_city_ntb_scaling": 1.0,
+  "ramp_m1": 0.3,
+  "ramp_m2": 0.5,
+  "ramp_m3": 0.65,
+  "ramp_m4": 0.8,
+  "ramp_m5": 0.9,
+  "ramp_m6": 1.0
+}

@@ -1,0 +1,117 @@
+State,Product Type,orders,revenue
+-,-,2,3263.0
+-,Curative,43,103959.0
+Andaman & Nicobar Islands,-,18,27678.0
+Andaman & Nicobar Islands,Curative,314,604001.15
+Andaman & Nicobar Islands,others,9,15747.2
+Andaman and Nicobar Islands,Curative,5,11725.0
+Andhra Pradesh,-,238,271167.4
+Andhra Pradesh,Curative,5493,10111901.29
+Andhra Pradesh,others,284,530194.83
+Arunachal Pradesh,-,56,80665.1
+Arunachal Pradesh,Curative,3859,7000966.7
+Arunachal Pradesh,others,122,202596.45
+Assam,-,413,504391.75
+Assam,Curative,13114,24479781.07
+Assam,others,480,797912.23
+Bihar,-,229,284613.58
+Bihar,Curative,7212,14562619.28
+Bihar,others,488,938859.18
+Chandigarh,-,101,131971.01
+Chandigarh,Curative,2169,3832208.95
+Chandigarh,others,156,282686.93
+Chhattisgarh,-,252,386023.1
+Chhattisgarh,Curative,5898,12285263.02
+Chhattisgarh,others,376,719521.93
+Dadra and Nagar Haveli,Curative,5,19250.0
+Dadra and Nagar Haveli and Daman and Diu,-,5,9180.0
+Dadra and Nagar Haveli and Daman and Diu,Curative,155,292003.8
+Dadra and Nagar Haveli and Daman and Diu,others,12,19045.35
+Daman and Diu,Curative,3,10050.0
+Delhi,-,1148,1368799.8
+Delhi,Curative,24746,42845107.33
+Delhi,others,1585,2942087.41
+England,Curative,6,5040.0
+Goa,-,174,226742.1
+Goa,Curative,4169,7559077.4
+Goa,others,208,372813.25
+Gujarat,-,713,831710.05
+Gujarat,Curative,19983,38541052.3
+Gujarat,others,1105,2196546.99
+Haryana,-,742,919136.8
+Haryana,Curative,15265,27553060.89
+Haryana,others,1086,1992854.09
+Himachal Pradesh,-,197,277404.2
+Himachal Pradesh,Curative,4501,8446185.69
+Himachal Pradesh,others,256,459952.03
+International,-,16,55882.4
+International,Curative,198,953816.6
+International,others,3,12603.4
+Jammu & Kashmir,-,310,337567.1
+Jammu & Kashmir,Curative,5138,9433764.45
+Jammu & Kashmir,others,210,371601.9
+Jammu and Kashmir,Curative,98,287750.0
+Jharkhand,-,223,301988.2
+Jharkhand,Curative,5735,11654309.52
+Jharkhand,others,314,580774.5
+Karnataka,-,1259,1494834.55
+Karnataka,Curative,31860,57459114.82
+Karnataka,others,1661,3015987.18
+Kerala,-,224,288718.15
+Kerala,Curative,3921,6231918.1
+Kerala,others,161,285094.45
+Lakshadweep,-,1,2100.0
+Lakshadweep,Curative,1,499.0
+Madhya Pradesh,-,513,669125.05
+Madhya Pradesh,Curative,12060,23831349.53
+Madhya Pradesh,others,830,1565320.36
+Maharashtra,-,2700,3521038.15
+Maharashtra,Curative,61289,111100635.58
+Maharashtra,others,3857,7168925.78
+Manipur,-,101,109682.0
+Manipur,Curative,2579,4740426.15
+Manipur,others,110,189185.1
+Meghalaya,-,73,89888.0
+Meghalaya,Curative,3039,5235114.7
+Meghalaya,others,159,279354.11
+Mizoram,-,19,22145.0
+Mizoram,Curative,702,1236990.65
+Mizoram,others,34,50907.2
+Nagaland,-,74,91884.75
+Nagaland,Curative,3232,5799961.01
+Nagaland,others,108,199808.5
+Not Found,-,1,6159.2
+Not Found,Curative,15,55264.0
+Odisha,-,349,425987.1
+Odisha,Curative,9803,19518278.64
+Odisha,others,704,1221699.98
+Puducherry,-,12,15209.0
+Puducherry,Curative,234,373553.25
+Puducherry,others,13,20169.1
+Punjab,-,718,900266.1
+Punjab,Curative,14737,26393074.96
+Punjab,others,846,1534994.15
+Rajasthan,-,528,637756.39
+Rajasthan,Curative,10193,19396144.71
+Rajasthan,others,752,1394618.57
+Sikkim,-,33,51189.0
+Sikkim,Curative,2066,3599579.69
+Sikkim,others,74,115958.4
+Tamil Nadu,-,384,478389.2
+Tamil Nadu,Curative,9787,16041214.53
+Tamil Nadu,others,469,842724.05
+Telangana,-,644,801263.68
+Telangana,Curative,16021,29470430.03
+Telangana,others,755,1435717.45
+Tripura,-,53,68588.1
+Tripura,Curative,1314,2558306.34
+Tripura,others,77,132937.2
+Uttar Pradesh,-,2396,2989368.95
+Uttar Pradesh,Curative,33638,64851676.55
+Uttar Pradesh,others,2325,4260540.11
+Uttarakhand,-,258,372473.15
+Uttarakhand,Curative,6075,11585335.96
+Uttarakhand,others,421,756734.19
+West Bengal,-,738,936390.74
+West Bengal,Curative,17868,34061080.93
+West Bengal,others,1026,1889699.82

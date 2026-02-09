@@ -1,0 +1,6 @@
+# Force LF line endings for Python files (prevents CRLF issues on Streamlit Cloud)
+*.py text eol=lf
+*.csv text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
