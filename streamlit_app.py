@@ -1,1492 +1,787 @@
-"""
-Gynoveda FY27 Expansion Intelligence — Clean 7-Slide Layout
-Built: Feb 2026 | Data: NTB Jan-25 to Jan-26 | 61 Clinics
-Uses pre-processed CSVs from data/ folder.
-"""
+import { useState, useMemo } from "react";
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, ComposedChart, PieChart, Pie, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend } from "recharts";
 
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import json, os
+// ═══════════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════════
 
-st.set_page_config(page_title="Gynoveda FY27 Plan", layout="wide", page_icon="🏥")
+const MONTHLY_CLINIC_TREND = [
+  { month: "Jan 25", qty: 38331, rev: 315, visits: 17077, appt: 7631, showPct: 19.4 },
+  { month: "Feb 25", qty: 53109, rev: 394, visits: 20312, appt: 11395, showPct: 16.8 },
+  { month: "Mar 25", qty: 61803, rev: 475, visits: 23765, appt: 10700, showPct: 16.6 },
+  { month: "Apr 25", qty: 74212, rev: 598, visits: 29262, appt: 13484, showPct: 20.4 },
+  { month: "May 25", qty: 93878, rev: 725, visits: 36875, appt: 15948, showPct: 22.8 },
+  { month: "Jun 25", qty: 121365, rev: 927, visits: 46918, appt: 19623, showPct: 22.4 },
+  { month: "Jul 25", qty: 150308, rev: 1105, visits: 50186, appt: 27030, showPct: 23.3 },
+  { month: "Aug 25", qty: 172717, rev: 1221, visits: 51814, appt: 32457, showPct: 22.3 },
+  { month: "Sep 25", qty: 166051, rev: 1181, visits: 47794, appt: 28477, showPct: 21.0 },
+  { month: "Oct 25", qty: 152121, rev: 1042, visits: 39286, appt: 26807, showPct: 20.0 },
+  { month: "Nov 25", qty: 174238, rev: 1278, visits: 42206, appt: 28941, showPct: 19.0 },
+  { month: "Dec 25", qty: 168289, rev: 1227, visits: 38101, appt: 24195, showPct: 20.0 },
+  { month: "Jan 26", qty: 159511, rev: 1191, visits: 35481, appt: 23641, showPct: 19.0 },
+];
 
+const ZONE_DATA = [
+  { zone: "West 1", qty: 501783, rev: 4010, appt: 64051, showPct: 24.1, clinics: 15, color: "#FF6B35" },
+  { zone: "North 1", qty: 328416, rev: 2318, appt: 56422, showPct: 17.5, clinics: 13, color: "#1E96FC" },
+  { zone: "West 2", qty: 283382, rev: 1961, appt: 46699, showPct: 18.5, clinics: 12, color: "#F0C808" },
+  { zone: "South", qty: 236559, rev: 1840, appt: 30786, showPct: 26.8, clinics: 8, color: "#2EC4B6" },
+  { zone: "East", qty: 229272, rev: 1594, appt: 28761, showPct: 25.7, clinics: 8, color: "#9B5DE5" },
+  { zone: "North 2", qty: 159011, rev: 1226, appt: 43610, showPct: 13.8, clinics: 5, color: "#F15BB5" },
+];
 
-# ── Indian Number Formatter ─────────────────────────────────────────────────
-def fmt_inr(value, prefix="₹", decimals=1):
-    """Format number in Indian notation: Cr / L / K / plain."""
-    if value is None or (isinstance(value, float) and np.isnan(value)):
-        return f"{prefix}0"
-    v = abs(value)
-    sign = "-" if value < 0 else ""
-    if v >= 1e7:
-        return f"{sign}{prefix}{v/1e7:.{decimals}f} Cr"
-    elif v >= 1e5:
-        return f"{sign}{prefix}{v/1e5:.{decimals}f}L"
-    elif v >= 1e3:
-        return f"{sign}{prefix}{v/1e3:.{decimals}f}K"
-    else:
-        return f"{sign}{prefix}{v:.0f}"
+const TOP_CLINICS = [
+  { name: "Malad", zone: "West 1", region: "MMR", rev: 734.7, qty: 92710, pincodes: 485, cabin: 3, appt: 7082, showPct: 30.5, launch: "Oct 2023" },
+  { name: "JP Nagar", zone: "South", region: "BMR", rev: 553.0, qty: 69539, pincodes: 467, cabin: 3, appt: 5779, showPct: 33.7, launch: "Dec 2023" },
+  { name: "Lajpat", zone: "North 1", region: "NCR", rev: 513.2, qty: 69911, pincodes: 436, cabin: 3, appt: 8613, showPct: 21.1, launch: "Jan 2024" },
+  { name: "Dadar", zone: "West 1", region: "MMR", rev: 505.7, qty: 67822, pincodes: 289, cabin: 2, appt: 8298, showPct: 23.3, launch: "Aug 2024" },
+  { name: "Viman Nagar", zone: "West 1", region: "PMR", rev: 463.6, qty: 56597, pincodes: 342, cabin: 2, appt: 7108, showPct: 21.8, launch: "Sep 2023" },
+  { name: "Rajouri", zone: "North 1", region: "NCR", rev: 450.8, qty: 62270, pincodes: 260, cabin: 3, appt: 6754, showPct: 17.2, launch: "Nov 2023" },
+  { name: "Ballygunge", zone: "East", region: "KMR", rev: 437.2, qty: 57874, pincodes: 766, cabin: 2, appt: 6428, showPct: 27.1, launch: "Nov 2023" },
+  { name: "Thane", zone: "West 1", region: "MMR", rev: 426.1, qty: 55610, pincodes: 242, cabin: 2, appt: 7207, showPct: 25.3, launch: "Jul 2024" },
+  { name: "Badakdev", zone: "West 2", region: "Gujarat", rev: 412.9, qty: 64791, pincodes: 317, cabin: 2, appt: 8956, showPct: 20.9, launch: "Mar 2024" },
+  { name: "Madhapur", zone: "South", region: "HMR", rev: 387.3, qty: 51836, pincodes: 355, cabin: 3, appt: 5889, showPct: 31.5, launch: "Mar 2024" },
+  { name: "Kharghar", zone: "West 1", region: "MMR", rev: 385.0, qty: 48567, pincodes: 105, cabin: 2, appt: 4453, showPct: 28.6, launch: "Dec 2024" },
+  { name: "Dharam", zone: "West 1", region: "ROM", rev: 359.2, qty: 48533, pincodes: 305, cabin: 2, appt: 9403, showPct: 15.6, launch: "Sep 2024" },
+  { name: "Virar", zone: "West 1", region: "MMR", rev: 323.5, qty: 46709, pincodes: 95, cabin: 2, appt: 4638, showPct: 28.1, launch: "Oct 2024" },
+  { name: "Sec-51", zone: "North 1", region: "NCR", rev: 308.0, qty: 42240, pincodes: 218, cabin: 2, appt: 6017, showPct: 20.3, launch: "May 2024" },
+  { name: "Gomati", zone: "North 2", region: "UP", rev: 294.0, qty: 35227, pincodes: 413, cabin: 2, appt: 9485, showPct: 14.7, launch: "Jul 2024" },
+];
 
+const ECOM_YEARLY = [
+  { year: "2020", orders: 17157, rev: 2.8 },
+  { year: "2021", orders: 40701, rev: 7.6 },
+  { year: "2022", orders: 140046, rev: 20.8 },
+  { year: "2023", orders: 139248, rev: 27.3 },
+  { year: "2024", orders: 40939, rev: 10.6 },
+  { year: "2025", orders: 12921, rev: 3.3 },
+];
 
-def fmt_num(value, decimals=1):
-    """Format plain number (no ₹): Cr / L / K / plain."""
-    if value is None or (isinstance(value, float) and np.isnan(value)):
-        return "0"
-    v = abs(value)
-    sign = "-" if value < 0 else ""
-    if v >= 1e7:
-        return f"{sign}{v/1e7:.{decimals}f} Cr"
-    elif v >= 1e5:
-        return f"{sign}{v/1e5:.{decimals}f}L"
-    elif v >= 1e3:
-        return f"{sign}{v/1e3:.{decimals}f}K"
-    else:
-        return f"{sign}{v:.0f}"
+const ECOM_TOP_CITIES = [
+  { city: "Mumbai", orders: 33884, rev: 5.85, clinicRev: 18.72, hasClinic: true },
+  { city: "Delhi", orders: 27248, rev: 4.72, clinicRev: 6.86, hasClinic: true },
+  { city: "Bengaluru", orders: 24658, rev: 4.38, clinicRev: 7.20, hasClinic: true },
+  { city: "Pune", orders: 14913, rev: 2.75, clinicRev: 5.74, hasClinic: true },
+  { city: "Hyderabad", orders: 13653, rev: 2.48, clinicRev: 3.19, hasClinic: true },
+  { city: "Gurgaon", orders: 6800, rev: 1.19, clinicRev: 0, hasClinic: false },
+  { city: "Noida/GBN", orders: 6032, rev: 1.08, clinicRev: 1.73, hasClinic: true },
+  { city: "Ghaziabad", orders: 5750, rev: 1.04, clinicRev: 0, hasClinic: false },
+  { city: "Ahmedabad", orders: 5417, rev: 1.01, clinicRev: 2.40, hasClinic: true },
+  { city: "Lucknow", orders: 4871, rev: 0.92, clinicRev: 1.65, hasClinic: true },
+  { city: "Kolkata", orders: 4651, rev: 0.83, clinicRev: 5.80, hasClinic: true },
+  { city: "Goa", orders: 4482, rev: 0.81, clinicRev: 0, hasClinic: true },
+  { city: "Guwahati", orders: 4126, rev: 0.74, clinicRev: 0, hasClinic: true },
+  { city: "Nagpur", orders: 3364, rev: 0.63, clinicRev: 1.91, hasClinic: true },
+];
 
-# ── Custom CSS ──────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-    .block-container {padding-top: 1rem; padding-bottom: 1rem; max-width: 1200px;}
-    [data-testid="stMetric"] {background: #f8f9fa; border-radius: 8px; padding: 12px 16px; border-left: 4px solid #FF6B35;}
-    [data-testid="stMetric"] label {font-size: 0.75rem !important; color: #666;}
-    [data-testid="stMetric"] [data-testid="stMetricValue"] {font-size: 1.5rem !important; font-weight: 700;}
-    .slide-header {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        color: white; padding: 16px 24px; border-radius: 10px; margin: 2rem 0 1rem 0;
-        font-size: 1.1rem; font-weight: 600;
-    }
-    .slide-sub {color: #a0a0b0; font-size: 0.85rem; font-weight: 400; margin-top: 4px;}
-    .insight-card {
-        background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px 16px;
-        border-radius: 0 8px 8px 0; margin: 8px 0; font-size: 0.9rem;
-    }
-    .insight-green {background: #d4edda; border-left-color: #28a745;}
-    .insight-red {background: #f8d7da; border-left-color: #dc3545;}
-    .insight-blue {background: #d1ecf1; border-left-color: #17a2b8;}
-    #MainMenu {visibility: hidden;} footer {visibility: hidden;}
-    .stDeployButton {display: none;}
-    .slide-sep {border-top: 2px solid #eee; margin: 2.5rem 0;}
-</style>
-""", unsafe_allow_html=True)
+const REGION_APPT_DATA = [
+  { name: "MMR", appt: 35021, showPct: 27.1 },
+  { name: "PMR", appt: 12219, showPct: 24.5 },
+  { name: "Gujarat", appt: 28256, showPct: 18.9 },
+  { name: "NCR", appt: 35235, showPct: 17.6 },
+  { name: "BMR", appt: 13032, showPct: 31.6 },
+  { name: "KMR", appt: 12579, showPct: 23.3 },
+  { name: "HMR", appt: 10662, showPct: 26.3 },
+  { name: "UP", appt: 43610, showPct: 13.8 },
+  { name: "Central", appt: 12165, showPct: 19.9 },
+  { name: "Punjab", appt: 18271, showPct: 17.7 },
+  { name: "NE", appt: 5520, showPct: 29.8 },
+];
 
-DATA_DIR = "data"
+const STATE_ECOM = [
+  { state: "Maharashtra", ecomRev: 12.18, clinicRev: 31.9, pincodes: 812 },
+  { state: "Uttar Pradesh", ecomRev: 7.21, clinicRev: 12.4, pincodes: 747 },
+  { state: "Karnataka", ecomRev: 6.20, clinicRev: 9.0, pincodes: 459 },
+  { state: "Delhi", ecomRev: 4.72, clinicRev: 6.9, pincodes: 100 },
+  { state: "Gujarat", ecomRev: 4.16, clinicRev: 8.7, pincodes: 497 },
+  { state: "West Bengal", ecomRev: 3.69, clinicRev: 5.8, pincodes: 785 },
+  { state: "Telangana", ecomRev: 3.17, clinicRev: 3.9, pincodes: 206 },
+  { state: "Haryana", ecomRev: 3.05, clinicRev: 0, pincodes: 0 },
+  { state: "Punjab", ecomRev: 2.88, clinicRev: 3.7, pincodes: 265 },
+  { state: "Madhya Pradesh", ecomRev: 2.61, clinicRev: 3.1, pincodes: 232 },
+];
 
-# ── DATA LOADING ────────────────────────────────────────────────────────────
-@st.cache_data
-def load_data():
-    """Load all pre-processed CSV files."""
-    d = {}
-    d["clinic_perf"] = pd.read_csv(f"{DATA_DIR}/clinic_performance.csv")
-    d["existing"] = pd.read_csv(f"{DATA_DIR}/existing_clinics_61.csv")
-    d["show_analysis"] = pd.read_csv(f"{DATA_DIR}/show_pct_analysis.csv")
-    d["show_impact"] = pd.read_csv(f"{DATA_DIR}/show_pct_impact_comparison.csv")
-    d["show_rank"] = pd.read_csv(f"{DATA_DIR}/show_pct_rank_comparison.csv")
-    d["master_state"] = pd.read_csv(f"{DATA_DIR}/master_state.csv")
-    d["state_clinic"] = pd.read_csv(f"{DATA_DIR}/state_clinic_summary.csv")
-    d["state_orders"] = pd.read_csv(f"{DATA_DIR}/state_orders_summary.csv")
-    d["city_clinic"] = pd.read_csv(f"{DATA_DIR}/city_clinic_summary.csv")
-    d["city_orders"] = pd.read_csv(f"{DATA_DIR}/city_orders_summary.csv")
-    d["web_demand"] = pd.read_csv(f"{DATA_DIR}/web_order_demand.csv")
-    d["clinic_zip"] = pd.read_csv(f"{DATA_DIR}/clinic_zip_summary.csv")
-    d["expansion_same"] = pd.read_csv(f"{DATA_DIR}/expansion_same_city.csv")
-    d["expansion_new"] = pd.read_csv(f"{DATA_DIR}/expansion_new_city.csv")
-    d["pincode_clinic"] = pd.read_csv(f"{DATA_DIR}/pincode_clinic.csv")
-    d["scenario"] = pd.read_csv(f"{DATA_DIR}/scenario_simulator_clinics.csv")
-    d["year_trend"] = pd.read_csv(f"{DATA_DIR}/year_trend.csv")
-    d["monthly_trend"] = pd.read_csv(f"{DATA_DIR}/clinic_monthly_trend.csv")
+// ═══════════════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════════════
 
-    with open(f"{DATA_DIR}/revenue_assumptions.json") as f:
-        d["rev_assumptions"] = json.load(f)
+const fmt = (n) => {
+  if (n >= 10000000) return `₹${(n / 10000000).toFixed(1)}Cr`;
+  if (n >= 100000) return `₹${(n / 100000).toFixed(0)}L`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  return n?.toLocaleString("en-IN") ?? "—";
+};
 
-    return d
+const fmtCompact = (n) => {
+  if (n >= 100000) return `${(n / 1000).toFixed(0)}K`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  return n?.toLocaleString("en-IN") ?? "—";
+};
 
+const ZONE_COLORS = {
+  "West 1": "#FF6B35",
+  "North 1": "#1E96FC",
+  "West 2": "#F0C808",
+  "South": "#2EC4B6",
+  "East": "#9B5DE5",
+  "North 2": "#F15BB5",
+};
 
-data = load_data()
-cp = data["clinic_perf"].copy()
-ex = data["existing"]
-sa = data["show_analysis"]
-ms = data["master_state"]
+// ═══════════════════════════════════════════════════════════
+// COMPONENTS
+// ═══════════════════════════════════════════════════════════
 
-# Convert all appt_/show_ columns to numeric (some have '-' for pre-launch months)
-for col in cp.columns:
-    if col.startswith("appt_") or col.startswith("show_"):
-        cp[col] = pd.to_numeric(cp[col], errors="coerce").fillna(0)
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{
+      background: "rgba(15,15,20,0.95)",
+      border: "1px solid rgba(255,255,255,0.1)",
+      borderRadius: 8,
+      padding: "10px 14px",
+      fontSize: 12,
+      color: "#E0E0E0",
+      boxShadow: "0 8px 32px rgba(0,0,0,0.4)"
+    }}>
+      <div style={{ fontWeight: 600, marginBottom: 6, color: "#fff" }}>{label}</div>
+      {payload.map((p, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: p.color }} />
+          <span style={{ color: "#999" }}>{p.name}:</span>
+          <span style={{ fontWeight: 600 }}>{typeof p.value === "number" && p.value < 1 ? `${(p.value * 100).toFixed(1)}%` : p.value?.toLocaleString("en-IN")}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
 
-# ── PROCESS CLINIC PERFORMANCE ──────────────────────────────────────────────
-# Monthly columns: appt_YYYY-MM, show_YYYY-MM
-month_cols = [c.replace("appt_", "") for c in cp.columns if c.startswith("appt_")]
-last_month = month_cols[-1]  # 2026-01
-l3m_months = month_cols[-3:]  # Nov-25, Dec-25, Jan-26
-
-# Compute key metrics per clinic
-cp["latest_appt"] = cp[f"appt_{last_month}"]
-cp["latest_show"] = cp[f"show_{last_month}"]
-cp["latest_ntb"] = (cp["latest_appt"] * cp["latest_show"]).astype(int)
-
-# L3M averages
-cp["l3m_appt"] = cp[[f"appt_{m}" for m in l3m_months]].mean(axis=1)
-cp["l3m_show"] = cp[[f"show_{m}" for m in l3m_months]].mean(axis=1)
-cp["l3m_ntb"] = (cp["l3m_appt"] * cp["l3m_show"]).astype(int)  # clinic visits (shows)
-
-# Clinic capacity: max 150 shows (clinic visits) per clinic per month
-cp["cabins"] = pd.to_numeric(cp["cabins"], errors="coerce").fillna(2).astype(int)
-CLINIC_CAPACITY = 150  # max visits/month per clinic
-cp["capacity"] = CLINIC_CAPACITY
-cp["util_pct"] = cp["l3m_ntb"] / CLINIC_CAPACITY
-
-# Network monthly trend from clinic data
-network_monthly = []
-for m in month_cols:
-    appt_col = f"appt_{m}"
-    show_col = f"show_{m}"
-    total_appt = cp[appt_col].sum()
-    # Weighted average show%
-    valid = cp[cp[appt_col] > 0]
-    if len(valid) > 0:
-        weighted_show = (valid[appt_col] * valid[show_col]).sum() / valid[appt_col].sum()
-    else:
-        weighted_show = 0
-    ntb = int(total_appt * weighted_show)
-    network_monthly.append({
-        "month": pd.Timestamp(f"{m}-01"), "appt": int(total_appt),
-        "show_pct": weighted_show, "ntb": ntb
-    })
-df_network = pd.DataFrame(network_monthly)
-
-# Map clinics to states via clinic_zip_summary (use highest-volume state, exclude '-')
-czs = data["clinic_zip"]
-czs_clean = czs[czs["State"].notna() & (czs["State"] != "-")]
-state_by_vol = czs_clean.groupby(["Clinic_Loc", "State"])["total_qty"].sum().reset_index()
-clinic_state_map = state_by_vol.sort_values("total_qty", ascending=False).drop_duplicates("Clinic_Loc").set_index("Clinic_Loc")["State"].to_dict()
-cp["state"] = cp["clinic_name"].map(clinic_state_map)
-
-
-# ── SIDEBAR ─────────────────────────────────────────────────────────────────
-with st.sidebar:
-    sidebar_mode = st.radio("", ["📊 FY27 Plan", "📤 Upload Data"], horizontal=True, label_visibility="collapsed")
-
-if sidebar_mode == "📤 Upload Data":
-    with st.sidebar:
-        st.markdown("### 📤 Upload / Update Data")
-        st.markdown(
-            '<div style="font-size:0.8rem;color:#555;margin-bottom:12px;">'
-            'Upload updated Excel or CSV files to refresh the dashboard. '
-            'Files are saved to the <code>data/</code> folder and override existing CSVs.'
-            '</div>', unsafe_allow_html=True,
-        )
-        upload_target = st.selectbox("Target Dataset", [
-            "clinic_performance", "expansion_same_city", "expansion_new_city",
-            "existing_clinics_61", "master_state", "clinic_zip_summary",
-            "web_order_demand", "pincode_clinic", "Other (custom name)",
-        ])
-        if upload_target == "Other (custom name)":
-            upload_target = st.text_input("Custom filename (without extension)")
-
-        uploaded_file = st.file_uploader("Choose Excel (.xlsx) or CSV (.csv)", type=["xlsx", "xls", "csv"])
-        if uploaded_file and upload_target:
-            try:
-                if uploaded_file.name.endswith(".csv"):
-                    df_up = pd.read_csv(uploaded_file)
-                else:
-                    df_up = pd.read_excel(uploaded_file)
-                st.success(f"✅ Parsed: {len(df_up)} rows × {len(df_up.columns)} cols")
-                st.dataframe(df_up.head(5), use_container_width=True, height=180)
-                if st.button("💾 Save & Refresh", type="primary"):
-                    save_path = f"{DATA_DIR}/{upload_target}.csv"
-                    df_up.to_csv(save_path, index=False)
-                    st.success(f"Saved to `{save_path}` — press **R** or refresh the page to reload.")
-                    st.cache_data.clear()
-            except Exception as e:
-                st.error(f"❌ Error parsing file: {e}")
-
-        st.markdown("---")
-        st.markdown("**📁 Current Data Files**")
-        if os.path.exists(DATA_DIR):
-            for f in sorted(os.listdir(DATA_DIR)):
-                if f.endswith(".csv") or f.endswith(".json"):
-                    fsize = os.path.getsize(f"{DATA_DIR}/{f}")
-                    st.caption(f"📄 {f} — {fsize/1024:.0f} KB")
-
-    # Show the upload page content in main area too
-    st.markdown("# 📤 Data Upload & Management")
-    st.info("Use the sidebar to upload updated Excel or CSV files. After uploading, press **R** to refresh the dashboard with new data.")
-    if os.path.exists(DATA_DIR):
-        st.markdown("### Current Data Inventory")
-        inv = []
-        for f in sorted(os.listdir(DATA_DIR)):
-            if f.endswith(".csv"):
-                try:
-                    df_inv = pd.read_csv(f"{DATA_DIR}/{f}", nrows=0)
-                    row_count = sum(1 for _ in open(f"{DATA_DIR}/{f}")) - 1
-                    inv.append({"File": f, "Columns": len(df_inv.columns), "Rows": row_count,
-                                "Size": f"{os.path.getsize(f'{DATA_DIR}/{f}')/1024:.0f} KB"})
-                except:
-                    pass
-        if inv:
-            st.dataframe(pd.DataFrame(inv), hide_index=True, use_container_width=True)
-    st.stop()  # Stop here — don't render the dashboard when in upload mode
-
-with st.sidebar:
-    st.markdown("### 📊 FY27 Plan Controls")
-
-    # ── Revenue Assumptions (affects Slides 5, 6) ─────────
-    st.markdown('<div style="font-size:0.8rem;font-weight:600;color:#1a73e8;margin:8px 0 4px;">📈 Revenue Assumptions</div>', unsafe_allow_html=True)
-    scenario = st.radio("Scenario", ["Conservative", "Base Case", "Optimistic"], index=1,
-                        help="Applies ±15% multiplier to all revenue projections")
-    scenario_mult = {"Conservative": 0.85, "Base Case": 1.0, "Optimistic": 1.15}[scenario]
-    rev_per_ntb = st.number_input("₹ Revenue per NTB Patient", value=22000, step=1000)
-    show_to_conv = st.slider("Show → Purchase Conversion%", 50, 100, 75, 5,
-                              help="Verified ~75-80% from clinic order data (Jul-25 to Jan-26). Affects Slides 4-6.")
-
-    # ── Expansion Parameters (affects Slides 3, 5) ────────
-    st.markdown("---")
-    st.markdown('<div style="font-size:0.8rem;font-weight:600;color:#1a73e8;margin:8px 0 4px;">🗺️ Expansion Parameters</div>', unsafe_allow_html=True)
-    show_threshold = st.slider("Same-City Saturation Threshold", 100, 500, 150, 10,
-                               help="Clinics above this monthly visit count are considered saturated. Affects Slide 3.")
-    ntb_pop_ratio = st.radio(
-        "NTB:Pop Ratio for New Cities",
-        ["Median (3.8/lakh)", "Conservative (P25: 2.6/lakh)"],
-        index=0,
-        help="Ratio used to project monthly patient potential for new cities. Affects Slides 3, 5.",
-    )
-    ntb_ratio_val = 3.8 if "Median" in ntb_pop_ratio else 2.6
-
-    # ── Cost Parameters (affects Slides 5, 6, 7) ──────────
-    st.markdown("---")
-    st.markdown('<div style="font-size:0.8rem;font-weight:600;color:#1a73e8;margin:8px 0 4px;">💰 Cost Parameters</div>', unsafe_allow_html=True)
-    monthly_opex = st.number_input("Monthly OpEx per Clinic (₹L)", value=3.1, step=0.1, format="%.1f")
-    capex_per_clinic = st.number_input("Capex per Clinic (₹L)", value=28.0, step=1.0, format="%.1f")
-
-    # ── Fix Parameters (affects Slide 4) ───────────────────
-    st.markdown("---")
-    st.markdown('<div style="font-size:0.8rem;font-weight:600;color:#1a73e8;margin:8px 0 4px;">🔧 Fix Parameters</div>', unsafe_allow_html=True)
-    _active = cp[cp["l3m_appt"] >= 30]
-    _p75 = int(round(_active["l3m_show"].quantile(0.75) * 100))
-    industry_show = st.slider("Gynoveda Benchmark Show%", 10, 50, _p75, 1,
-                              help="Target Show% for underperforming clinics. Default = P75 of active clinics. Affects Slide 4.")
-    _above_bench = (_active["l3m_show"] >= industry_show / 100).sum()
-    st.caption(f"_Default {_p75}% = P75 of {len(_active)} active clinics. {_above_bench} already achieve it._")
-
-    # ── Glossary ───────────────────────────────────────────
-    st.markdown("---")
-    st.markdown(
-        '<div style="background:#f0f4ff;border-radius:6px;padding:10px;font-size:0.72rem;color:#444;">'
-        '<b>📚 Glossary</b><br>'
-        '<b>NTB</b> = New-to-Brand (first-time patient purchase)<br>'
-        '<b>Show%</b> = % of booked appointments that actually visit the clinic<br>'
-        '<b>Conversion</b> = % of clinic visitors who make a purchase<br>'
-        '<b>Visits</b> = Appointments × Show% (patients who show up)<br>'
-        '<b>Funnel:</b> Appt → Show% → Clinic Visit → Conversion → NTB Purchase'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-    st.caption(f"Data: Jan-25 to Jan-26 · {len(cp)} Clinics")
-
-# ── EARLY COMPUTATION (needed across slides) ──────────────────────────────
-conversion_rate = show_to_conv / 100
-opex_monthly = monthly_opex * 1e5
-capex = capex_per_clinic * 1e5
-
-# ── HEADER ──────────────────────────────────────────────────────────────────
-st.markdown("# 🏥 Gynoveda FY27 Expansion Plan")
-
-peak_ntb = df_network["ntb"].max()
-latest_ntb = df_network["ntb"].iloc[-1]
-ntb_decline = (latest_ntb - peak_ntb) / peak_ntb if peak_ntb > 0 else 0
-network_show = cp["latest_show"].mean()
-ntb_per_clinic = latest_ntb / len(cp) if len(cp) > 0 else 0
-peak_per_clinic = peak_ntb / len(cp) if len(cp) > 0 else 0
-latest_appt_total = df_network["appt"].iloc[-1]
-
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("NTB Appt Booked (Jan-26)", fmt_num(latest_appt_total))
-c2.metric("Clinic Visits (Jan-26)", fmt_num(latest_ntb), f"{ntb_decline:+.0%} from peak")
-c3.metric("Network Show%", f"{network_show:.0%}", f"{'↑' if network_show > 0.18 else '↓'} vs 18% floor")
-c4.metric("Active Clinics", f"{len(cp)}")
-c5.metric("Visits/Clinic (Jan-26)", f"{ntb_per_clinic:.0f}", f"Peak was {peak_per_clinic:.0f}")
-
-# ═══════════════════════════════════════════════════════════════════════════
-# EXECUTIVE SUMMARY — FY27 Expansion at a Glance
-# ═══════════════════════════════════════════════════════════════════════════
-# Pre-compute summary numbers (quick estimates before full model runs later)
-_conv_rate = show_to_conv / 100
-_rev_show = _conv_rate * rev_per_ntb
-_opex_mo = monthly_opex * 1e5
-_current_annual = cp["l3m_ntb"].sum() * _rev_show * 12
-_target_show = industry_show / 100
-_show_gap = (_target_show - cp["l3m_show"]).clip(lower=0)
-_fix_unlock = (cp["l3m_appt"] * _show_gap * _conv_rate * rev_per_ntb * 12).sum()
-_total_capex_est = 115 * capex_per_clinic * 1e5  # ~100 same-city + 15 new city
-_profitable = (cp["l3m_ntb"] * _rev_show > _opex_mo).sum()
-
-st.markdown(f"""
-<div style="background:linear-gradient(135deg,#f8f9fa,#e8f5e9);border-radius:12px;padding:20px 24px;margin:12px 0 4px;">
-<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
-<div style="flex:1;min-width:200px;text-align:center;">
-<div style="font-size:0.75rem;color:#888;text-transform:uppercase;">Current Run-Rate</div>
-<div style="font-size:1.6rem;font-weight:700;color:#333;">{fmt_inr(_current_annual)}</div>
-<div style="font-size:0.7rem;color:#888;">{len(cp)} clinics · {_profitable} profitable</div>
-</div>
-<div style="flex:0 0 40px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:#aaa;">→</div>
-<div style="flex:1;min-width:200px;text-align:center;">
-<div style="font-size:0.75rem;color:#888;text-transform:uppercase;">Show% Fix (₹0 CAC)</div>
-<div style="font-size:1.6rem;font-weight:700;color:#28a745;">+ {fmt_inr(_fix_unlock)}</div>
-<div style="font-size:0.7rem;color:#888;">Zero new leases needed</div>
-</div>
-<div style="flex:0 0 40px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:#aaa;">→</div>
-<div style="flex:1;min-width:200px;text-align:center;">
-<div style="font-size:0.75rem;color:#888;text-transform:uppercase;">Expansion Investment</div>
-<div style="font-size:1.6rem;font-weight:700;color:#1a73e8;">{fmt_inr(_total_capex_est)}</div>
-<div style="font-size:0.7rem;color:#888;">~115 new locations scouted</div>
-</div>
-<div style="flex:0 0 40px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:#aaa;">→</div>
-<div style="flex:1;min-width:200px;text-align:center;background:#1a1a2e;border-radius:8px;padding:10px;">
-<div style="font-size:0.75rem;color:#a0a0b0;text-transform:uppercase;">FY27 Revenue Target</div>
-<div style="font-size:1.6rem;font-weight:700;color:#fff;">Details in Slide 6</div>
-<div style="font-size:0.7rem;color:#a0a0b0;">Scroll down for full build-up</div>
-</div>
-</div>
-<div style="text-align:center;margin-top:12px;font-size:0.78rem;color:#666;">
-<b>Story Arc:</b> Slide 1 (Reach Gap) → Slide 2 (Revenue Leak) → Slide 3 (Where to Expand) → Slide 4 (Fix First) → Slide 5-6 (Revenue Projections) → Slide 7 (Risk Guardrails)
-</div>
-</div>
-""", unsafe_allow_html=True)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# SLIDE 1: ONLINE vs CLINIC REACH
-# ═══════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="slide-header">📍 SLIDE 1 — ONLINE vs CLINIC REACH'
-    '<div class="slide-sub">Total order quantity by pincode: Website vs Clinics — showing reach gap</div></div>',
-    unsafe_allow_html=True,
-)
-
-STATE_COORDS = {
-    "Maharashtra": (19.75, 75.71), "Uttar Pradesh": (26.85, 80.95),
-    "Karnataka": (15.32, 75.71), "Delhi": (28.70, 77.10),
-    "Gujarat": (22.26, 71.19), "West Bengal": (22.99, 87.86),
-    "Telangana": (18.11, 79.02), "Haryana": (29.06, 76.09),
-    "Punjab": (31.15, 75.34), "Assam": (26.20, 92.94),
-    "Madhya Pradesh": (22.97, 78.66), "Rajasthan": (27.02, 74.22),
-    "Odisha": (20.95, 85.10), "Tamil Nadu": (11.13, 78.66),
-    "Bihar": (25.10, 85.31), "Jharkhand": (23.61, 85.28),
-    "Kerala": (10.85, 76.27), "Chhattisgarh": (21.28, 81.87),
-    "Uttarakhand": (30.07, 79.02), "Andhra Pradesh": (15.91, 79.74),
-    "Chandigarh": (30.73, 76.78), "Goa": (15.30, 74.12),
-    "Himachal Pradesh": (31.10, 77.17), "Jammu and Kashmir": (33.78, 76.58),
-    "Nagaland": (26.16, 94.56), "Meghalaya": (25.47, 91.37),
-    "Arunachal Pradesh": (28.22, 94.73), "Tripura": (23.94, 91.99),
-    "Manipur": (24.66, 93.91), "Mizoram": (23.16, 92.94),
-    "Sikkim": (27.53, 88.51), "Pondicherry": (11.94, 79.81),
-    "NAGALAND": (26.16, 94.56), "Jharkand": (23.61, 85.28),
+function KPICard({ label, value, sub, accent, icon }) {
+  return (
+    <div style={{
+      background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)",
+      border: "1px solid rgba(255,255,255,0.06)",
+      borderRadius: 16,
+      padding: "20px 24px",
+      position: "relative",
+      overflow: "hidden",
+    }}>
+      <div style={{
+        position: "absolute", top: -20, right: -20, width: 80, height: 80,
+        borderRadius: "50%", background: accent, opacity: 0.06, filter: "blur(20px)"
+      }} />
+      <div style={{ fontSize: 11, fontWeight: 500, color: "#888", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
+        {icon && <span style={{ marginRight: 6 }}>{icon}</span>}{label}
+      </div>
+      <div style={{ fontSize: 28, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1.1 }}>
+        {value}
+      </div>
+      {sub && <div style={{ fontSize: 12, color: accent, marginTop: 6, fontWeight: 500 }}>{sub}</div>}
+    </div>
+  );
 }
 
-# Build state comparison from master_state
-ms_clean = ms[ms["state_geo"].notna() & (ms["state_geo"] != "-")].copy()
-ms_clean["lat"] = ms_clean["state_geo"].map(lambda s: STATE_COORDS.get(s, (20, 78))[0])
-ms_clean["lon"] = ms_clean["state_geo"].map(lambda s: STATE_COORDS.get(s, (20, 78))[1])
-ms_clean["web_orders"] = ms_clean["total_orders"].fillna(0)
-ms_clean["clinic_orders"] = ms_clean["clinic_firsttime_qty"].fillna(0)
-ms_clean["total_all"] = ms_clean["web_orders"] + ms_clean["clinic_orders"]
-ms_clean["clinic_share"] = np.where(ms_clean["total_all"] > 0, ms_clean["clinic_orders"] / ms_clean["total_all"], 0)
-ms_clean = ms_clean.sort_values("total_all", ascending=False)
-
-col_map1, col_map2 = st.columns(2)
-
-with col_map1:
-    st.markdown("**🌐 Website Orders by State**")
-    fig_web = px.scatter_mapbox(
-        ms_clean.head(20), lat="lat", lon="lon", size="web_orders",
-        color="web_orders", hover_name="state_geo",
-        color_continuous_scale="Blues", size_max=40,
-        mapbox_style="carto-positron", zoom=3.5, center={"lat": 22, "lon": 80},
-    )
-    fig_web.update_traces(
-        hovertemplate="<b>%{hovertext}</b><br>Orders: %{marker.size:,}<extra></extra>"
-    )
-    fig_web.update_layout(height=420, margin=dict(l=0, r=0, t=0, b=0), coloraxis_showscale=False)
-    st.plotly_chart(fig_web, use_container_width=True)
-
-with col_map2:
-    st.markdown("**🏥 Clinic Orders by State**")
-    fig_cli = px.scatter_mapbox(
-        ms_clean.head(20), lat="lat", lon="lon", size="clinic_orders",
-        color="clinic_orders", hover_name="state_geo",
-        color_continuous_scale="Oranges", size_max=40,
-        mapbox_style="carto-positron", zoom=3.5, center={"lat": 22, "lon": 80},
-    )
-    fig_cli.update_traces(
-        hovertemplate="<b>%{hovertext}</b><br>Clinic Orders: %{marker.size:,}<extra></extra>"
-    )
-    fig_cli.update_layout(height=420, margin=dict(l=0, r=0, t=0, b=0), coloraxis_showscale=False)
-    st.plotly_chart(fig_cli, use_container_width=True)
-
-sm1, sm2, sm3, sm4 = st.columns(4)
-total_web_pins = int(ms_clean["unique_customers_pincodes"].sum())
-total_cli_pins = int(ms_clean["clinic_pincodes"].sum())
-sm1.metric("Website Pincodes", fmt_num(total_web_pins))
-sm2.metric("Clinic Pincodes", fmt_num(total_cli_pins))
-sm3.metric("Website Orders", fmt_num(int(ms_clean['web_orders'].sum())))
-sm4.metric("Clinic Orders (FirstTime)", fmt_num(int(ms_clean['clinic_orders'].sum())))
-
-st.markdown("**State-Level Reach Comparison (Top 12)**")
-top12 = ms_clean.head(12)[["state_geo", "web_orders", "unique_customers_pincodes", "clinic_orders", "clinic_pincodes", "clinic_share"]].copy()
-top12.columns = ["State", "Website Orders", "Website Pincodes", "Clinic Orders", "Clinic Pincodes", "Clinic Share %"]
-top12["Clinic Share %"] = (top12["Clinic Share %"] * 100).round(1)
-for c in ["Website Orders", "Clinic Orders"]:
-    top12[c] = top12[c].astype(int).apply(lambda x: fmt_num(x))
-for c in ["Website Pincodes", "Clinic Pincodes"]:
-    top12[c] = top12[c].astype(int)
-st.dataframe(top12, hide_index=True, use_container_width=True)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# SLIDE 2: THE CASE FOR CAUTION — Show% Analysis
-# ═══════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="slide-header">⚠️ SLIDE 2 — THE HIDDEN REVENUE LEAK: Show% Is the #1 Problem to Fix'
-    '<div class="slide-sub">We book thousands of appointments but most patients never show up — this is the single biggest revenue leak in the network</div></div>',
-    unsafe_allow_html=True,
-)
-
-col_trend, col_insight = st.columns([2, 1])
-with col_trend:
-    st.markdown("**Network Funnel Trend — Appointments vs Clinic Visits**")
-    fig_trend = make_subplots(specs=[[{"secondary_y": True}]])
-    fig_trend.add_trace(
-        go.Bar(
-            x=df_network["month"], y=df_network["appt"],
-            name="Appt Booked", marker_color="#B0BEC5", opacity=0.55,
-            text=df_network["appt"].apply(lambda x: fmt_num(x)),
-            textposition="outside",
-            hovertemplate="<b>%{x|%b %Y}</b><br>Appt Booked: %{y:,}<extra></extra>",
-        ), secondary_y=False,
-    )
-    fig_trend.add_trace(
-        go.Bar(
-            x=df_network["month"], y=df_network["ntb"],
-            name="Clinic Visits (Shows)", marker_color="#FF6B35", opacity=0.85,
-            text=df_network["ntb"].apply(lambda x: fmt_num(x)),
-            textposition="outside",
-            hovertemplate="<b>%{x|%b %Y}</b><br>Clinic Visits: %{y:,}<extra></extra>",
-        ), secondary_y=False,
-    )
-    fig_trend.add_trace(
-        go.Scatter(
-            x=df_network["month"], y=df_network["show_pct"] * 100,
-            name="Show %", line=dict(color="#1a73e8", width=3),
-            mode="lines+markers",
-            hovertemplate="<b>%{x|%b %Y}</b><br>Show%: %{y:.1f}%<extra></extra>",
-        ), secondary_y=True,
-    )
-    fig_trend.update_layout(
-        height=370, margin=dict(l=40, r=40, t=10, b=40),
-        legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center",
-                    font=dict(size=12)),
-        yaxis_title="Count", yaxis2_title="Show %",
-        barmode="overlay",
-        plot_bgcolor="white",
-    )
-    fig_trend.update_yaxes(range=[0, 35], secondary_y=True)
-    fig_trend.update_xaxes(tickformat="%b %y")
-    st.plotly_chart(fig_trend, use_container_width=True)
-
-with col_insight:
-    peak_m = df_network.loc[df_network["ntb"].idxmax(), "month"].strftime("%b-%y")
-    below_15 = (cp["latest_show"] < 0.15).sum()
-    latest_appt_network = df_network["appt"].iloc[-1]
-    st.markdown(f"""
-    <div class="insight-card insight-red">
-    <strong>📊 The Funnel Says:</strong><br>
-    • <b>{fmt_num(latest_appt_network)}</b> appts booked (Jan-26), only <b>{fmt_num(latest_ntb)}</b> visited ({network_show:.0%} Show%)<br>
-    • Visits peaked at <b>{fmt_num(peak_ntb)}</b> ({peak_m}), now <b>{ntb_decline:+.0%}</b><br>
-    • <b>{below_15}</b> clinics have Show% below 15%<br>
-    • At 75% conversion, each lost visit = <b>{fmt_inr(0.75*rev_per_ntb)}</b> lost revenue
+function SectionHeader({ title, subtitle }) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h2 style={{ fontSize: 18, fontWeight: 700, color: "#fff", margin: 0, letterSpacing: "-0.01em" }}>{title}</h2>
+      {subtitle && <p style={{ fontSize: 12, color: "#666", margin: "4px 0 0", fontWeight: 400 }}>{subtitle}</p>}
     </div>
-    <div class="insight-card insight-blue">
-    <strong>🎯 The answer:</strong> Not fewer or more clinics — <b>smarter clinics</b>.
-    Fix the funnel: Appt → Show → Purchase.
-    </div>
-    """, unsafe_allow_html=True)
-
-# State-wise Show% vs Industry Benchmark
-state_show = (
-    cp.groupby("state")
-    .agg(avg_show=("l3m_show", "mean"), clinic_count=("clinic_name", "count"), total_ntb=("l3m_ntb", "sum"))
-    .reset_index()
-)
-state_show = state_show[state_show["state"].notna() & (state_show["state"] != "-")]
-state_show = state_show.sort_values("avg_show", ascending=True)
-benchmark = industry_show / 100
-state_show["gap"] = state_show["avg_show"] - benchmark
-state_show["label"] = state_show.apply(
-    lambda r: f"{r['avg_show']:.0%} ({int(r['clinic_count'])} cl)", axis=1
-)
-
-st.markdown("**Gynoveda Show% vs Internal P75 Benchmark — State-Wise**")
-
-fig_show = go.Figure()
-fig_show.add_trace(go.Bar(
-    y=state_show["state"], x=state_show["avg_show"] * 100,
-    orientation="h",
-    marker_color=[("#4CAF50" if g >= 0 else "#FF6B35" if g >= -0.05 else "#dc3545") for g in state_show["gap"]],
-    text=state_show["label"], textposition="outside",
-    name="Gynoveda Actual",
-    showlegend=False,
-    hovertemplate=(
-        "<b>%{y}</b><br>"
-        "Show%: %{x:.1f}%<br>"
-        "Gap vs Benchmark: %{customdata[0]:+.1f}ppt<br>"
-        "Clinics: %{customdata[1]}<br>"
-        "Monthly NTB: %{customdata[2]:,}"
-        "<extra></extra>"
-    ),
-    customdata=np.column_stack([
-        state_show["gap"] * 100,
-        state_show["clinic_count"],
-        state_show["total_ntb"],
-    ]),
-))
-fig_show.add_vline(x=industry_show, line_dash="dash", line_color="#1a73e8", line_width=2)
-fig_show.add_annotation(
-    x=industry_show, y=1.02, yref="paper",
-    text=f"◆ {industry_show}% Gynoveda P75 Benchmark", showarrow=False,
-    font=dict(color="#1a73e8", size=12, family="Arial Black"),
-)
-fig_show.update_layout(
-    height=max(380, len(state_show) * 35),
-    margin=dict(l=130, r=100, t=30, b=40),
-    xaxis_title="Show %", plot_bgcolor="white",
-)
-st.plotly_chart(fig_show, use_container_width=True)
-
-above = (state_show["gap"] >= 0.02).sum()
-at_std = ((state_show["gap"] >= -0.02) & (state_show["gap"] < 0.02)).sum()
-below = (state_show["gap"] < -0.02).sum()
-
-sc1, sc2, sc3 = st.columns(3)
-sc1.markdown(f'<div class="insight-card insight-green"><b style="font-size:2rem;color:#28a745">{above}</b> states above standard</div>', unsafe_allow_html=True)
-sc2.markdown(f'<div class="insight-card"><b style="font-size:2rem;color:#ffc107">{at_std}</b> states at standard (±2ppt)</div>', unsafe_allow_html=True)
-sc3.markdown(f'<div class="insight-card insight-red"><b style="font-size:2rem;color:#dc3545">{below}</b> states below standard</div>', unsafe_allow_html=True)
-
-st.markdown(
-    '<div style="background:#f0f4ff;border-left:3px solid #1a73e8;padding:10px 14px;border-radius:0 6px 6px 0;margin:12px 0;font-size:0.8rem;color:#555;">'
-    f'<b>📚 Data Model:</b> '
-    f'NTB Appt = total appointments booked. '
-    f'<b>Show% = % who actually visit the clinic</b> (P75 benchmark: {industry_show}%). '
-    f'Of those who show, <b>{show_to_conv}% convert to NTB purchase</b> (verified from ZipData Jul-25 to Jan-26). '
-    f'Revenue per converted NTB = ₹{rev_per_ntb:,}.'
-    '</div>',
-    unsafe_allow_html=True,
-)
-
-with st.expander("📋 Full State-Wise Benchmark Detail"):
-    detail = state_show[["state", "avg_show", "gap", "clinic_count", "total_ntb"]].copy()
-    detail.columns = ["State", "Gynoveda Show%", "Gap vs Benchmark", "Clinics", "Monthly NTB"]
-    detail["Gynoveda Show%"] = (detail["Gynoveda Show%"] * 100).round(1)
-    detail["Gap vs Benchmark"] = (detail["Gap vs Benchmark"] * 100).round(1)
-    detail = detail.sort_values("Gap vs Benchmark")
-    st.dataframe(detail, hide_index=True, use_container_width=True)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# SLIDE 3: EXPANSION STRATEGY — Where to Open Next
-# ═══════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="slide-header">🗺️ EXPANSION STRATEGY — Where to Open Next'
-    '<div class="slide-sub">Same-City Satellites & New City Opportunities</div></div>',
-    unsafe_allow_html=True,
-)
-
-exp_tab1, exp_tab2 = st.tabs(["🏙️ Same-City Expansion", "🌍 New City Expansion"])
-
-# ── TAB 1: SAME-CITY EXPANSION ───────────────────────────────────────────
-with exp_tab1:
-    saturated = cp[cp["l3m_appt"] >= show_threshold].sort_values("l3m_appt", ascending=False)
-
-    st.markdown(f"### Same-City — Clinics at Capacity (≥{show_threshold} NTB Shows/Month)")
-
-    col_sat_chart, col_sat_cards = st.columns([1.2, 1])
-
-    with col_sat_chart:
-        # Step 1: Saturated clinics bar chart
-        st.markdown(f"**Step 1: Clinics with ≥{show_threshold} Avg Monthly NTB Shows**")
-        top_sat = saturated.head(10).sort_values("l3m_ntb", ascending=True)
-        bar_colors = ["#28a745" if s >= 0.25 else "#ffc107" if s >= 0.18 else "#dc3545"
-                      for s in top_sat["l3m_show"]]
-        fig_sat = go.Figure(go.Bar(
-            y=top_sat["clinic_name"], x=top_sat["l3m_ntb"], orientation="h",
-            marker_color=bar_colors,
-            text=top_sat.apply(
-                lambda r: f"{r['l3m_ntb']} shows | {r['util_pct']:.0%} util | {r['l3m_show']:.0%} show%",
-                axis=1,
-            ),
-            textposition="inside", textfont=dict(color="white", size=11),
-        ))
-        fig_sat.add_vline(x=show_threshold, line_dash="dash", line_color="red",
-                          annotation_text=f"Threshold: {show_threshold}")
-        fig_sat.update_layout(
-            height=380, margin=dict(l=110, r=20, t=10, b=40),
-            xaxis_title="Monthly NTB Shows",
-        )
-        st.plotly_chart(fig_sat, use_container_width=True)
-        mc1, mc2 = st.columns(2)
-        mc1.metric("Clinics Qualify", f"{len(saturated)}")
-        mc2.metric("Avg Utilization", f"{saturated['util_pct'].mean():.0%}")
-
-    with col_sat_cards:
-        czs = data["clinic_zip"]
-        for _, row in saturated.head(5).iterrows():
-            clinic_zips = czs[czs["Clinic_Loc"] == row["clinic_name"]]
-            top_cities = clinic_zips.sort_values("total_qty", ascending=False).head(3)
-            top_areas = ", ".join(top_cities["City"].dropna().unique()[:3])
-            city_label = clinic_state_map.get(row["clinic_name"], row.get("city_code", ""))
-            # Dynamic trend: compare last month to L3M average
-            _trend_up = row["latest_ntb"] >= row["l3m_ntb"]
-            trend_emoji = "🟢" if row["l3m_show"] >= 0.25 else "🟡" if row["l3m_show"] >= 0.18 else "🔴"
-            trend_label = "Stable/Rising" if _trend_up else "Declining L3M"
-            st.markdown(f"""
-            <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin:8px 0;border-left:4px solid #FF6B35;">
-            <b>{row['clinic_name']}</b> ({city_label}) — {int(row['cabins'])} cabins<br>
-            Shows: <b>{row['l3m_ntb']}/mo</b> | Util: <b>{row['util_pct']:.0%}</b> |
-            Show%: <b>{row['l3m_show']:.1%}</b> | {trend_emoji}
-            <span style="color:#888;">{trend_label}</span><br>
-            </div>
-            """, unsafe_allow_html=True)
-
-    # Step 2: Micro-markets for saturated clinics
-    st.markdown("---")
-    st.markdown("**Step 2: Micro-Market Identification for Saturated Clinics**")
-    exp_same = data["expansion_same"]
-
-    # Map city codes to expansion_same city names
-    _code_to_city = {
-        "MUM": "Mumbai", "NDL": "Delhi", "BLR": "Bengaluru", "HYD": "Hyderabad",
-        "KOL": "Kolkata", "AHM": "Ahmedabad", "PUN": "Pune", "LKO": "Lucknow",
-        "SUR": "Surat", "PAT": "Patna", "THN": "Mumbai", "NVM": "Mumbai",
-    }
-
-    # Group saturated clinics by parent city
-    micro_by_city = {}
-    for _, row in saturated.iterrows():
-        cc = str(row.get("city_code", ""))
-        parent_city = _code_to_city.get(cc, cc)
-        if parent_city in exp_same["City"].values:
-            if parent_city not in micro_by_city:
-                micro_by_city[parent_city] = {"shows": 0, "count": len(exp_same[exp_same["City"] == parent_city])}
-            micro_by_city[parent_city]["shows"] += row["l3m_ntb"]
-
-    if micro_by_city:
-        mc_list = [{"city": k, "parent_shows": v["shows"], "micro_count": v["count"]}
-                   for k, v in micro_by_city.items()]
-        mc_df = pd.DataFrame(mc_list).sort_values("parent_shows", ascending=False).head(6)
-        col_mc, col_mc_info = st.columns([1, 1])
-        with col_mc:
-            fig_mc = go.Figure(go.Bar(
-                y=mc_df["city"][::-1], x=mc_df["micro_count"][::-1], orientation="h",
-                marker_color="#28a745",
-                text=mc_df.apply(
-                    lambda r: f"{r['micro_count']} pins | Parent: {r['parent_shows']} shows/mo", axis=1
-                ).values[::-1],
-                textposition="inside", textfont=dict(color="white"),
-            ))
-            fig_mc.update_layout(
-                title="Step 2: Proposed Micro-Markets by Saturated City",
-                height=300, margin=dict(l=100, r=20, t=40, b=20),
-            )
-            st.plotly_chart(fig_mc, use_container_width=True)
-        with col_mc_info:
-            total_no_shows = saturated["l3m_appt"].sum() - saturated["l3m_ntb"].sum()
-            recoverable = int(total_no_shows * 0.30)
-            recovery_rev = recoverable * conversion_rate * rev_per_ntb
-            st.markdown(f"""
-            <div style="background:#fff3cd;border-radius:8px;padding:16px;border-left:4px solid #ff6b35;">
-            <b>📍 No-Show Recovery Logic:</b><br><br>
-            These {len(saturated)} clinics book <b>{int(saturated['l3m_appt'].sum()):,}</b> NTB appointments/mo
-            but only <b>{int(saturated['l3m_ntb'].sum()):,}</b> show up.<br><br>
-            <b>{int(total_no_shows):,} patients/month</b> are no-shows from these saturated clinics.
-            Distance and travel time are primary barriers.<br><br>
-            Satellite clinics in top no-show pincodes can recover an estimated
-            <b>30%</b> of these patients → <b>{fmt_inr(recovery_rev)}/month</b> in recovered revenue.<br><br>
-            <b>This is not new CAC — these patients are already acquired.</b>
-            </div>
-            """, unsafe_allow_html=True)
-
-    # Summary count (detailed micro-market data is in Slide 5)
-    st.markdown(f"""
-    <div class="insight-card insight-blue">
-    <b>📍 {len(exp_same)} satellite micro-markets</b> scouted across {exp_same['City'].nunique()} cities.
-    Detailed per-clinic revenue projections and IVF competitor mapping available in <b>Slide 5</b>.
-    </div>
-    """, unsafe_allow_html=True)
-
-# ── TAB 2: NEW CITY EXPANSION ────────────────────────────────────────────
-with exp_tab2:
-    exp_new = data["expansion_new"]
-
-    # Aggregate by city
-    new_cities = exp_new.groupby(["City", "State", "Tier"]).agg(
-        web_orders=("Web Order Qty", "first"),
-        population=("Est. Population", "first"),
-        proj_ntb=("Projected Monthly NTB", "first"),
-        locations=("Pincode", "count"),
-    ).reset_index().sort_values("web_orders", ascending=False)
-
-    # Revenue projections
-    new_cities["monthly_rev"] = (new_cities["proj_ntb"] * conversion_rate * rev_per_ntb).astype(int)
-    new_cities["annual_rev"] = new_cities["monthly_rev"] * 12
-    new_cities["monthly_profit"] = new_cities["monthly_rev"] - opex_monthly
-    new_cities["profitable"] = new_cities["monthly_profit"] > 0
-
-    total_new_annual = new_cities["annual_rev"].sum()
-    total_new_profit = new_cities[new_cities["profitable"]]["monthly_profit"].sum() * 12
-    profitable_count = new_cities["profitable"].sum()
-
-    st.markdown("### New City Expansion — Untapped Markets with Online Demand")
-
-    # Header metrics
-    nc1, nc2, nc3, nc4 = st.columns(4)
-    nc1.metric("New City Candidates", f"{len(new_cities)}", f"{new_cities['locations'].sum()} micro-markets")
-    nc2.metric("Total Web Orders", fmt_num(new_cities["web_orders"].sum()), "All-time 1cx orders")
-    nc3.metric("Projected Annual Revenue", fmt_inr(total_new_annual), f"@ {ntb_pop_ratio.split('(')[0].strip()} ratio")
-    nc4.metric("Profitable Cities", f"{profitable_count} of {len(new_cities)}", f"Above ₹{opex_monthly/1e5:.1f}L OpEx")
-
-    col_nc_chart, col_nc_info = st.columns([1.5, 1])
-
-    with col_nc_chart:
-        # Top cities bar chart by online demand
-        nc_sorted = new_cities.sort_values("web_orders", ascending=True)
-        tier_colors = {"Tier-2": "#1a73e8", "Tier-3": "#34a853"}
-        fig_nc = go.Figure(go.Bar(
-            y=nc_sorted["City"],
-            x=nc_sorted["web_orders"],
-            orientation="h",
-            marker_color=[tier_colors.get(t, "#999") for t in nc_sorted["Tier"]],
-            text=nc_sorted.apply(
-                lambda r: f"{r['web_orders']:,} orders | {r['Tier']} | ₹{r['annual_rev']/1e5:.0f}L/yr",
-                axis=1,
-            ),
-            textposition="inside",
-            textfont=dict(color="white", size=11),
-        ))
-        fig_nc.update_layout(
-            title="New City Opportunities — Ranked by Online Demand (1cx Orders)",
-            height=500, margin=dict(l=130, r=20, t=40, b=40),
-            xaxis_title="All-Time Web Orders",
-        )
-        st.plotly_chart(fig_nc, use_container_width=True)
-
-    with col_nc_info:
-        # Tier breakdown
-        tier_summary = new_cities.groupby("Tier").agg(
-            cities=("City", "count"),
-            total_rev=("annual_rev", "sum"),
-            avg_orders=("web_orders", "mean"),
-        ).reset_index()
-
-        st.markdown("""
-        <div style="background:#e8f5e9;border-radius:8px;padding:16px;border-left:4px solid #28a745;">
-        <b>🌍 New City Strategy:</b><br><br>
-        <b>Selection Criteria:</b><br>
-        • ≥850+ all-time web orders (proven online demand)<br>
-        • No existing Gynoveda clinic within 50km<br>
-        • Population ≥1.5 lakh (addressable market)<br>
-        • IVF competitor presence confirms fertility demand<br><br>
-        <b>Revenue Model:</b><br>
-        NTB Projected = Population × NTB:Pop ratio<br>
-        Monthly Rev = NTB × 75% Conv × ₹22K/patient<br><br>
-        <b>Rollout:</b> 5 micro-market pincodes scouted per city<br>
-        for optimal clinic placement.
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("")
-        for _, tier_row in tier_summary.iterrows():
-            tier_label = tier_row["Tier"]
-            color = "#1a73e8" if "2" in tier_label else "#34a853"
-            st.markdown(f"""
-            <div style="background:#f8f9fa;border-radius:6px;padding:10px;margin:6px 0;border-left:4px solid {color};">
-            <b>{tier_label}</b>: {tier_row['cities']} cities |
-            ₹{tier_row['total_rev']/1e7:.1f} Cr/yr |
-            Avg {tier_row['avg_orders']:.0f} orders
-            </div>
-            """, unsafe_allow_html=True)
-
-    # Revenue projection table (condensed — full breakdown in Slide 5)
-    st.markdown("---")
-    with st.expander("📋 Per-City Revenue Projection"):
-        proj_df = new_cities[["City", "State", "Tier", "web_orders", "population",
-                              "proj_ntb", "monthly_rev", "annual_rev", "profitable"]].copy()
-        proj_df.columns = ["City", "State", "Tier", "Web Orders", "Est. Population",
-                           "Proj. NTB/mo", "Monthly Rev (₹)", "Annual Rev (₹)", "Profitable"]
-        proj_df["Monthly Rev (₹)"] = proj_df["Monthly Rev (₹)"].apply(lambda x: f"₹{x/1e5:.1f}L")
-        proj_df["Annual Rev (₹)"] = proj_df["Annual Rev (₹)"].apply(lambda x: f"₹{x/1e5:.0f}L")
-        proj_df["Profitable"] = proj_df["Profitable"].map({True: "✅", False: "❌"})
-        st.dataframe(proj_df, hide_index=True, use_container_width=True, height=400)
-
-    # Summary — point to Slide 5 for detailed projections and micro-markets
-    st.markdown(f"""
-    <div class="insight-card insight-blue">
-    <b>💰 New City Portfolio:</b> {len(new_cities)} cities × 5 micro-market options each = {new_cities['locations'].sum()} scouted locations.
-    Projected Annual Revenue: <b>{fmt_inr(total_new_annual)}</b> |
-    Profitable: <b>{profitable_count}/{len(new_cities)}</b> cities.<br>
-    Detailed per-clinic revenue projections, monthly ramp, and IVF competitor mapping available in <b>Slide 5</b>.
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# SLIDE 4: FIX BEFORE EXPAND — ₹0 CAC Revenue Unlock
-# ═══════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="slide-header">🔧 SLIDE 4 — FIX BEFORE EXPAND: ₹0 CAC Revenue Unlock'
-    '<div class="slide-sub">What happens if underperforming clinics reach our own top-quartile Show%?</div></div>',
-    unsafe_allow_html=True,
-)
-
-target_show = industry_show / 100
-cp["show_gap"] = (target_show - cp["l3m_show"]).clip(lower=0)
-conversion_rate = show_to_conv / 100
-rev_per_show = conversion_rate * rev_per_ntb
-cp["additional_visits"] = (cp["l3m_appt"] * cp["show_gap"]).astype(int)
-cp["additional_purchases"] = (cp["additional_visits"] * conversion_rate).astype(int)
-cp["additional_rev_annual"] = cp["additional_purchases"] * rev_per_ntb * 12
-
-underperforming = cp[cp["show_gap"] > 0].sort_values("additional_rev_annual", ascending=False)
-total_unlock = underperforming["additional_rev_annual"].sum()
-total_extra_visits = underperforming["additional_visits"].sum()
-total_extra_purchases = underperforming["additional_purchases"].sum()
-
-fm1, fm2, fm3, fm4 = st.columns(4)
-fm1.metric("Underperforming Clinics", f"{len(underperforming)} of {len(cp)}", f"Show% < {industry_show}%")
-fm2.metric("Extra Visits/mo Unlocked", fmt_num(total_extra_visits), f"@ {industry_show}% Show%")
-fm3.metric("Extra NTB Purchases/mo", fmt_num(total_extra_purchases), f"@ {show_to_conv}% conversion")
-fm4.metric("Annual Revenue Unlock", fmt_inr(total_unlock), "₹0 CAC — no new leases")
-
-col_fix1, col_fix2 = st.columns([1.2, 1])
-
-with col_fix1:
-    fig_scatter = px.scatter(
-        cp, x="l3m_appt", y="l3m_show",
-        size=cp["additional_rev_annual"].clip(lower=1),
-        color="l3m_show", color_continuous_scale="RdYlGn",
-        hover_name="clinic_name",
-        labels={"l3m_appt": "Avg Monthly Appointments", "l3m_show": "Show%"},
-    )
-    fig_scatter.update_traces(
-        hovertemplate=(
-            "<b>%{hovertext}</b><br>"
-            "Appointments: %{x:.0f}/mo<br>"
-            "Show%: %{y:.1%}<br>"
-            "Unlock: ₹%{marker.size:,.0f}/yr"
-            "<extra></extra>"
-        )
-    )
-    fig_scatter.add_hline(y=target_show, line_dash="dash", line_color="green",
-                          annotation_text=f"{industry_show}% P75 benchmark")
-    fig_scatter.update_layout(
-        title="Show% vs Appointments — Bubble = Revenue Unlock Potential",
-        height=400, margin=dict(l=40, r=40, t=40, b=40), coloraxis_showscale=False,
-    )
-    st.plotly_chart(fig_scatter, use_container_width=True)
-
-with col_fix2:
-    st.markdown(f"""
-    <div class="insight-card insight-green">
-    <strong>💰 {fmt_inr(total_unlock)} unlock</strong> from Show% fixes across
-    <b>{len(underperforming)}</b> clinics — zero new leases, zero CAC.<br>
-    <b>{total_extra_visits:,}</b> extra visits/mo → <b>{total_extra_purchases:,}</b> NTB purchases/mo @ {show_to_conv}% conversion.
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("**Top 10 Revenue Unlock Opportunities**")
-    top_unlock = underperforming.head(10)[["clinic_name", "l3m_show", "show_gap", "additional_visits", "additional_purchases", "additional_rev_annual"]].copy()
-    top_unlock.columns = ["Clinic", "Current Show%", "Gap", "Extra Visits/mo", "Extra NTB/mo", "Annual Unlock ₹"]
-    top_unlock["Current Show%"] = (top_unlock["Current Show%"] * 100).round(1)
-    top_unlock["Gap"] = (top_unlock["Gap"] * 100).round(1)
-    top_unlock["Annual Unlock ₹"] = top_unlock["Annual Unlock ₹"].apply(lambda x: fmt_inr(x))
-    st.dataframe(top_unlock, hide_index=True, use_container_width=True)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# COMPUTATION BLOCK — Existing clinic metrics needed by Risk Scorecard (Slide 7)
-# ═══════════════════════════════════════════════════════════════════════════
-opex_monthly = monthly_opex * 1e5
-capex = capex_per_clinic * 1e5
-rev_per_show = conversion_rate * rev_per_ntb
-breakeven_visits = int(np.ceil(opex_monthly / rev_per_show))
-# Full investment breakeven: OpEx + Capex amortization over 12 months
-capex_monthly_amort = capex / 12  # ₹28L spread over 12 months
-full_monthly_cost = opex_monthly + capex_monthly_amort
-breakeven_visits_full = int(np.ceil(full_monthly_cost / rev_per_show))
-avg_visits = cp["l3m_ntb"].mean()
-profitable_clinics = (cp["l3m_ntb"] * rev_per_show > opex_monthly).sum()
-rent = 1.0e5
-
-cp["monthly_purchases"] = (cp["l3m_ntb"] * conversion_rate).astype(int)
-cp["monthly_revenue"] = cp["monthly_purchases"] * rev_per_ntb * scenario_mult
-cp["annual_revenue"] = cp["monthly_revenue"] * 12
-cp["monthly_profit"] = cp["monthly_revenue"] - opex_monthly
-cp["annual_profit"] = cp["monthly_profit"] * 12
-cp["payback_months"] = np.where(cp["monthly_profit"] > 0, capex / cp["monthly_profit"], np.inf)
-
-total_annual_rev = cp["annual_revenue"].sum()
-
-# ═══════════════════════════════════════════════════════════════════════════
-# EXPANSION MODEL — Same-City Satellites & New City Projections
-# ═══════════════════════════════════════════════════════════════════════════
-# Ramp schedule for new clinics (% of steady-state per month)
-ramp_schedule = [0.33, 0.55, 0.66, 0.77, 0.88, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-y1_factor = sum(ramp_schedule)  # ~10.19 months of SS equivalent
-
-# Map city codes to expansion city names
-_code_exp_map = {
-    "MUM": "Mumbai", "THN": "Mumbai", "NVM": "Mumbai",
-    "NDL": "Delhi", "BLR": "Bengaluru", "HYD": "Hyderabad", "SEC": "Hyderabad",
-    "KOL": "Kolkata", "AHM": "Ahmedabad", "PUN": "Pune",
-    "LKO": "Lucknow", "SUR": "Surat", "PAT": "Patna",
+  );
 }
-cp["exp_city"] = cp["city_code"].map(_code_exp_map)
 
-# Max NTB shows per expansion city (from existing clinic performance)
-city_max_shows = cp.dropna(subset=["exp_city"]).groupby("exp_city")["l3m_ntb"].max().to_dict()
+function ZoneTag({ zone }) {
+  return (
+    <span style={{
+      display: "inline-block",
+      padding: "2px 8px",
+      borderRadius: 4,
+      fontSize: 10,
+      fontWeight: 600,
+      background: `${ZONE_COLORS[zone] || "#666"}22`,
+      color: ZONE_COLORS[zone] || "#666",
+      letterSpacing: "0.03em",
+    }}>{zone}</span>
+  );
+}
 
-# ── SAME-CITY SATELLITE MODEL ─────────────────────────────────────────────
-exp_same = data["expansion_same"]
-same_city_clinics = []
-for _, row in exp_same.iterrows():
-    city = row["City"]
-    parent_max = city_max_shows.get(city, 100)
-    sat_shows = int(parent_max / 2)  # each satellite = 50% of best parent
-    ss_monthly = sat_shows * conversion_rate * rev_per_ntb
-    y1_rev = ss_monthly * y1_factor
-    monthly_ramp = [int(ss_monthly * r) for r in ramp_schedule]
-    same_city_clinics.append({
-        "location": f"{city} - {row['Micro-Market Area']}",
-        "city": city,
-        "pincode": row["Micro-Market Pincode"],
-        "shows_mo": sat_shows,
-        "ss_monthly": ss_monthly,
-        "y1_rev": y1_rev,
-        **{f"M{i+1}": monthly_ramp[i] for i in range(12)},
-    })
-df_same = pd.DataFrame(same_city_clinics).sort_values("y1_rev", ascending=False)
-total_same_y1 = df_same["y1_rev"].sum()
+// ═══════════════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════════════
 
-# ── NEW CITY MODEL ─────────────────────────────────────────────────────────
-exp_new = data["expansion_new"]
-new_city_summary = exp_new.groupby(["City", "State", "Tier"]).agg(
-    web_orders=("Web Order Qty", "first"),
-    proj_ntb=("Projected Monthly NTB", "first"),
-    n_locations=("Pincode", "count"),
-).reset_index()
+const TABS = ["Command Center", "Clinic Deep Dive", "Online→Offline Flywheel", "Zone Intelligence"];
 
-new_city_clinics = []
-for _, row in new_city_summary.iterrows():
-    # proj_ntb = total city demand; per-clinic = divide by locations
-    per_clinic_shows = int(row["proj_ntb"] / row["n_locations"])
-    ss_monthly = per_clinic_shows * conversion_rate * rev_per_ntb
-    y1_rev = ss_monthly * y1_factor
-    monthly_ramp = [int(ss_monthly * r) for r in ramp_schedule]
-    for _, loc_row in exp_new[exp_new["City"] == row["City"]].iterrows():
-        new_city_clinics.append({
-            "location": f"{row['City']} - {loc_row['Area Name']}",
-            "city": row["City"],
-            "state": row["State"],
-            "tier": row["Tier"],
-            "pincode": loc_row["Pincode"],
-            "shows_mo": per_clinic_shows,
-            "ss_monthly": ss_monthly,
-            "y1_rev": y1_rev,
-            **{f"M{i+1}": monthly_ramp[i] for i in range(12)},
-        })
-df_new = pd.DataFrame(new_city_clinics).sort_values("y1_rev", ascending=False)
-total_new_y1 = df_new["y1_rev"].sum()
+export default function NorthStarDashboard() {
+  const [activeTab, setActiveTab] = useState(0);
+  const [sortClinic, setSortClinic] = useState("rev");
+  const [selectedZone, setSelectedZone] = useState(null);
 
-# Show% fix revenue (from Slide 4)
-show_fix_rev = total_unlock * scenario_mult
+  const filteredClinics = useMemo(() => {
+    let clinics = [...TOP_CLINICS];
+    if (selectedZone) clinics = clinics.filter(c => c.zone === selectedZone);
+    return clinics.sort((a, b) => b[sortClinic] - a[sortClinic]);
+  }, [sortClinic, selectedZone]);
 
-# Combined
-fy27_total = total_annual_rev + show_fix_rev + total_same_y1 + total_new_y1
+  const totalClinicRev = MONTHLY_CLINIC_TREND.reduce((s, m) => s + m.rev, 0);
+  const latestMonth = MONTHLY_CLINIC_TREND[MONTHLY_CLINIC_TREND.length - 1];
+  const prevMonth = MONTHLY_CLINIC_TREND[MONTHLY_CLINIC_TREND.length - 2];
+  const momGrowth = ((latestMonth.rev - prevMonth.rev) / prevMonth.rev * 100).toFixed(1);
 
+  return (
+    <div style={{
+      fontFamily: "'DM Sans', 'Helvetica Neue', sans-serif",
+      background: "#0A0A0F",
+      color: "#E0E0E0",
+      minHeight: "100vh",
+      padding: 0,
+    }}>
+      {/* GOOGLE FONT */}
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 
-# ═══════════════════════════════════════════════════════════════════════════
-# SLIDE 5: EXPANSION REVENUE — Per-Clinic Projections
-# ═══════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
-
-# Bridge text connecting Slide 4 → Slide 5
-st.markdown(f"""
-<div style="background:#f0f4ff;border-left:4px solid #1a73e8;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:4px;font-size:0.85rem;color:#444;">
-<b>↑ Slide 4</b> showed <b>{fmt_inr(total_unlock)}</b> unlockable from fixing Show% at existing clinics — zero cost.
-<b>↓ Below</b>, we layer on expansion revenue: same-city satellites and new city entries.
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown(
-    '<div class="slide-header">📊 SLIDE 5 — EXPANSION REVENUE PROJECTION (₹22K/NTB Patient)'
-    f'<div class="slide-sub">Same-City Satellites + New City Clinics | Ramp: 3-month setup → 12-month steady state | Scenario: {scenario}</div></div>',
-    unsafe_allow_html=True,
-)
-
-# ── Revenue Waterfall + Monthly Ramp (side by side) ────────────────────────
-col_wf, col_ramp = st.columns([1, 1])
-
-with col_wf:
-    wf_labels = ["Existing 61\nClinics", "Show% Fix\n(→ Slide 4)", "Same-City\nNew", "New City\n(Ratio)", "FY27 Total"]
-    wf_values = [total_annual_rev, show_fix_rev, total_same_y1, total_new_y1, fy27_total]
-    wf_measures = ["relative", "relative", "relative", "relative", "total"]
-
-    fig_wf = go.Figure(go.Waterfall(
-        x=wf_labels, y=[v / 1e7 for v in wf_values],
-        measure=wf_measures,
-        connector={"line": {"color": "#ccc"}},
-        increasing={"marker": {"color": "#4CAF50"}},
-        totals={"marker": {"color": "#1a73e8"}},
-        text=[fmt_inr(v) for v in wf_values],
-        textposition="outside",
-    ))
-    fig_wf.update_layout(
-        title="FY27 Revenue Build-Up", height=400,
-        margin=dict(l=40, r=20, t=40, b=60), yaxis_title="₹ Cr",
-    )
-    st.plotly_chart(fig_wf, use_container_width=True)
-
-with col_ramp:
-    # Monthly cumulative ramp chart (same-city + new city combined)
-    months = [f"{'Apr May Jun Jul Aug Sep Oct Nov Dec Jan Feb Mar'.split()[i]}-26" if i < 9
-              else f"{'Apr May Jun Jul Aug Sep Oct Nov Dec Jan Feb Mar'.split()[i]}-27"
-              for i in range(12)]
-    monthly_same = [sum(r) for r in zip(*[
-        [int(row[f"M{m+1}"]) for m in range(12)] for _, row in df_same.iterrows()
-    ])] if len(df_same) > 0 else [0]*12
-    monthly_new = [sum(r) for r in zip(*[
-        [int(row[f"M{m+1}"]) for m in range(12)] for _, row in df_new.iterrows()
-    ])] if len(df_new) > 0 else [0]*12
-    monthly_combined = [s + n for s, n in zip(monthly_same, monthly_new)]
-    cumulative = [sum(monthly_combined[:i+1]) for i in range(12)]
-
-    fig_ramp = go.Figure()
-    fig_ramp.add_trace(go.Bar(
-        x=months, y=[v / 1e7 for v in monthly_combined],
-        name="Monthly Revenue", marker_color="#4CAF50", opacity=0.7,
-    ))
-    fig_ramp.add_trace(go.Scatter(
-        x=months, y=[v / 1e7 for v in cumulative],
-        name="Cumulative", mode="lines+markers",
-        line=dict(color="#dc3545", width=3), yaxis="y2",
-    ))
-    fig_ramp.update_layout(
-        title="Expansion Revenue Ramp — Monthly + Cumulative",
-        height=400, margin=dict(l=40, r=60, t=40, b=60),
-        yaxis=dict(title="Monthly (₹ Cr)", side="left"),
-        yaxis2=dict(title="Cumulative (₹ Cr)", side="right", overlaying="y"),
-        legend=dict(x=0, y=1.1, orientation="h"),
-    )
-    st.plotly_chart(fig_ramp, use_container_width=True)
-
-
-# ── Per-Clinic Revenue Projection (tabs) ──────────────────────────────────
-st.markdown(f"### 📈 Per-Clinic Revenue Projection ({fmt_inr(rev_per_ntb)}/NTB Patient)")
-rev_tab1, rev_tab2 = st.tabs(["Same-City New Clinics", "New City Clinics"])
-
-with rev_tab1:
-    target_annual = 44 * 1e5 * 12  # ₹528L/yr = ₹44L/mo target
-    top25_same = df_same.head(25).sort_values("y1_rev", ascending=True)
-    fig_same_bar = go.Figure(go.Bar(
-        y=top25_same["location"],
-        x=top25_same["y1_rev"] / 1e5,
-        orientation="h",
-        marker_color="#4CAF50",
-        text=top25_same.apply(
-            lambda r: f"₹{r['y1_rev']/1e5:.0f}L/yr | {r['shows_mo']} shows/mo | ₹{r['ss_monthly']/1e5:.1f}L/mo SS",
-            axis=1,
-        ),
-        textposition="inside", textfont=dict(color="white", size=10),
-    ))
-    fig_same_bar.add_vline(x=target_annual / 1e5, line_dash="dash", line_color="red",
-                           annotation_text=f"Target: ₹{target_annual/1e5:.0f}L/yr")
-    fig_same_bar.update_layout(
-        title=f"Same-City: Top 25 New Clinics — Year 1 Revenue Projection",
-        height=650, margin=dict(l=200, r=20, t=40, b=40),
-        xaxis_title="Year 1 Revenue (₹ Lakhs)",
-    )
-    st.plotly_chart(fig_same_bar, use_container_width=True)
-
-    st.markdown(f"""
-    <div class="insight-card">
-    <b>Same-City Portfolio:</b> {len(df_same)} satellite locations across {df_same['city'].nunique()} cities |
-    Year 1 Revenue: <b>{fmt_inr(total_same_y1)}</b> |
-    Avg per clinic: <b>₹{df_same['y1_rev'].mean()/1e5:.0f}L/yr</b> |
-    Ramp: 3-month setup → 12-month steady state
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Micro-market detail per city (moved from Slide 3 for consolidation)
-    _exp_same_data = data["expansion_same"]
-    for city_name in _exp_same_data["City"].unique():
-        city_rows = _exp_same_data[_exp_same_data["City"] == city_name]
-        city_rev = df_same[df_same["city"] == city_name]["y1_rev"].sum()
-        with st.expander(f"📍 {city_name} — {len(city_rows)} micro-markets | Year 1: ₹{city_rev/1e5:.0f}L"):
-            st.dataframe(
-                city_rows[["S.No", "Micro-Market Pincode", "Micro-Market Area",
-                           "Expansion Rationale", "National IVFs Present", "Regional IVFs Present"]],
-                hide_index=True, use_container_width=True,
-            )
-
-with rev_tab2:
-    # Deduplicate to show one bar per city (first/best location)
-    new_by_city = df_new.drop_duplicates("city").sort_values("y1_rev", ascending=True)
-    fig_new_bar = go.Figure(go.Bar(
-        y=new_by_city["city"],
-        x=new_by_city["y1_rev"] / 1e5,
-        orientation="h",
-        marker_color=["#1a73e8" if t == "Tier-2" else "#34a853" for t in new_by_city["tier"]],
-        text=new_by_city.apply(
-            lambda r: f"₹{r['y1_rev']/1e5:.0f}L/yr | {r['shows_mo']} shows/mo | {r['tier']} | ₹{r['ss_monthly']/1e5:.1f}L/mo SS",
-            axis=1,
-        ),
-        textposition="inside", textfont=dict(color="white", size=11),
-    ))
-    fig_new_bar.add_vline(x=target_annual / 1e5, line_dash="dash", line_color="red",
-                          annotation_text=f"Target: ₹{target_annual/1e5:.0f}L/yr")
-    fig_new_bar.update_layout(
-        title="New City: Per-City Year 1 Revenue (1 clinic per city initially)",
-        height=500, margin=dict(l=130, r=20, t=40, b=40),
-        xaxis_title="Year 1 Revenue (₹ Lakhs)",
-    )
-    st.plotly_chart(fig_new_bar, use_container_width=True)
-
-    st.markdown(f"""
-    <div class="insight-card">
-    <b>New City Portfolio:</b> {new_by_city['city'].nunique()} cities ({(new_by_city['tier']=='Tier-2').sum()} Tier-2,
-    {(new_by_city['tier']=='Tier-3').sum()} Tier-3) |
-    Year 1 Revenue: <b>{fmt_inr(total_new_y1)}</b> |
-    Phase 1: 1 clinic/city → expand after Month 6 validation
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Micro-market scouting details per city (moved from Slide 3)
-    _exp_new_data = data["expansion_new"]
-    _new_cities_ref = _exp_new_data.groupby("City").first().reset_index()
-    for _, _nc_row in _new_cities_ref.iterrows():
-        city_name = _nc_row["City"]
-        city_locs = _exp_new_data[_exp_new_data["City"] == city_name]
-        city_rev = df_new[df_new["city"] == city_name]["y1_rev"].sum()
-        with st.expander(f"🌍 {city_name} ({_nc_row.get('State','')}) — {len(city_locs)} locations | Year 1: ₹{city_rev/1e5:.0f}L"):
-            st.dataframe(
-                city_locs[["Pincode", "Area Name", "Location Rationale",
-                           "National IVFs", "Regional IVFs"]],
-                hide_index=True, use_container_width=True,
-            )
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# SLIDE 6: EXPANSION FINANCIAL SUMMARY — Combined FY27 Outlook
-# ═══════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="slide-header">💰 SLIDE 6 — COMBINED FY27 OUTLOOK: Revenue Streams + Investment Summary'
-    f'<div class="slide-sub">Existing Network + Show% Fix + Same-City Satellites + New City Expansion | {scenario}</div></div>',
-    unsafe_allow_html=True,
-)
-
-# ── Header metrics ─────────────────────────────────────────────────────────
-om1, om2, om3, om4, om5 = st.columns(5)
-om1.metric("Existing 61 Clinics", fmt_inr(total_annual_rev), "Current run-rate")
-om2.metric("Show% Fix (₹0 CAC)", fmt_inr(show_fix_rev), f"{len(underperforming)} clinics")
-om3.metric("Same-City Satellites", fmt_inr(total_same_y1), f"{len(df_same)} locations")
-om4.metric("New City Clinics", fmt_inr(total_new_y1), f"{new_by_city['city'].nunique()} cities")
-om5.metric("FY27 Total Potential", fmt_inr(fy27_total), "All streams combined")
-
-# ── Monthly Revenue Ramp — Top 10 Same-City (heatmap) ─────────────────────
-st.markdown("---")
-st.markdown("**Monthly Revenue Ramp — Top 10 Same-City Clinics (₹ Lakhs)**")
-
-top10_same = df_same.head(10)
-ramp_data = []
-for _, row in top10_same.iterrows():
-    ramp_row = {"Location": row["location"]}
-    for m in range(12):
-        month_label = f"M{m+1}"
-        ramp_row[month_label] = f"₹{row[month_label]/1e5:.0f}L"
-    ramp_row["Year 1"] = f"₹{row['y1_rev']/1e5:.0f}L"
-    ramp_data.append(ramp_row)
-df_ramp_display = pd.DataFrame(ramp_data)
-st.dataframe(df_ramp_display, hide_index=True, use_container_width=True)
-
-# ── Investment Analysis ────────────────────────────────────────────────────
-st.markdown("---")
-col_inv, col_combined = st.columns([1, 1])
-
-with col_inv:
-    total_new_clinics = len(df_same.drop_duplicates("location")) + new_by_city["city"].nunique()
-    total_capex = total_new_clinics * capex
-    total_annual_opex = total_new_clinics * opex_monthly * 12
-    total_exp_rev_y1 = total_same_y1 + total_new_y1
-    total_exp_profit_y1 = total_exp_rev_y1 - total_annual_opex
-    avg_payback = capex / ((total_exp_rev_y1 / total_new_clinics / 12) - opex_monthly) if total_exp_rev_y1 > total_annual_opex else float('inf')
-
-    st.markdown("**🏗️ Investment Summary**")
-    inv_data = {
-        "Metric": [
-            "New Clinics (Same-City + New City)",
-            "Total Capex Investment",
-            "Annual OpEx (all new clinics)",
-            "Year 1 Expansion Revenue",
-            "Year 1 Expansion Profit",
-            "Avg Capex Payback Period",
-            "OpEx Breakeven (monthly costs only)",
-            "Full Breakeven (OpEx + Capex recovery over 12mo)",
-        ],
-        "Value": [
-            f"{total_new_clinics} clinics",
-            fmt_inr(total_capex),
-            fmt_inr(total_annual_opex),
-            fmt_inr(total_exp_rev_y1),
-            fmt_inr(total_exp_profit_y1),
-            f"{avg_payback:.0f} months" if avg_payback < 100 else "N/A",
-            f"{breakeven_visits} visits/month (₹{opex_monthly/1e5:.1f}L OpEx ÷ ₹{rev_per_show/1e3:.1f}K/visit)",
-            f"{breakeven_visits_full} visits/month (₹{full_monthly_cost/1e5:.1f}L total ÷ ₹{rev_per_show/1e3:.1f}K/visit)",
-        ],
-    }
-    st.dataframe(pd.DataFrame(inv_data), hide_index=True, use_container_width=True)
-
-with col_combined:
-    st.markdown("**📊 Combined FY27 Outlook**")
-    streams = pd.DataFrame({
-        "Revenue Stream": ["Existing 61 Clinics", "Show% Fix (₹0 CAC)", "Same-City Satellites", "New City Expansion"],
-        "Annual Revenue": [total_annual_rev, show_fix_rev, total_same_y1, total_new_y1],
-    })
-    streams["₹ Crore"] = streams["Annual Revenue"].apply(lambda x: f"₹{x/1e7:.1f} Cr")
-    streams["% of Total"] = (streams["Annual Revenue"] / fy27_total * 100).apply(lambda x: f"{x:.0f}%")
-    st.dataframe(streams[["Revenue Stream", "₹ Crore", "% of Total"]], hide_index=True, use_container_width=True)
-
-    st.markdown(f"""
-    <div style="background:#1a1a2e;color:white;padding:16px;border-radius:8px;margin-top:12px;text-align:center;">
-    <span style="font-size:0.9rem;">Total FY27 Revenue Potential</span><br>
-    <span style="font-size:1.8rem;font-weight:700;letter-spacing:0.5px;">{fmt_inr(fy27_total)}</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-# ── Scenario Comparison for Expansion ──────────────────────────────────────
-st.markdown("---")
-col_sc, col_note = st.columns([1.2, 1])
-
-with col_sc:
-    sc_mults = {"Conservative": 0.85, "Base Case": 1.0, "Optimistic": 1.15}
-    sc_data = []
-    for label, mult in sc_mults.items():
-        sc_exist = total_annual_rev * mult / scenario_mult  # adjust for current mult
-        sc_fix = show_fix_rev * mult / scenario_mult
-        sc_same = total_same_y1 * mult
-        sc_new = total_new_y1 * mult
-        sc_data.append({"Scenario": label, "Total": (sc_exist + sc_fix + sc_same + sc_new) / 1e7})
-
-    df_sc = pd.DataFrame(sc_data)
-    fig_sc = go.Figure(go.Bar(
-        x=df_sc["Scenario"], y=df_sc["Total"],
-        marker_color=["#ffc107", "#FF6B35", "#4CAF50"],
-        text=df_sc["Total"].apply(lambda x: f"₹{x:.1f} Cr"), textposition="outside",
-    ))
-    fig_sc.update_layout(
-        title="FY27 Scenario Comparison (All Streams)",
-        height=350, margin=dict(l=40, r=20, t=40, b=40),
-        yaxis_title="Annual Revenue (₹ Cr)",
-    )
-    st.plotly_chart(fig_sc, use_container_width=True)
-
-with col_note:
-    st.markdown(f"""
-    <div style="background:#f8f9fa;border-radius:8px;padding:16px;border-left:4px solid #1a73e8;">
-    <b>📋 Key Assumptions:</b><br><br>
-    <b>Existing Clinics:</b> {len(cp)} clinics at L3M run-rate × {show_to_conv}% conversion × ₹{rev_per_ntb:,}/NTB<br><br>
-    <b>Show% Fix:</b> Underperforming clinics raised to {industry_show}% benchmark — ₹0 CAC, zero new leases<br><br>
-    <b>Same-City Satellites:</b> Each satellite captures 50% of city's best-performing parent clinic's NTB volume<br><br>
-    <b>New City:</b> NTB projected from population × {ntb_pop_ratio.split('(')[0].strip()} NTB:Pop ratio, divided across {exp_new['Pincode'].nunique()} scouted locations<br><br>
-    <b>Ramp:</b> 3-month setup → linear ramp to 100% by Month 6 → full steady-state M6-M12<br><br>
-    <b>Unit Economics:</b> OpEx ₹{monthly_opex}L/mo | Capex ₹{capex_per_clinic}L<br>
-    → OpEx Breakeven: <b>{breakeven_visits} visits/mo</b> (covers monthly costs)<br>
-    → Full Breakeven: <b>{breakeven_visits_full} visits/mo</b> (OpEx + Capex recovery over 12 months)
-    </div>
-    """, unsafe_allow_html=True)
-
-with st.expander("📋 Full Same-City Expansion Revenue Breakdown"):
-    same_display = df_same[["location", "city", "shows_mo", "ss_monthly", "y1_rev"]].copy()
-    same_display.columns = ["Location", "City", "Shows/mo", "SS Monthly (₹)", "Year 1 Rev (₹)"]
-    same_display["SS Monthly (₹)"] = same_display["SS Monthly (₹)"].apply(lambda x: f"₹{x/1e5:.1f}L")
-    same_display["Year 1 Rev (₹)"] = same_display["Year 1 Rev (₹)"].apply(lambda x: f"₹{x/1e5:.0f}L")
-    st.dataframe(same_display, hide_index=True, use_container_width=True, height=400)
-
-with st.expander("📋 Full New City Expansion Revenue Breakdown"):
-    new_display = df_new.drop_duplicates("city")[["city", "state", "tier", "shows_mo", "ss_monthly", "y1_rev"]].copy()
-    new_display.columns = ["City", "State", "Tier", "Shows/mo", "SS Monthly (₹)", "Year 1 Rev (₹)"]
-    new_display["SS Monthly (₹)"] = new_display["SS Monthly (₹)"].apply(lambda x: f"₹{x/1e5:.1f}L")
-    new_display["Year 1 Rev (₹)"] = new_display["Year 1 Rev (₹)"].apply(lambda x: f"₹{x/1e5:.0f}L")
-    st.dataframe(new_display, hide_index=True, use_container_width=True, height=400)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# SLIDE 7: RISK SCORECARD
-# ═══════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="slide-header">🚨 SLIDE 7 — RISK SCORECARD: What Could Go Wrong (and How We\'ll Know)'
-    '<div class="slide-sub">Early warning indicators and contingency triggers</div></div>',
-    unsafe_allow_html=True,
-)
-
-new_clinic_avg = cp[cp["total_appts"] < 3000]["l3m_ntb"].mean()
-new_clinic_avg = f"{new_clinic_avg:.0f}" if pd.notna(new_clinic_avg) else "N/A"
-
-risks = [
-    {
-        "Risk": "Show% continues declining",
-        "Current": f"{cp['latest_show'].mean():.0%}",
-        "Trigger": "<18% network avg for 2 consecutive months",
-        "Impact": "High",
-        "Revenue Impact": f"{fmt_inr(cp['l3m_appt'].sum() * 0.03 * rev_per_show * 12)}/yr per 3ppt drop",
-        "Mitigation": "Doctor quality audit, follow-up protocol, patient experience overhaul",
-        "Status": "🟡" if cp["latest_show"].mean() < 0.22 else "🟢",
-    },
-    {
-        "Risk": "New clinic ramp-up slower than projected",
-        "Current": f"{new_clinic_avg} visits/mo (new clinics)",
-        "Trigger": f"<{breakeven_visits_full} visits/month at Month 3 (full breakeven incl. capex)",
-        "Impact": "High",
-        "Revenue Impact": f"{fmt_inr(capex)} capex at risk per clinic",
-        "Mitigation": "Phase gate model — no new lease until Month 3 validation",
-        "Status": "🟡",
-    },
-    {
-        "Risk": "Rent escalation erodes margins",
-        "Current": f"{fmt_inr(rent)} avg rent",
-        "Trigger": ">7% annual escalation",
-        "Impact": "Medium",
-        "Revenue Impact": f"Full breakeven shifts from {breakeven_visits_full} to {int(breakeven_visits_full*1.15)} visits at 7% escalation over 3 yrs",
-        "Mitigation": "Negotiate 5% cap clauses, avoid >2yr lock-in for new cities",
-        "Status": "🟢",
-    },
-    {
-        "Risk": "Cannibalization from same-city expansion",
-        "Current": f"{len(saturated)} clinics above threshold",
-        "Trigger": ">15% appt decline in parent clinic after opening nearby",
-        "Impact": "Medium",
-        "Revenue Impact": "Net revenue neutral if new clinic doesn't add incremental demand",
-        "Mitigation": "5km minimum separation, overlapping pincode analysis before approval",
-        "Status": "🟡",
-    },
-    {
-        "Risk": "Doctor attrition in new clinics",
-        "Current": "2 doctors per clinic standard",
-        "Trigger": "Doctor vacancy >2 weeks in any clinic",
-        "Impact": "High",
-        "Revenue Impact": "100% revenue loss during vacancy",
-        "Mitigation": "Bench of 5-10% extra doctors, retention bonuses tied to Show%",
-        "Status": "🟡",
-    },
-    {
-        "Risk": "Conversion% drops below 70%",
-        "Current": f"{show_to_conv}% (verified Jul-25 to Jan-26)",
-        "Trigger": f"<70% for 2 months (full breakeven shifts from {breakeven_visits_full} to {int(np.ceil(full_monthly_cost / (0.70 * rev_per_ntb)))} visits)",
-        "Impact": "High",
-        "Revenue Impact": f"Each 5ppt drop = {fmt_inr(cp['l3m_ntb'].sum() * 0.05 * rev_per_ntb * 12)}/yr network loss",
-        "Mitigation": "Doctor consultation quality audit, product mix optimization, patient satisfaction tracking",
-        "Status": "🟢",
-    },
-    {
-        "Risk": "Tier-2 city demand overestimated",
-        "Current": "Online demand ratio used for projection",
-        "Trigger": f"<60% of projected visits at Month 6",
-        "Impact": "Medium",
-        "Revenue Impact": f"{fmt_inr(capex)} capex write-off if clinic closes",
-        "Mitigation": "Lean 1-cabin format for tier-2, convert to full only after validation",
-        "Status": "🟡",
-    },
-]
-
-impact_colors = {"High": "#dc3545", "Medium": "#ffc107", "Low": "#28a745"}
-for risk in risks:
-    imp_color = impact_colors.get(risk["Impact"], "#666")
-    st.markdown(f"""
-    <div style="background:#f8f9fa;border-radius:8px;padding:14px;margin:8px 0;border-left:5px solid {imp_color};">
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div>
-            <b>{risk['Status']} {risk['Risk']}</b>
-            <span style="background:{imp_color};color:white;padding:2px 8px;border-radius:4px;margin-left:8px;font-size:0.75rem;">{risk['Impact']}</span>
+      {/* HEADER */}
+      <div style={{
+        background: "linear-gradient(180deg, rgba(255,107,53,0.08) 0%, transparent 100%)",
+        borderBottom: "1px solid rgba(255,255,255,0.04)",
+        padding: "24px 32px 16px",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+              <div style={{
+                width: 10, height: 10, borderRadius: "50%",
+                background: "#2EC4B6", boxShadow: "0 0 12px #2EC4B6",
+                animation: "pulse 2s infinite",
+              }} />
+              <span style={{ fontSize: 11, color: "#2EC4B6", fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                Live • North Star
+              </span>
+            </div>
+            <h1 style={{
+              fontSize: 32, fontWeight: 800, color: "#fff",
+              margin: 0, letterSpacing: "-0.03em",
+              background: "linear-gradient(135deg, #fff 40%, #FF6B35 100%)",
+              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+            }}>
+              Gynoveda Expansion Command
+            </h1>
+            <p style={{ fontSize: 13, color: "#555", margin: "6px 0 0", fontWeight: 400 }}>
+              61 Clinics · 7,415 Pincodes · 6 Zones · Jan 2025 → Jan 2026
+            </p>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 11, color: "#555", marginBottom: 4 }}>Latest Period</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>Jan 2026</div>
+            <div style={{ fontSize: 12, color: momGrowth > 0 ? "#F15BB5" : "#2EC4B6", fontWeight: 600 }}>
+              {momGrowth > 0 ? "↓" : "↑"} {Math.abs(momGrowth)}% MoM
+            </div>
+          </div>
         </div>
+
+        {/* TAB NAV */}
+        <div style={{ display: "flex", gap: 4 }}>
+          {TABS.map((tab, i) => (
+            <button key={i} onClick={() => setActiveTab(i)} style={{
+              padding: "8px 18px",
+              borderRadius: 8,
+              border: "none",
+              background: activeTab === i ? "rgba(255,107,53,0.15)" : "transparent",
+              color: activeTab === i ? "#FF6B35" : "#666",
+              fontSize: 12,
+              fontWeight: activeTab === i ? 700 : 500,
+              cursor: "pointer",
+              transition: "all 0.2s",
+              fontFamily: "inherit",
+            }}>{tab}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding: "24px 32px" }}>
+
+        {/* ════════════════ TAB 0: COMMAND CENTER ════════════════ */}
+        {activeTab === 0 && (
+          <div>
+            {/* KPI ROW */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 16, marginBottom: 32 }}>
+              <KPICard label="Total NTB Appointments" value="2.70L" sub="Jan 25 – Jan 26" accent="#FF6B35" icon="📅" />
+              <KPICard label="Avg Show Rate" value="20.6%" sub="National Average" accent="#2EC4B6" icon="✓" />
+              <KPICard label="Clinic Revenue (NTB)" value={`₹${(totalClinicRev / 100).toFixed(0)}Cr`} sub="Cumulative 13 months" accent="#F0C808" icon="💰" />
+              <KPICard label="Active Clinics" value="61" sub="Across 6 Zones" accent="#9B5DE5" icon="🏥" />
+              <KPICard label="Pincode Reach" value="7,415" sub="Clinic Customers" accent="#1E96FC" icon="📍" />
+              <KPICard label="E-Com 1CX Orders" value="3.91L" sub="₹72.3Cr Lifetime" accent="#F15BB5" icon="🛒" />
+            </div>
+
+            {/* REVENUE TREND */}
+            <div style={{
+              background: "rgba(255,255,255,0.02)",
+              border: "1px solid rgba(255,255,255,0.05)",
+              borderRadius: 16, padding: 24, marginBottom: 24,
+            }}>
+              <SectionHeader title="NTB Revenue Trajectory" subtitle="Monthly Clinic Revenue (₹ Lakhs) & Show Rate %" />
+              <ResponsiveContainer width="100%" height={300}>
+                <ComposedChart data={MONTHLY_CLINIC_TREND} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+                  <defs>
+                    <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#FF6B35" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#FF6B35" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} domain={[10, 30]} unit="%" />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area yAxisId="left" type="monotone" dataKey="rev" name="Revenue (₹L)" fill="url(#revGrad)" stroke="#FF6B35" strokeWidth={2.5} dot={false} />
+                  <Line yAxisId="right" type="monotone" dataKey="showPct" name="Show Rate %" stroke="#2EC4B6" strokeWidth={2} dot={{ r: 3, fill: "#2EC4B6" }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* ZONE PERFORMANCE GRID */}
+            <div style={{
+              background: "rgba(255,255,255,0.02)",
+              border: "1px solid rgba(255,255,255,0.05)",
+              borderRadius: 16, padding: 24,
+            }}>
+              <SectionHeader title="Zone Performance Matrix" subtitle="Revenue, Appointments & Show Rate by Zone" />
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                {ZONE_DATA.map((z) => (
+                  <div key={z.zone} style={{
+                    background: `linear-gradient(135deg, ${z.color}08, transparent)`,
+                    border: `1px solid ${z.color}20`,
+                    borderRadius: 12, padding: 18,
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = `${z.color}50`}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = `${z.color}20`}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: z.color }}>{z.zone}</span>
+                      <span style={{ fontSize: 11, color: "#666" }}>{z.clinics} clinics</span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 10, color: "#555", marginBottom: 2 }}>Revenue</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>₹{(z.rev / 100).toFixed(1)}Cr</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10, color: "#555", marginBottom: 2 }}>NTB Appts</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{fmtCompact(z.appt)}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10, color: "#555", marginBottom: 2 }}>Show %</div>
+                        <div style={{
+                          fontSize: 16, fontWeight: 700,
+                          color: z.showPct >= 25 ? "#2EC4B6" : z.showPct >= 20 ? "#F0C808" : "#F15BB5"
+                        }}>{z.showPct}%</div>
+                      </div>
+                    </div>
+                    {/* Revenue share bar */}
+                    <div style={{ marginTop: 10, background: "rgba(255,255,255,0.04)", borderRadius: 4, height: 4, overflow: "hidden" }}>
+                      <div style={{
+                        width: `${(z.rev / 4010) * 100}%`,
+                        height: "100%", background: z.color, borderRadius: 4,
+                        transition: "width 0.5s",
+                      }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════════ TAB 1: CLINIC DEEP DIVE ════════════════ */}
+        {activeTab === 1 && (
+          <div>
+            {/* FILTERS */}
+            <div style={{ display: "flex", gap: 12, marginBottom: 24, alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: "#666" }}>Sort by:</span>
+              {[
+                { key: "rev", label: "Revenue" },
+                { key: "qty", label: "Quantity" },
+                { key: "showPct", label: "Show %" },
+                { key: "pincodes", label: "Reach" },
+              ].map(s => (
+                <button key={s.key} onClick={() => setSortClinic(s.key)} style={{
+                  padding: "6px 14px", borderRadius: 6, border: "1px solid",
+                  borderColor: sortClinic === s.key ? "#FF6B35" : "rgba(255,255,255,0.08)",
+                  background: sortClinic === s.key ? "rgba(255,107,53,0.12)" : "transparent",
+                  color: sortClinic === s.key ? "#FF6B35" : "#888",
+                  fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                }}>{s.label}</button>
+              ))}
+              <div style={{ flex: 1 }} />
+              <span style={{ fontSize: 12, color: "#666" }}>Zone:</span>
+              <button onClick={() => setSelectedZone(null)} style={{
+                padding: "6px 12px", borderRadius: 6, border: "1px solid",
+                borderColor: !selectedZone ? "#9B5DE5" : "rgba(255,255,255,0.08)",
+                background: !selectedZone ? "rgba(155,93,229,0.12)" : "transparent",
+                color: !selectedZone ? "#9B5DE5" : "#888",
+                fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+              }}>All</button>
+              {Object.keys(ZONE_COLORS).map(z => (
+                <button key={z} onClick={() => setSelectedZone(z)} style={{
+                  padding: "6px 12px", borderRadius: 6, border: "1px solid",
+                  borderColor: selectedZone === z ? ZONE_COLORS[z] : "rgba(255,255,255,0.08)",
+                  background: selectedZone === z ? `${ZONE_COLORS[z]}20` : "transparent",
+                  color: selectedZone === z ? ZONE_COLORS[z] : "#888",
+                  fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                }}>{z}</button>
+              ))}
+            </div>
+
+            {/* CLINIC TABLE */}
+            <div style={{
+              background: "rgba(255,255,255,0.02)",
+              border: "1px solid rgba(255,255,255,0.05)",
+              borderRadius: 16, overflow: "hidden",
+            }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: "rgba(255,255,255,0.03)" }}>
+                    {["#", "Clinic", "Zone", "Region", "Cabin", "Launch", "Revenue (₹L)", "Qty", "NTB Appts", "Show %", "Pincodes"].map(h => (
+                      <th key={h} style={{
+                        padding: "12px 14px", textAlign: "left", fontWeight: 600,
+                        color: "#666", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase",
+                        borderBottom: "1px solid rgba(255,255,255,0.04)",
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredClinics.map((c, i) => (
+                    <tr key={c.name} style={{
+                      borderBottom: "1px solid rgba(255,255,255,0.03)",
+                      transition: "background 0.15s",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                      <td style={{ padding: "10px 14px", color: "#444", fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{i + 1}</td>
+                      <td style={{ padding: "10px 14px", fontWeight: 700, color: "#fff" }}>{c.name}</td>
+                      <td style={{ padding: "10px 14px" }}><ZoneTag zone={c.zone} /></td>
+                      <td style={{ padding: "10px 14px", color: "#888" }}>{c.region}</td>
+                      <td style={{ padding: "10px 14px" }}>
+                        <span style={{
+                          display: "inline-block", padding: "2px 8px", borderRadius: 4,
+                          background: c.cabin === 3 ? "rgba(46,196,182,0.12)" : "rgba(240,200,8,0.12)",
+                          color: c.cabin === 3 ? "#2EC4B6" : "#F0C808",
+                          fontSize: 11, fontWeight: 600,
+                        }}>{c.cabin}C</span>
+                      </td>
+                      <td style={{ padding: "10px 14px", color: "#888", fontSize: 11 }}>{c.launch}</td>
+                      <td style={{ padding: "10px 14px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontWeight: 700, color: "#fff", fontFamily: "'JetBrains Mono', monospace" }}>
+                            {c.rev.toFixed(0)}
+                          </span>
+                          <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: 2, height: 4, maxWidth: 80 }}>
+                            <div style={{ width: `${(c.rev / 735) * 100}%`, height: "100%", background: "#FF6B35", borderRadius: 2 }} />
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ padding: "10px 14px", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "#ccc" }}>
+                        {fmtCompact(c.qty)}
+                      </td>
+                      <td style={{ padding: "10px 14px", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "#ccc" }}>
+                        {fmtCompact(c.appt)}
+                      </td>
+                      <td style={{ padding: "10px 14px" }}>
+                        <span style={{
+                          fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 12,
+                          color: c.showPct >= 28 ? "#2EC4B6" : c.showPct >= 22 ? "#F0C808" : "#F15BB5",
+                        }}>{c.showPct}%</span>
+                      </td>
+                      <td style={{ padding: "10px 14px", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "#ccc" }}>
+                        {c.pincodes}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* CLINIC CHARTS */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 24 }}>
+              <div style={{
+                background: "rgba(255,255,255,0.02)",
+                border: "1px solid rgba(255,255,255,0.05)",
+                borderRadius: 16, padding: 24,
+              }}>
+                <SectionHeader title="Revenue vs Show Rate" subtitle="Bubble = Pincode Reach" />
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={filteredClinics.slice(0, 10)} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#666" }} axisLine={false} tickLine={false} angle={-30} textAnchor="end" height={60} />
+                    <YAxis tick={{ fontSize: 10, fill: "#666" }} axisLine={false} tickLine={false} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="rev" name="Revenue (₹L)" radius={[6, 6, 0, 0]}>
+                      {filteredClinics.slice(0, 10).map((c, i) => (
+                        <Cell key={i} fill={ZONE_COLORS[c.zone] || "#666"} fillOpacity={0.8} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div style={{
+                background: "rgba(255,255,255,0.02)",
+                border: "1px solid rgba(255,255,255,0.05)",
+                borderRadius: 16, padding: 24,
+              }}>
+                <SectionHeader title="Regional Show Rate Radar" subtitle="NTB Show % across metro regions" />
+                <ResponsiveContainer width="100%" height={280}>
+                  <RadarChart data={REGION_APPT_DATA}>
+                    <PolarGrid stroke="rgba(255,255,255,0.08)" />
+                    <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: "#999" }} />
+                    <PolarRadiusAxis tick={{ fontSize: 9, fill: "#555" }} domain={[0, 35]} />
+                    <Radar name="Show %" dataKey="showPct" stroke="#FF6B35" fill="#FF6B35" fillOpacity={0.15} strokeWidth={2} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════════ TAB 2: ONLINE→OFFLINE FLYWHEEL ════════════════ */}
+        {activeTab === 2 && (
+          <div>
+            {/* FLYWHEEL KPIs */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 28 }}>
+              <KPICard label="E-Com Lifetime Orders" value="3.91L" sub="₹72.3Cr Revenue" accent="#F15BB5" icon="🌐" />
+              <KPICard label="Curative Share" value="91%" sub="₹66.4Cr of ₹72.3Cr" accent="#2EC4B6" icon="💊" />
+              <KPICard label="Clinic NTB Revenue" value="₹105Cr" sub="14.1L Qty · 7,415 Pincodes" accent="#FF6B35" icon="🏥" />
+              <KPICard label="Conversion Multiplier" value="1.45x" sub="Clinic Rev / E-Com Rev per city" accent="#F0C808" icon="🔄" />
+            </div>
+
+            {/* ECOM YEARLY TREND */}
+            <div style={{
+              background: "rgba(255,255,255,0.02)",
+              border: "1px solid rgba(255,255,255,0.05)",
+              borderRadius: 16, padding: 24, marginBottom: 24,
+            }}>
+              <SectionHeader title="E-Commerce 1CX Revenue Journey" subtitle="First-time customer orders by year (₹ Crores)" />
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={ECOM_YEARLY} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                  <XAxis dataKey="year" tick={{ fontSize: 12, fill: "#888" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} unit="Cr" />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="rev" name="Revenue (₹Cr)" radius={[8, 8, 0, 0]}>
+                    {ECOM_YEARLY.map((_, i) => (
+                      <Cell key={i} fill={i === 2 ? "#FF6B35" : i === 3 ? "#FF6B35" : "#FF6B3566"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* CITY FLYWHEEL MAP */}
+            <div style={{
+              background: "rgba(255,255,255,0.02)",
+              border: "1px solid rgba(255,255,255,0.05)",
+              borderRadius: 16, padding: 24,
+            }}>
+              <SectionHeader title="City-Level Online → Offline Flywheel" subtitle="E-commerce demand vs Clinic revenue by city. Blue bars = E-Com, Orange = Clinic" />
+              <ResponsiveContainer width="100%" height={360}>
+                <BarChart data={ECOM_TOP_CITIES} layout="vertical" margin={{ top: 5, right: 30, left: 70, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                  <XAxis type="number" tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} unit="Cr" />
+                  <YAxis type="category" dataKey="city" tick={{ fontSize: 11, fill: "#ccc" }} axisLine={false} tickLine={false} width={65} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="rev" name="E-Com Rev (₹Cr)" radius={[0, 4, 4, 0]} fill="#1E96FC" fillOpacity={0.7} barSize={12} />
+                  <Bar dataKey="clinicRev" name="Clinic Rev (₹Cr)" radius={[0, 4, 4, 0]} fill="#FF6B35" fillOpacity={0.85} barSize={12} />
+                </BarChart>
+              </ResponsiveContainer>
+              <div style={{ marginTop: 16, display: "flex", gap: 24 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 12, height: 12, borderRadius: 3, background: "#F15BB5" }} />
+                  <span style={{ fontSize: 11, color: "#888" }}>🚩 Gurgaon & Ghaziabad: High e-com demand, no dedicated clinic</span>
+                </div>
+              </div>
+            </div>
+
+            {/* STATE COMPARISON */}
+            <div style={{
+              background: "rgba(255,255,255,0.02)",
+              border: "1px solid rgba(255,255,255,0.05)",
+              borderRadius: 16, padding: 24, marginTop: 24,
+            }}>
+              <SectionHeader title="State Demand → Clinic Revenue Conversion" subtitle="How well are we converting online demand into clinic revenue?" />
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: "rgba(255,255,255,0.03)" }}>
+                      {["State", "E-Com Rev (₹Cr)", "Clinic Rev (₹Cr)", "Multiplier", "Pincodes", "Signal"].map(h => (
+                        <th key={h} style={{
+                          padding: "10px 14px", textAlign: "left", fontWeight: 600,
+                          color: "#666", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase",
+                          borderBottom: "1px solid rgba(255,255,255,0.04)",
+                        }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {STATE_ECOM.map((s) => {
+                      const mult = s.clinicRev > 0 ? (s.clinicRev / s.ecomRev).toFixed(1) : "—";
+                      const signal = s.clinicRev === 0 ? "🔴 No clinic presence" :
+                        parseFloat(mult) >= 2.0 ? "🟢 Strong conversion" :
+                          parseFloat(mult) >= 1.0 ? "🟡 Moderate" : "🟠 Under-penetrated";
+                      return (
+                        <tr key={s.state} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                          <td style={{ padding: "10px 14px", fontWeight: 600, color: "#fff" }}>{s.state}</td>
+                          <td style={{ padding: "10px 14px", fontFamily: "'JetBrains Mono', monospace", color: "#1E96FC" }}>₹{s.ecomRev.toFixed(2)}</td>
+                          <td style={{ padding: "10px 14px", fontFamily: "'JetBrains Mono', monospace", color: "#FF6B35" }}>
+                            {s.clinicRev > 0 ? `₹${s.clinicRev.toFixed(1)}` : "—"}
+                          </td>
+                          <td style={{ padding: "10px 14px", fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#fff" }}>{mult}x</td>
+                          <td style={{ padding: "10px 14px", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "#888" }}>{s.pincodes || "—"}</td>
+                          <td style={{ padding: "10px 14px", fontSize: 11 }}>{signal}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════════ TAB 3: ZONE INTELLIGENCE ════════════════ */}
+        {activeTab === 3 && (
+          <div>
+            {/* ZONE COMPARISON */}
+            <div style={{
+              background: "rgba(255,255,255,0.02)",
+              border: "1px solid rgba(255,255,255,0.05)",
+              borderRadius: 16, padding: 24, marginBottom: 24,
+            }}>
+              <SectionHeader title="Zone Revenue & Efficiency" subtitle="Revenue share, appointments, and show rate conversion" />
+              <ResponsiveContainer width="100%" height={320}>
+                <ComposedChart data={ZONE_DATA} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                  <XAxis dataKey="zone" tick={{ fontSize: 12, fill: "#ccc" }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} label={{ value: "Revenue (₹L)", angle: -90, position: "insideLeft", fill: "#555", fontSize: 10 }} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} domain={[10, 30]} label={{ value: "Show %", angle: 90, position: "insideRight", fill: "#555", fontSize: 10 }} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar yAxisId="left" dataKey="rev" name="Revenue (₹L)" radius={[8, 8, 0, 0]} barSize={48}>
+                    {ZONE_DATA.map((z, i) => (
+                      <Cell key={i} fill={z.color} fillOpacity={0.7} />
+                    ))}
+                  </Bar>
+                  <Line yAxisId="right" type="monotone" dataKey="showPct" name="Show %" stroke="#fff" strokeWidth={2.5} dot={{ r: 5, fill: "#fff", stroke: "#0A0A0F", strokeWidth: 2 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* ZONE DETAIL CARDS */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
+              {ZONE_DATA.map((z) => {
+                const zoneClinics = TOP_CLINICS.filter(c => c.zone === z.zone);
+                const topClinic = zoneClinics[0];
+                return (
+                  <div key={z.zone} style={{
+                    background: `linear-gradient(135deg, ${z.color}06, transparent)`,
+                    border: `1px solid ${z.color}18`,
+                    borderRadius: 16, padding: 24,
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                      <div>
+                        <h3 style={{ fontSize: 20, fontWeight: 800, color: z.color, margin: 0 }}>{z.zone}</h3>
+                        <span style={{ fontSize: 11, color: "#555" }}>{z.clinics} clinics</span>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 22, fontWeight: 700, color: "#fff" }}>₹{(z.rev / 100).toFixed(1)}Cr</div>
+                        <div style={{ fontSize: 11, color: "#666" }}>
+                          {((z.rev / ZONE_DATA.reduce((s, zz) => s + zz.rev, 0)) * 100).toFixed(0)}% share
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
+                      <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: 10, textAlign: "center" }}>
+                        <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>NTB Qty</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{fmtCompact(z.qty)}</div>
+                      </div>
+                      <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: 10, textAlign: "center" }}>
+                        <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>Appointments</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{fmtCompact(z.appt)}</div>
+                      </div>
+                      <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: 10, textAlign: "center" }}>
+                        <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>Show Rate</div>
+                        <div style={{
+                          fontSize: 14, fontWeight: 700,
+                          color: z.showPct >= 25 ? "#2EC4B6" : z.showPct >= 20 ? "#F0C808" : "#F15BB5",
+                        }}>{z.showPct}%</div>
+                      </div>
+                    </div>
+
+                    {topClinic && (
+                      <div style={{
+                        background: "rgba(255,255,255,0.02)", borderRadius: 8, padding: 10,
+                        border: "1px solid rgba(255,255,255,0.04)",
+                      }}>
+                        <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>🏆 Top Clinic</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{topClinic.name}</span>
+                          <span style={{ fontSize: 12, color: z.color, fontWeight: 600 }}>₹{topClinic.rev.toFixed(0)}L</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* MONTHLY BY ZONE */}
+            <div style={{
+              background: "rgba(255,255,255,0.02)",
+              border: "1px solid rgba(255,255,255,0.05)",
+              borderRadius: 16, padding: 24, marginTop: 24,
+            }}>
+              <SectionHeader title="Monthly Visits Trajectory" subtitle="Total clinic visits per month — tracking the growth flywheel" />
+              <ResponsiveContainer width="100%" height={280}>
+                <AreaChart data={MONTHLY_CLINIC_TREND} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                  <defs>
+                    <linearGradient id="visitGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#9B5DE5" stopOpacity={0.25} />
+                      <stop offset="100%" stopColor="#9B5DE5" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area type="monotone" dataKey="visits" name="Clinic Visits" fill="url(#visitGrad)" stroke="#9B5DE5" strokeWidth={2.5} dot={{ r: 3, fill: "#9B5DE5" }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* FOOTER */}
+      <div style={{
+        padding: "16px 32px",
+        borderTop: "1px solid rgba(255,255,255,0.04)",
+        display: "flex", justifyContent: "space-between",
+        fontSize: 11, color: "#333",
+      }}>
+        <span>Gynoveda Expansion Intelligence · Data: Jan 2025 – Jan 2026</span>
+        <span>61 Clinics · 7,415 Pincodes · ₹105.2Cr Clinic NTB · ₹72.3Cr E-Com 1CX</span>
+      </div>
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+        * { box-sizing: border-box; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+      `}</style>
     </div>
-    <div style="margin-top:6px;font-size:0.85rem;color:#444;">
-        <b>Current:</b> {risk['Current']} &nbsp;|&nbsp; <b>Trigger:</b> {risk['Trigger']}<br>
-        <b>Revenue Impact:</b> {risk['Revenue Impact']}<br>
-        <b>Mitigation:</b> {risk['Mitigation']}
-    </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-# Rent stress test
-st.markdown("---")
-st.markdown("**🏗️ Rent Stress Test — 5-Year Breakeven Escalation (OpEx + Capex Recovery)**")
-
-stress_data = []
-for rate in [0.05, 0.07, 0.10]:
-    for yr in range(1, 6):
-        escalated_opex = opex_monthly * (1 + rate) ** (yr - 1)
-        # Capex amortized over 12 months — only applies in Year 1
-        capex_amort = capex_monthly_amort if yr == 1 else 0
-        full_cost = escalated_opex + capex_amort
-        stress_data.append({
-            "Year": f"Year {yr}", "Escalation": f"{int(rate*100)}%",
-            "OpEx Breakeven": int(np.ceil(escalated_opex / rev_per_show)),
-            "Full Breakeven": int(np.ceil(full_cost / rev_per_show)),
-        })
-df_stress = pd.DataFrame(stress_data)
-
-col_stress_opex, col_stress_full = st.columns(2)
-with col_stress_opex:
-    fig_s1 = px.bar(
-        df_stress, x="Year", y="OpEx Breakeven", color="Escalation",
-        barmode="group", color_discrete_sequence=["#28a745", "#ffc107", "#dc3545"],
-        text="OpEx Breakeven",
-    )
-    fig_s1.update_layout(height=300, margin=dict(l=40, r=20, t=30, b=40),
-                         yaxis_title="Visits/Month", title="OpEx-Only Breakeven")
-    st.plotly_chart(fig_s1, use_container_width=True)
-
-with col_stress_full:
-    fig_s2 = px.bar(
-        df_stress, x="Year", y="Full Breakeven", color="Escalation",
-        barmode="group", color_discrete_sequence=["#28a745", "#ffc107", "#dc3545"],
-        text="Full Breakeven",
-    )
-    fig_s2.update_layout(height=300, margin=dict(l=40, r=20, t=30, b=40),
-                         yaxis_title="Visits/Month", title="Full Breakeven (OpEx + Capex Yr1)")
-    st.plotly_chart(fig_s2, use_container_width=True)
-
-yr3_opex = monthly_opex * (1.07 ** 3)
-yr3_be_opex = int(np.ceil(opex_monthly * (1.07 ** 3) / rev_per_show))
-yr3_be_full = int(np.ceil((opex_monthly * (1.07 ** 3) + capex_monthly_amort) / rev_per_show))
-st.markdown(f"""
-<div class="insight-card insight-green">
-✅ <b>{profitable_clinics}</b> currently profitable clinics survive Year 3 rent escalation at 7%.
-</div>
-<div class="insight-card">
-💡 <b>Rent Stress Test:</b> At 7% annual escalation, OpEx rises from {fmt_inr(opex_monthly)} → {fmt_inr(yr3_opex * 1e5)}
-over 3 years.<br>
-→ OpEx breakeven shifts from <b>{breakeven_visits} → {yr3_be_opex}</b> visits/month<br>
-→ Full breakeven (incl. ₹{capex_per_clinic}L capex over 12mo) shifts from <b>{breakeven_visits_full} → {yr3_be_full}</b> visits/month<br>
-<b>Action:</b> Negotiate 5% cap clauses. Avoid lock-in >2 years for new cities.
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown("---")
-st.caption(f"Gynoveda FY27 Expansion Intelligence | Data through Jan 2026 | {len(cp)} clinics | Funnel: Appt → {_p75}% Show → {show_to_conv}% Conv → ₹{rev_per_ntb:,}/NTB | Generated {pd.Timestamp.now().strftime('%d-%b-%Y')}")
+  );
+}
