@@ -110,11 +110,14 @@ hr { border-color: rgba(255,255,255,0.04) !important; }
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # DATA LOADING
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+from pathlib import Path
+DATA_DIR = Path(__file__).parent
+
 @st.cache_data(ttl=3600)
 def load_ntb_show():
     """Load NTB Show Month Wise - clinic appointments and show rates"""
     import openpyxl
-    wb = openpyxl.load_workbook("NTB_Show_Month_Wise.xlsx", read_only=True, data_only=True)
+    wb = openpyxl.load_workbook(DATA_DIR / "NTB_Show_Month_Wise.xlsx", read_only=True, data_only=True)
     ws = wb["Sheet1"]
     rows = list(ws.iter_rows(values_only=True))
     wb.close()
@@ -187,7 +190,7 @@ def load_ntb_show():
 @st.cache_data(ttl=3600)
 def load_clinic_firsttime():
     """Load Clinic-wise FirstTime by Pincode"""
-    df = pd.read_excel("Clinic_wise_FirstTime_TotalQuantity_by_Pincode.xlsx", sheet_name="FirstTime_by_Pincode")
+    df = pd.read_excel(DATA_DIR / "Clinic_wise_FirstTime_TotalQuantity_by_Pincode.xlsx", sheet_name="FirstTime_by_Pincode")
     df.columns = ["Pincode", "Qty", "Revenue", "SubCity", "City", "State"]
     df["Pincode"] = df["Pincode"].astype(str)
     df["Qty"] = pd.to_numeric(df["Qty"], errors="coerce").fillna(0).astype(int)
@@ -199,7 +202,7 @@ def load_clinic_firsttime():
 def load_clinic_ntb():
     """Load ZipData_Clinic_NTB - transactional clinic data"""
     import openpyxl
-    wb = openpyxl.load_workbook("ZipData_Clinic_NTB.xlsx", read_only=True, data_only=True)
+    wb = openpyxl.load_workbook(DATA_DIR / "ZipData_Clinic_NTB.xlsx", read_only=True, data_only=True)
     ws = wb["Data"]
 
     from collections import defaultdict
@@ -268,7 +271,7 @@ def load_clinic_ntb():
 def load_ecom():
     """Load 1CX e-commerce orders"""
     import openpyxl
-    wb = openpyxl.load_workbook("1cx_order_qty_pincode_of_website__2020__2025__Curative__others.xlsx", read_only=True, data_only=True)
+    wb = openpyxl.load_workbook(DATA_DIR / "1cx_order_qty_pincode_of_website__2020__2025__Curative__others.xlsx", read_only=True, data_only=True)
     ws = wb["Sheet1"]
 
     from collections import defaultdict
