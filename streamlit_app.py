@@ -924,6 +924,10 @@ opex_monthly = monthly_opex * 1e5
 capex = capex_per_clinic * 1e5
 rev_per_show = conversion_rate * rev_per_ntb
 breakeven_visits = int(np.ceil(opex_monthly / rev_per_show))
+# Full investment breakeven: OpEx + Capex amortization over 12 months
+capex_monthly_amort = capex / 12  # ₹28L spread over 12 months
+full_monthly_cost = opex_monthly + capex_monthly_amort
+breakeven_visits_full = int(np.ceil(full_monthly_cost / rev_per_show))
 avg_visits = cp["l3m_ntb"].mean()
 profitable_clinics = (cp["l3m_ntb"] * rev_per_show > opex_monthly).sum()
 rent = 1.0e5
@@ -1241,7 +1245,8 @@ with col_inv:
             "Year 1 Expansion Revenue",
             "Year 1 Expansion Profit",
             "Avg Capex Payback Period",
-            "Breakeven Visits / Clinic",
+            "OpEx Breakeven (monthly costs only)",
+            "Full Breakeven (OpEx + Capex recovery over 12mo)",
         ],
         "Value": [
             f"{total_new_clinics} clinics",
@@ -1250,7 +1255,8 @@ with col_inv:
             fmt_inr(total_exp_rev_y1),
             fmt_inr(total_exp_profit_y1),
             f"{avg_payback:.0f} months" if avg_payback < 100 else "N/A",
-            f"{breakeven_visits} visits/month",
+            f"{breakeven_visits} visits/month (₹{opex_monthly/1e5:.1f}L OpEx ÷ ₹{rev_per_show/1e3:.1f}K/visit)",
+            f"{breakeven_visits_full} visits/month (₹{full_monthly_cost/1e5:.1f}L total ÷ ₹{rev_per_show/1e3:.1f}K/visit)",
         ],
     }
     st.dataframe(pd.DataFrame(inv_data), hide_index=True, use_container_width=True)
@@ -1308,7 +1314,9 @@ with col_note:
     <b>Same-City Satellites:</b> Each satellite captures 50% of city's best-performing parent clinic's NTB volume<br><br>
     <b>New City:</b> NTB projected from population × {ntb_pop_ratio.split('(')[0].strip()} NTB:Pop ratio, divided across {exp_new['Pincode'].nunique()} scouted locations<br><br>
     <b>Ramp:</b> 3-month setup → linear ramp to 100% by Month 6 → full steady-state M6-M12<br><br>
-    <b>Unit Economics:</b> OpEx ₹{monthly_opex}L/mo | Capex ₹{capex_per_clinic}L | Breakeven: {breakeven_visits} visits/mo
+    <b>Unit Economics:</b> OpEx ₹{monthly_opex}L/mo | Capex ₹{capex_per_clinic}L<br>
+    → OpEx Breakeven: <b>{breakeven_visits} visits/mo</b> (covers monthly costs)<br>
+    → Full Breakeven: <b>{breakeven_visits_full} visits/mo</b> (OpEx + Capex recovery over 12 months)
     </div>
     """, unsafe_allow_html=True)
 
@@ -1353,7 +1361,7 @@ risks = [
     {
         "Risk": "New clinic ramp-up slower than projected",
         "Current": f"{new_clinic_avg} visits/mo (new clinics)",
-        "Trigger": f"<{breakeven_visits} visits/month at Month 3 (breakeven)",
+        "Trigger": f"<{breakeven_visits_full} visits/month at Month 3 (full breakeven incl. capex)",
         "Impact": "High",
         "Revenue Impact": f"{fmt_inr(capex)} capex at risk per clinic",
         "Mitigation": "Phase gate model — no new lease until Month 3 validation",
@@ -1364,7 +1372,7 @@ risks = [
         "Current": f"{fmt_inr(rent)} avg rent",
         "Trigger": ">7% annual escalation",
         "Impact": "Medium",
-        "Revenue Impact": f"Breakeven shifts from {breakeven_visits} to {int(breakeven_visits*1.15)} visits at 7% escalation over 3 yrs",
+        "Revenue Impact": f"Full breakeven shifts from {breakeven_visits_full} to {int(breakeven_visits_full*1.15)} visits at 7% escalation over 3 yrs",
         "Mitigation": "Negotiate 5% cap clauses, avoid >2yr lock-in for new cities",
         "Status": "🟢",
     },
@@ -1389,7 +1397,7 @@ risks = [
     {
         "Risk": "Conversion% drops below 70%",
         "Current": f"{show_to_conv}% (verified Jul-25 to Jan-26)",
-        "Trigger": f"<70% for 2 months (breakeven shifts from {breakeven_visits} to {int(np.ceil(opex_monthly / (0.70 * rev_per_ntb)))} visits)",
+        "Trigger": f"<70% for 2 months (full breakeven shifts from {breakeven_visits_full} to {int(np.ceil(full_monthly_cost / (0.70 * rev_per_ntb)))} visits)",
         "Impact": "High",
         "Revenue Impact": f"Each 5ppt drop = {fmt_inr(cp['l3m_ntb'].sum() * 0.05 * rev_per_ntb * 12)}/yr network loss",
         "Mitigation": "Doctor consultation quality audit, product mix optimization, patient satisfaction tracking",
@@ -1427,35 +1435,55 @@ for risk in risks:
 
 # Rent stress test
 st.markdown("---")
-st.markdown("**🏗️ Rent Stress Test — 5-Year OpEx Escalation**")
+st.markdown("**🏗️ Rent Stress Test — 5-Year Breakeven Escalation (OpEx + Capex Recovery)**")
 
 stress_data = []
 for rate in [0.05, 0.07, 0.10]:
     for yr in range(1, 6):
-        new_opex = opex_monthly * (1 + rate) ** (yr - 1)
+        escalated_opex = opex_monthly * (1 + rate) ** (yr - 1)
+        # Capex amortized over 12 months — only applies in Year 1
+        capex_amort = capex_monthly_amort if yr == 1 else 0
+        full_cost = escalated_opex + capex_amort
         stress_data.append({
             "Year": f"Year {yr}", "Escalation": f"{int(rate*100)}%",
-            "Breakeven Visits": int(np.ceil(new_opex / rev_per_show)),
+            "OpEx Breakeven": int(np.ceil(escalated_opex / rev_per_show)),
+            "Full Breakeven": int(np.ceil(full_cost / rev_per_show)),
         })
 df_stress = pd.DataFrame(stress_data)
 
-fig_stress = px.bar(
-    df_stress, x="Year", y="Breakeven Visits", color="Escalation",
-    barmode="group", color_discrete_sequence=["#28a745", "#ffc107", "#dc3545"],
-    text="Breakeven Visits",
-)
-fig_stress.update_layout(height=300, margin=dict(l=40, r=20, t=20, b=40), yaxis_title="Clinic Visits to Breakeven")
-st.plotly_chart(fig_stress, use_container_width=True)
+col_stress_opex, col_stress_full = st.columns(2)
+with col_stress_opex:
+    fig_s1 = px.bar(
+        df_stress, x="Year", y="OpEx Breakeven", color="Escalation",
+        barmode="group", color_discrete_sequence=["#28a745", "#ffc107", "#dc3545"],
+        text="OpEx Breakeven",
+    )
+    fig_s1.update_layout(height=300, margin=dict(l=40, r=20, t=30, b=40),
+                         yaxis_title="Visits/Month", title="OpEx-Only Breakeven")
+    st.plotly_chart(fig_s1, use_container_width=True)
+
+with col_stress_full:
+    fig_s2 = px.bar(
+        df_stress, x="Year", y="Full Breakeven", color="Escalation",
+        barmode="group", color_discrete_sequence=["#28a745", "#ffc107", "#dc3545"],
+        text="Full Breakeven",
+    )
+    fig_s2.update_layout(height=300, margin=dict(l=40, r=20, t=30, b=40),
+                         yaxis_title="Visits/Month", title="Full Breakeven (OpEx + Capex Yr1)")
+    st.plotly_chart(fig_s2, use_container_width=True)
 
 yr3_opex = monthly_opex * (1.07 ** 3)
-yr3_be = int(np.ceil(opex_monthly * (1.07 ** 3) / rev_per_show))
+yr3_be_opex = int(np.ceil(opex_monthly * (1.07 ** 3) / rev_per_show))
+yr3_be_full = int(np.ceil((opex_monthly * (1.07 ** 3) + capex_monthly_amort) / rev_per_show))
 st.markdown(f"""
 <div class="insight-card insight-green">
 ✅ <b>{profitable_clinics}</b> currently profitable clinics survive Year 3 rent escalation at 7%.
 </div>
 <div class="insight-card">
 💡 <b>Rent Stress Test:</b> At 7% annual escalation, OpEx rises from {fmt_inr(opex_monthly)} → {fmt_inr(yr3_opex * 1e5)}
-over 3 years. Breakeven shifts from {breakeven_visits} → {yr3_be} visits/month.<br>
+over 3 years.<br>
+→ OpEx breakeven shifts from <b>{breakeven_visits} → {yr3_be_opex}</b> visits/month<br>
+→ Full breakeven (incl. ₹{capex_per_clinic}L capex over 12mo) shifts from <b>{breakeven_visits_full} → {yr3_be_full}</b> visits/month<br>
 <b>Action:</b> Negotiate 5% cap clauses. Avoid lock-in >2 years for new cities.
 </div>
 """, unsafe_allow_html=True)
