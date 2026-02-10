@@ -132,10 +132,11 @@ cp["l3m_appt"] = cp[[f"appt_{m}" for m in l3m_months]].mean(axis=1)
 cp["l3m_show"] = cp[[f"show_{m}" for m in l3m_months]].mean(axis=1)
 cp["l3m_ntb"] = (cp["l3m_appt"] * cp["l3m_show"]).astype(int)  # clinic visits (shows)
 
-# Cabin utilization (20 working days × 10 slots/cabin/day)
+# Clinic capacity: max 150 shows (clinic visits) per clinic per month
 cp["cabins"] = pd.to_numeric(cp["cabins"], errors="coerce").fillna(2).astype(int)
-cp["capacity"] = cp["cabins"] * 20 * 10
-cp["util_pct"] = cp["l3m_appt"] / cp["capacity"]
+CLINIC_CAPACITY = 150  # max visits/month per clinic
+cp["capacity"] = CLINIC_CAPACITY
+cp["util_pct"] = cp["l3m_ntb"] / CLINIC_CAPACITY
 
 # Network monthly trend from clinic data
 network_monthly = []
@@ -480,7 +481,7 @@ with col_sat_chart:
         y=top_sat["clinic_name"], x=top_sat["l3m_appt"], orientation="h",
         marker_color=bar_colors,
         text=top_sat.apply(
-            lambda r: f"{int(r['l3m_appt'])} appt | {r['util_pct']:.0%} util | {r['l3m_show']:.0%} show%",
+            lambda r: f"{int(r['l3m_appt'])} appt | {r['l3m_ntb']} vis | {r['util_pct']:.0%} util | {r['l3m_show']:.0%} show%",
             axis=1,
         ),
         textposition="inside", textfont=dict(color="white", size=11),
