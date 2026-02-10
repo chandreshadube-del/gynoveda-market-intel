@@ -1,7 +1,8 @@
 """
-Gynoveda Clinic Intelligence Dashboard — v2
-4 Tabs: Network Overview | Clinic Deep-Dive | Expansion ROI | Pincode Drill-Down
-Powered by actual MIS data (Sales, 1Cx, rCx, CAC, LTV, P&L)
+Gynoveda North Star — Expansion Intelligence Dashboard
+=======================================================
+Composite scoring engine for same-city & new-city expansion decisions.
+Replaces prior Clinic Intelligence app with forward-looking analytics.
 """
 
 import streamlit as st
@@ -10,11 +11,11 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import os
+import os, json
 
-st.set_page_config(page_title="Gynoveda Clinic Intelligence", layout="wide", page_icon="🏥")
+st.set_page_config(page_title="Gynoveda Expansion Intelligence", layout="wide", page_icon="🧭")
 
-# ── Formatting helpers ──────────────────────────────────────────────────────
+# ── Formatting helpers ──────────────────────────────────────────────────
 def fmt_inr(v, prefix="₹", d=1):
     if v is None or (isinstance(v, float) and np.isnan(v)): return f"{prefix}0"
     sign = "-" if v < 0 else ""
@@ -28,37 +29,63 @@ def fmt_num(v, d=0):
     if v is None or (isinstance(v, float) and np.isnan(v)): return "0"
     sign = "-" if v < 0 else ""
     v = abs(v)
-    if v >= 1e7: return f"{sign}{v/1e7:.{d+1}f} Cr"
-    if v >= 1e5: return f"{sign}{v/1e5:.{d}f}L"
+    if v >= 1e5: return f"{sign}{v/1e5:.{d+1}f}L"
     if v >= 1e3: return f"{sign}{v/1e3:.{d}f}K"
     return f"{sign}{v:.0f}"
 
-MONTH_ORDER = {'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
-               'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12}
+def pct(v, d=0):
+    if v is None or (isinstance(v, float) and np.isnan(v)): return "0%"
+    return f"{v*100:.{d}f}%" if abs(v) < 1 else f"{v:.{d}f}%"
 
-# ── CSS ─────────────────────────────────────────────────────────────────────
+# City code → full name mapping
+CITY_NAMES = {
+    'MUM':'Mumbai','NDL':'Delhi','BLR':'Bengaluru','HYD':'Hyderabad','PUN':'Pune',
+    'KOL':'Kolkata','CHE':'Chennai','THN':'Thane','NOI':'Noida','AHM':'Ahmedabad',
+    'SUR':'Surat','JAI':'Jaipur','LKO':'Lucknow','NAG':'Nagpur','PAT':'Patna',
+    'GUR':'Gurugram','IND':'Indore','BPL':'Bhopal','LDH':'Ludhiana','CDG':'Chandigarh',
+    'NSK':'Nashik','VAD':'Vadodara','RJK':'Rajkot','DDN':'Dehradun','KNP':'Kanpur',
+    'AGR':'Agra','VAR':'Varanasi','PRY':'Prayagraj','MRT':'Meerut','FDB':'Faridabad',
+    'GHZ':'Ghaziabad','JAL':'Jalandhar','AMR':'Amritsar','RNC':'Ranchi','BBS':'Bhubaneswar',
+    'SGU':'Siliguri','ASN':'Asansol','GUW':'Guwahati','RAI':'Raipur','MYS':'Mysuru',
+    'NVM':'Navi Mumbai','KLN':'Kalyan','AUR':'Aurangabad','MAR':'Margao','SEC':'Secunderabad',
+    'DMR':'Dimapur','ITR':'Itanagar'
+}
+
+# ── CSS ─────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    .block-container {padding-top: 0.8rem; padding-bottom: 0.5rem; max-width: 1300px;}
-    [data-testid="stMetric"] {background: #f8f9fa; border-radius: 8px; padding: 10px 14px; border-left: 4px solid #FF6B35;}
+    .block-container {padding-top: 0.6rem; padding-bottom: 0.5rem; max-width: 1400px;}
+    [data-testid="stMetric"] {background: #f8f9fa; border-radius: 10px; padding: 12px 16px;
+        border-left: 4px solid #FF6B35;}
     [data-testid="stMetric"] label {font-size: 0.72rem !important; color: #666;}
-    [data-testid="stMetric"] [data-testid="stMetricValue"] {font-size: 1.35rem !important; font-weight: 700;}
-    .kpi-box {background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        color: white; padding: 14px 20px; border-radius: 10px; margin-bottom: 0.8rem;}
-    .kpi-box h3 {margin: 0; font-size: 0.8rem; color: #a0a0b0; font-weight: 400;}
-    .kpi-box p {margin: 4px 0 0 0; font-size: 1.6rem; font-weight: 700;}
-    .tag-green {background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;}
-    .tag-red {background: #f8d7da; color: #721c24; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;}
-    .tag-blue {background: #d1ecf1; color: #0c5460; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;}
+    [data-testid="stMetric"] [data-testid="stMetricValue"] {font-size: 1.3rem !important; font-weight: 700;}
+    .score-card {border-radius: 12px; padding: 18px 22px; margin-bottom: 0.6rem; text-align: center;}
+    .score-high {background: linear-gradient(135deg, #1B5E20 0%, #2E7D32 100%); color: white;}
+    .score-med  {background: linear-gradient(135deg, #E65100 0%, #F57C00 100%); color: white;}
+    .score-low  {background: linear-gradient(135deg, #B71C1C 0%, #D32F2F 100%); color: white;}
+    .score-card h2 {margin: 0; font-size: 2.2rem; font-weight: 800;}
+    .score-card p {margin: 4px 0 0 0; font-size: 0.82rem; opacity: 0.9;}
+    .insight-box {background: #EDE7F6; border-left: 4px solid #5E35B1; padding: 12px 16px;
+        border-radius: 8px; margin: 8px 0; font-size: 0.88rem; line-height: 1.5;}
+    .risk-high {background: #FFEBEE; border-left: 4px solid #C62828; padding: 10px 14px;
+        border-radius: 8px; margin: 4px 0; font-size: 0.85rem;}
+    .risk-low {background: #E8F5E9; border-left: 4px solid #2E7D32; padding: 10px 14px;
+        border-radius: 8px; margin: 4px 0; font-size: 0.85rem;}
+    .kpi-hero {background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        color: white; padding: 16px 24px; border-radius: 12px; margin-bottom: 0.8rem;}
+    .kpi-hero h3 {margin: 0; font-size: 0.78rem; color: #a0a0b0; font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px;}
+    .kpi-hero p {margin: 4px 0 0 0; font-size: 1.7rem; font-weight: 700;}
+    .kpi-hero span {font-size: 0.8rem; color: #81C784;}
     #MainMenu {visibility: hidden;} footer {visibility: hidden;} .stDeployButton {display: none;}
-    div[data-testid="stTabs"] button {font-size: 0.95rem; font-weight: 600;}
+    div[data-testid="stTabs"] button {font-size: 0.9rem; font-weight: 600;}
+    div[data-testid="stTabs"] button[aria-selected="true"] {border-bottom: 3px solid #FF6B35;}
 </style>
 """, unsafe_allow_html=True)
 
-# ── DATA LOADING ────────────────────────────────────────────────────────────
+# ── DATA LOADING ────────────────────────────────────────────────────────
 DATA = "mis_data"
 
-@st.cache_data
+@st.cache_data(ttl=600)
 def load_all():
     d = {}
     d['master'] = pd.read_csv(f'{DATA}/clinic_master.csv')
@@ -71,7 +98,6 @@ def load_all():
     d['network'] = pd.read_csv(f'{DATA}/network_monthly.csv')
     d['ramp_sales'] = pd.read_csv(f'{DATA}/sales_ramp_curve.csv')
     d['ramp_1cx'] = pd.read_csv(f'{DATA}/1cx_ramp_curve.csv')
-    # Pincode data
     d['pin_ft'] = pd.read_csv(f'{DATA}/pincode_firsttime.csv')
     d['pin_demand'] = pd.read_csv(f'{DATA}/clinic_pincode_demand.csv')
     d['web_city'] = pd.read_csv(f'{DATA}/web_city_demand.csv')
@@ -80,598 +106,862 @@ def load_all():
 
 data = load_all()
 master = data['master']
-
-# ── Merge master info into sales/cx/cac/ltv for easy filtering ──
-def enrich(df):
-    """Add city, tier, zone from master by matching on code or area."""
-    if 'code' in df.columns and 'code' in master.columns:
-        return df.merge(master[['code','area','city','tier','zone','cabins','launch']], on='code', how='left', suffixes=('','_m'))
-    return df
-
-# Get month columns (YYYY-MM format) from sales df
 sales = data['sales']
-# Filter to months with actual data (at least 1 clinic reporting)
-all_months = sorted([c for c in sales.columns if c not in ['area','code','city','region','zone']])
-month_cols = [m for m in all_months if (sales[m] > 0).sum() > 0]
-latest_month = month_cols[-1] if month_cols else '2026-01'
-l3m = month_cols[-3:] if len(month_cols) >= 3 else month_cols
-l6m = month_cols[-6:] if len(month_cols) >= 6 else month_cols
+cx1 = data['cx1']
+rcx = data['rcx']
+net = data['network'].copy()
+ramp_s = data['ramp_sales']
+ramp_c = data['ramp_1cx']
+pin_demand = data['pin_demand']
+pin_ft = data['pin_ft']
+web_city = data['web_city']
+web_pin = data['web_pin']
 
-# ── Header ──────────────────────────────────────────────────────────────────
-st.markdown("## 🏥 Gynoveda Clinic Intelligence")
+# Derived: active months
+s_months = sorted([c for c in sales.columns if c not in ['area','code']])
+active_months = [m for m in s_months if (sales[m] > 0).sum() > 0]
+latest_month = active_months[-1] if active_months else '2025-12'
+l3m = active_months[-3:] if len(active_months) >= 3 else active_months
+l6m = active_months[-6:] if len(active_months) >= 6 else active_months
 
-# ── TABS ────────────────────────────────────────────────────────────────────
+# ── SCORING ENGINE ──────────────────────────────────────────────────────
+@st.cache_data
+def build_city_scores():
+    """
+    Build Composite Expansion Index (CEI) for every city.
+    Returns two DataFrames: same_city (existing) and new_city (whitespace).
+    
+    Dimensions (weighted):
+    1. Online Demand Density (25%) — web orders per city
+    2. Revenue Performance (20%) — existing clinic L3M avg (same-city only)
+    3. Customer Growth Trajectory (15%) — 1Cx growth trend
+    4. Capacity Utilization (15%) — sales per cabin vs network benchmark
+    5. O2O Conversion Potential (10%) — clinic demand vs web demand ratio
+    6. Market Whitespace (10%) — pincodes with demand but no nearby clinic
+    7. Economic Viability (5%) — EBITDA % of existing clinics in region
+    """
+    
+    # ── Dimension 1: Online Demand ──
+    web_demand = web_city.copy()
+    web_demand['City_lower'] = web_demand['City'].str.lower().str.strip()
+    # Normalize to 0-100
+    max_orders = web_demand['total_orders'].max()
+    web_demand['demand_score'] = (web_demand['total_orders'] / max_orders * 100).clip(0, 100)
+    
+    # ── Dimension 2 & 3: Revenue + Growth for existing cities ──
+    city_perf = []
+    for city_code in master['city'].unique():
+        city_clinics = master[master['city'] == city_code]
+        city_sales = sales[sales['code'].isin(city_clinics['code'])]
+        city_1cx = cx1[cx1['code'].isin(city_clinics['code'])]
+        
+        # L3M revenue
+        l3m_rev = city_sales[l3m].sum(axis=1).mean() if len(city_sales) > 0 and all(m in city_sales.columns for m in l3m) else 0
+        
+        # Growth: compare L3M vs prior 3M
+        if len(active_months) >= 6:
+            prior_3m = active_months[-6:-3]
+            prior_rev = city_sales[prior_3m].sum(axis=1).mean() if len(city_sales) > 0 and all(m in city_sales.columns for m in prior_3m) else 0
+            growth = ((l3m_rev - prior_rev) / prior_rev) if prior_rev > 0 else 0
+        else:
+            growth = 0
+        
+        # L3M 1Cx
+        cx_months = [c for c in cx1.columns if c not in ['area','code']]
+        cx_l3m = cx_months[-3:] if len(cx_months) >= 3 else cx_months
+        l3m_1cx = city_1cx[cx_l3m].sum(axis=1).mean() if len(city_1cx) > 0 else 0
+        
+        # Cabins and capacity
+        total_cabins = city_clinics['cabins'].sum()
+        sales_per_cabin = (l3m_rev * 100) / total_cabins if total_cabins > 0 else 0  # ₹L per cabin
+        
+        # Pincode coverage
+        city_areas = city_clinics['area'].tolist()
+        city_pins = pin_demand[pin_demand['Clinic Loc'].isin(city_areas)]['Zip'].nunique()
+        
+        city_name = CITY_NAMES.get(city_code, city_code)
+        
+        # EBITDA
+        pl = data['pl']
+        city_pl = pl[pl['code'].isin(city_clinics['code'])]
+        avg_ebitda = city_pl['fy26_ebitda_pct'].mean() if len(city_pl) > 0 else 0
+        
+        city_perf.append({
+            'city_code': city_code,
+            'city_name': city_name,
+            'clinics': len(city_clinics),
+            'total_cabins': total_cabins,
+            'l3m_rev_cr': l3m_rev,
+            'l3m_1cx': l3m_1cx,
+            'growth_pct': growth,
+            'sales_per_cabin_l': sales_per_cabin,
+            'pincodes_served': city_pins,
+            'avg_ebitda_pct': avg_ebitda
+        })
+    
+    df_city = pd.DataFrame(city_perf)
+    
+    # ── Match web demand to existing cities ──
+    name_to_code = {v.lower(): k for k, v in CITY_NAMES.items()}
+    web_demand['matched_code'] = web_demand['City_lower'].map(name_to_code)
+    
+    # Merge web demand into city perf
+    web_agg = web_demand.groupby('matched_code').agg(
+        web_orders=('total_orders', 'sum'),
+        web_revenue=('total_revenue', 'sum'),
+        demand_score=('demand_score', 'max')
+    ).reset_index().rename(columns={'matched_code': 'city_code'})
+    
+    df_city = df_city.merge(web_agg, on='city_code', how='left').fillna(0)
+    
+    # ── Compute Same-City CEI ──
+    # Normalize each dimension to 0-100
+    def norm(s):
+        mn, mx = s.min(), s.max()
+        return ((s - mn) / (mx - mn) * 100).fillna(0) if mx > mn else pd.Series(50, index=s.index)
+    
+    df_city['d1_demand'] = norm(df_city['web_orders'])
+    df_city['d2_revenue'] = norm(df_city['l3m_rev_cr'])
+    df_city['d3_growth'] = norm(df_city['growth_pct'].clip(-0.5, 2))
+    df_city['d4_capacity'] = norm(df_city['sales_per_cabin_l'])
+    
+    # O2O: ratio of clinic demand to web demand (higher = better conversion)
+    clinic_demand_by_city = pin_demand.merge(
+        master[['area','city']].rename(columns={'area':'Clinic Loc'}), on='Clinic Loc', how='left'
+    ).groupby('city')['qty'].sum().reset_index().rename(columns={'city':'city_code','qty':'clinic_demand'})
+    df_city = df_city.merge(clinic_demand_by_city, on='city_code', how='left').fillna(0)
+    df_city['o2o_ratio'] = df_city['clinic_demand'] / df_city['web_orders'].replace(0, 1)
+    df_city['d5_o2o'] = norm(df_city['o2o_ratio'].clip(0, 20))
+    
+    # Whitespace: pincodes with web orders but no clinic coverage
+    # (for same-city, this means room for additional clinics)
+    df_city['d6_whitespace'] = norm(100 - df_city['pincodes_served'].clip(0, 500) / 5)
+    
+    # Economic viability
+    df_city['d7_ebitda'] = norm(df_city['avg_ebitda_pct'].clip(-0.1, 0.5))
+    
+    # Weighted CEI
+    df_city['cei_same'] = (
+        df_city['d1_demand'] * 0.25 +
+        df_city['d2_revenue'] * 0.20 +
+        df_city['d3_growth'] * 0.15 +
+        df_city['d4_capacity'] * 0.15 +
+        df_city['d5_o2o'] * 0.10 +
+        df_city['d6_whitespace'] * 0.10 +
+        df_city['d7_ebitda'] * 0.05
+    )
+    
+    # ── New City Scores (cities without clinics) ──
+    existing_codes = set(master['city'].unique())
+    new_cities = web_demand[web_demand['matched_code'].isna() | ~web_demand['matched_code'].isin(existing_codes)].copy()
+    new_cities = new_cities.groupby('City').agg(
+        total_orders=('total_orders', 'sum'),
+        total_revenue=('total_revenue', 'sum'),
+        unique_pincodes=('City', 'count')  # proxy
+    ).reset_index()
+    
+    # For new cities: demand is the primary signal
+    new_cities['d1_demand'] = norm(new_cities['total_orders'])
+    new_cities['d2_revenue_potential'] = norm(new_cities['total_revenue'])
+    
+    # Use web_pin for growth trajectory
+    web_pin_city = web_pin.groupby(['City','year']).agg(orders=('orders','sum')).reset_index()
+    growth_by_city = []
+    for city in new_cities['City'].unique():
+        city_trend = web_pin_city[web_pin_city['City'].str.lower() == city.lower()].sort_values('year')
+        if len(city_trend) >= 2:
+            recent = city_trend[city_trend['year'] >= 2023]['orders'].sum()
+            older = city_trend[city_trend['year'] < 2023]['orders'].sum()
+            g = (recent - older) / older if older > 0 else 0
+        else:
+            g = 0
+        growth_by_city.append({'City': city, 'trend_growth': g})
+    
+    df_growth = pd.DataFrame(growth_by_city)
+    new_cities = new_cities.merge(df_growth, on='City', how='left').fillna(0)
+    new_cities['d3_growth'] = norm(new_cities['trend_growth'].clip(-1, 5))
+    
+    new_cities['cei_new'] = (
+        new_cities['d1_demand'] * 0.40 +
+        new_cities['d2_revenue_potential'] * 0.30 +
+        new_cities['d3_growth'] * 0.30
+    )
+    
+    return df_city.sort_values('cei_same', ascending=False), new_cities.sort_values('cei_new', ascending=False)
+
+
+@st.cache_data
+def build_cannibalization_matrix():
+    """
+    For each existing city with 2+ clinics, compute pincode overlap
+    between clinics to quantify cannibalization risk.
+    """
+    multi_clinic_cities = master.groupby('city').filter(lambda x: len(x) >= 2)['city'].unique()
+    
+    results = []
+    for city in multi_clinic_cities:
+        city_clinics = master[master['city'] == city]['area'].tolist()
+        
+        # Get pincodes served by each clinic
+        clinic_pins = {}
+        for clinic in city_clinics:
+            pins = set(pin_demand[pin_demand['Clinic Loc'] == clinic]['Zip'].unique())
+            clinic_pins[clinic] = pins
+        
+        # Pairwise overlap
+        for i, c1 in enumerate(city_clinics):
+            for c2 in city_clinics[i+1:]:
+                overlap = clinic_pins.get(c1, set()) & clinic_pins.get(c2, set())
+                union = clinic_pins.get(c1, set()) | clinic_pins.get(c2, set())
+                overlap_pct = len(overlap) / len(union) if len(union) > 0 else 0
+                
+                # Revenue in overlapping pincodes
+                overlap_rev_c1 = pin_demand[(pin_demand['Clinic Loc'] == c1) & (pin_demand['Zip'].isin(overlap))]['revenue'].sum()
+                overlap_rev_c2 = pin_demand[(pin_demand['Clinic Loc'] == c2) & (pin_demand['Zip'].isin(overlap))]['revenue'].sum()
+                
+                results.append({
+                    'city': CITY_NAMES.get(city, city),
+                    'city_code': city,
+                    'clinic_1': c1,
+                    'clinic_2': c2,
+                    'shared_pincodes': len(overlap),
+                    'total_pincodes': len(union),
+                    'overlap_pct': overlap_pct,
+                    'overlap_revenue': overlap_rev_c1 + overlap_rev_c2,
+                    'risk_level': 'High' if overlap_pct > 0.3 else 'Medium' if overlap_pct > 0.15 else 'Low'
+                })
+    
+    return pd.DataFrame(results)
+
+
+same_city_scores, new_city_scores = build_city_scores()
+cannibal_matrix = build_cannibalization_matrix()
+
+# ── SIDEBAR ─────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("### ⚙️ Expansion Parameters")
+    capex_per_clinic = st.number_input("Capex / Clinic (₹L)", value=28.0, step=1.0, format="%.0f")
+    monthly_opex = st.number_input("Monthly OpEx (₹L)", value=3.1, step=0.1, format="%.1f")
+    rev_per_ntb = st.number_input("Revenue / NTB Patient (₹K)", value=22.0, step=1.0, format="%.0f")
+    target_ebitda = st.slider("Target EBITDA %", 10, 50, 25)
+    o2o_conversion = st.slider("Online→Offline Conversion %", 1, 15, 5)
+    
+    st.markdown("---")
+    st.markdown("### 📊 Weights")
+    w_demand = st.slider("Demand Weight", 0, 50, 25)
+    w_revenue = st.slider("Revenue Weight", 0, 50, 20)
+    w_growth = st.slider("Growth Weight", 0, 50, 15)
+    w_capacity = st.slider("Capacity Weight", 0, 50, 15)
+    
+    st.markdown("---")
+    st.caption(f"Data: {active_months[0]} to {active_months[-1]} · {len(master)} clinics")
+
+# ── HEADER ──────────────────────────────────────────────────────────────
+st.markdown("## 🧭 Gynoveda Expansion Intelligence")
+
+# ── TABS ────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4 = st.tabs([
-    "📊 Network Overview", "🔍 Clinic Deep-Dive", "📈 Expansion ROI", "📍 Pincode Drill-Down"
+    "🎯 Executive Summary",
+    "🏙️ Same-City Expansion",
+    "🌍 New-City Whitespace",
+    "📈 Revenue Forecaster"
 ])
 
-# ═══════════════════════════════════════════════════════════════════════════
-# TAB 1: NETWORK OVERVIEW
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
+# TAB 1: EXECUTIVE SUMMARY
+# ═══════════════════════════════════════════════════════════════════════
 with tab1:
-    net = data['network'].copy()
-    net['month'] = pd.to_datetime(net['month'])
-    net = net.sort_values('month')
-    # Filter to months with actual data
-    net = net[net['clinics_cr'] > 0]
+    # Network health snapshot
+    net_df = net.copy()
+    net_df['month'] = pd.to_datetime(net_df['month'])
+    net_df = net_df.sort_values('month')
+    net_df = net_df[net_df['clinics_cr'] > 0]
     
-    # Current month KPIs
-    latest = net.iloc[-1] if len(net) > 0 else {}
-    prev = net.iloc[-2] if len(net) > 1 else {}
+    latest_net = net_df.iloc[-1] if len(net_df) > 0 else {}
+    prev_net = net_df.iloc[-2] if len(net_df) > 1 else {}
     
-    # Build clinic count by month from sales data
-    clinic_counts = []
-    for m in month_cols:
-        active = (sales[m] > 0).sum()
-        clinic_counts.append({'month': m, 'active_clinics': active})
-    df_cc = pd.DataFrame(clinic_counts)
-    current_clinics = df_cc.iloc[-1]['active_clinics'] if len(df_cc) > 0 else 61
+    # Clinic counts
+    active_clinics = (sales[latest_month] > 0).sum() if latest_month in sales.columns else 61
     
-    # KPI Row
-    c1, c2, c3, c4, c5 = st.columns(5)
+    # Hero KPIs
+    st.markdown("### Network Health")
+    h1, h2, h3, h4, h5 = st.columns(5)
     
-    with c1:
-        val = latest.get('clinics_cr', 0)
-        prev_val = prev.get('clinics_cr', 0)
-        delta = f"{((val-prev_val)/prev_val*100):.0f}% MoM" if prev_val > 0 else ""
-        st.metric("Monthly Sales (Clinics)", fmt_inr(val * 1e7), delta)
-    with c2:
-        val1cx = latest.get('clinics_1cx', 0)
-        prev1cx = prev.get('clinics_1cx', 0)
-        delta1cx = f"{((val1cx-prev1cx)/prev1cx*100):.0f}% MoM" if prev1cx > 0 else ""
-        st.metric("New Customers (1Cx)", fmt_num(val1cx), delta1cx)
-    with c3:
-        valrcx = latest.get('clinics_rcx', 0)
-        prevrcx = prev.get('clinics_rcx', 0)
-        deltarcx = f"{((valrcx-prevrcx)/prevrcx*100):.0f}% MoM" if prevrcx > 0 else ""
-        st.metric("Repeat Customers (rCx)", fmt_num(valrcx), deltarcx)
-    with c4:
-        total_cx = val1cx + valrcx
-        repeat_pct = valrcx / total_cx * 100 if total_cx > 0 else 0
-        st.metric("Repeat %", f"{repeat_pct:.0f}%", f"{int(current_clinics)} clinics active")
-    with c5:
-        # Cumulative sales
-        cum_sales = net['clinics_cr'].sum()
-        st.metric("Cumulative Sales", fmt_inr(cum_sales * 1e7))
-
+    with h1:
+        val = latest_net.get('clinics_cr', 0)
+        prev_val = prev_net.get('clinics_cr', 0)
+        delta = f"{((val-prev_val)/prev_val*100):+.0f}% MoM" if prev_val > 0 else ""
+        st.metric("Monthly Revenue", fmt_inr(val * 1e7), delta)
+    with h2:
+        st.metric("Active Clinics", f"{int(active_clinics)}", f"of {len(master)} total")
+    with h3:
+        avg_rev_per_clinic = val / active_clinics if active_clinics > 0 else 0
+        st.metric("Avg Revenue/Clinic", fmt_inr(avg_rev_per_clinic * 1e7))
+    with h4:
+        cx1_val = latest_net.get('clinics_1cx', 0)
+        st.metric("Monthly New Patients", fmt_num(cx1_val))
+    with h5:
+        if 'fy26_ebitda_pct' in data['pl'].columns:
+            avg_ebitda = data['pl']['fy26_ebitda_pct'].mean()
+            st.metric("Avg EBITDA %", pct(avg_ebitda))
+    
     st.markdown("---")
     
-    # Charts Row 1: Sales + Customer Trends
-    col_left, col_right = st.columns(2)
+    # ── Composite Expansion Readiness ──
+    st.markdown("### Expansion Readiness Scorecard")
     
-    with col_left:
+    # Calculate top-level scores
+    top_same = same_city_scores.head(5)
+    top_new = new_city_scores.head(5)
+    avg_same_cei = same_city_scores['cei_same'].mean()
+    avg_new_cei = new_city_scores['cei_new'].mean()
+    
+    # Network momentum (are things trending up?)
+    if len(net_df) >= 4:
+        recent_3 = net_df.tail(3)['clinics_cr'].mean()
+        prior_3 = net_df.iloc[-6:-3]['clinics_cr'].mean() if len(net_df) >= 6 else net_df.head(3)['clinics_cr'].mean()
+        momentum = (recent_3 - prior_3) / prior_3 if prior_3 > 0 else 0
+    else:
+        momentum = 0
+    
+    sc1, sc2, sc3 = st.columns(3)
+    
+    with sc1:
+        score_class = "score-high" if avg_same_cei > 55 else "score-med" if avg_same_cei > 35 else "score-low"
+        st.markdown(f"""<div class="score-card {score_class}">
+            <h2>{avg_same_cei:.0f}</h2>
+            <p>Same-City Expansion Score</p>
+            <p>Top opportunity: <b>{top_same.iloc[0]['city_name']}</b></p>
+        </div>""", unsafe_allow_html=True)
+    
+    with sc2:
+        score_class = "score-high" if avg_new_cei > 40 else "score-med" if avg_new_cei > 25 else "score-low"
+        st.markdown(f"""<div class="score-card {score_class}">
+            <h2>{avg_new_cei:.0f}</h2>
+            <p>New-City Expansion Score</p>
+            <p>Top opportunity: <b>{top_new.iloc[0]['City'] if len(top_new) > 0 else 'N/A'}</b></p>
+        </div>""", unsafe_allow_html=True)
+    
+    with sc3:
+        mom_class = "score-high" if momentum > 0.05 else "score-med" if momentum > -0.05 else "score-low"
+        st.markdown(f"""<div class="score-card {mom_class}">
+            <h2>{momentum*100:+.0f}%</h2>
+            <p>Revenue Momentum (L3M vs Prior)</p>
+            <p>{'Accelerating — expand' if momentum > 0.05 else 'Stable — selective expansion' if momentum > -0.05 else 'Decelerating — consolidate first'}</p>
+        </div>""", unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # ── Revenue & Growth Trend ──
+    col_trend1, col_trend2 = st.columns(2)
+    
+    with col_trend1:
         fig = go.Figure()
-        fig.add_trace(go.Bar(x=net['month'], y=net['clinics_cr'], name='Clinic Sales (₹Cr)',
-                             marker_color='#FF6B35', opacity=0.85))
-        if 'video_cr' in net.columns:
-            fig.add_trace(go.Bar(x=net['month'], y=net['video_cr'], name='Video Sales (₹Cr)',
-                                 marker_color='#4ECDC4', opacity=0.85))
+        fig.add_trace(go.Bar(x=net_df['month'], y=net_df['clinics_cr'],
+                             name='Clinic Revenue (₹Cr)', marker_color='#FF6B35', opacity=0.85))
+        if 'video_cr' in net_df.columns:
+            fig.add_trace(go.Bar(x=net_df['month'], y=net_df['video_cr'],
+                                 name='Video Revenue (₹Cr)', marker_color='#4ECDC4', opacity=0.85))
         fig.update_layout(title="Monthly Revenue Trend", height=350, barmode='stack',
-                         margin=dict(l=20, r=20, t=40, b=20), legend=dict(orientation='h', y=1.12),
-                         yaxis_title="₹ Crores", xaxis_title="")
+                         margin=dict(l=20, r=20, t=40, b=20),
+                         legend=dict(orientation='h', y=1.12), yaxis_title="₹ Crores")
         st.plotly_chart(fig, use_container_width=True)
     
-    with col_right:
+    with col_trend2:
         fig2 = go.Figure()
-        if 'clinics_1cx' in net.columns:
-            fig2.add_trace(go.Scatter(x=net['month'], y=net['clinics_1cx'], name='New (1Cx)',
-                                      mode='lines+markers', line=dict(color='#FF6B35', width=2.5)))
-        if 'clinics_rcx' in net.columns:
-            fig2.add_trace(go.Scatter(x=net['month'], y=net['clinics_rcx'], name='Repeat (rCx)',
-                                      mode='lines+markers', line=dict(color='#4ECDC4', width=2.5)))
-        fig2.update_layout(title="Customer Acquisition Trend", height=350,
-                          margin=dict(l=20, r=20, t=40, b=20), legend=dict(orientation='h', y=1.12),
-                          yaxis_title="Customers", xaxis_title="")
+        fig2.add_trace(go.Scatter(x=net_df['month'], y=net_df['clinics_1cx'], name='New (1Cx)',
+                                   mode='lines+markers', line=dict(color='#FF6B35', width=2.5)))
+        fig2.add_trace(go.Scatter(x=net_df['month'], y=net_df['clinics_rcx'], name='Repeat (rCx)',
+                                   mode='lines+markers', line=dict(color='#4ECDC4', width=2.5)))
+        fig2.update_layout(title="Patient Acquisition Trend", height=350,
+                          margin=dict(l=20, r=20, t=40, b=20),
+                          legend=dict(orientation='h', y=1.12), yaxis_title="Patients")
         st.plotly_chart(fig2, use_container_width=True)
-
-    # Charts Row 2: P&L Overview + Clinic count
-    col_a, col_b = st.columns(2)
     
-    with col_a:
-        pl = data['pl'].copy()
-        if len(pl) > 0:
-            # Aggregate P&L: FY26 EBITDA distribution
-            pl_sorted = pl.sort_values('fy26_ebitda_pct', ascending=True)
-            colors = ['#dc3545' if x < 0.20 else '#ffc107' if x < 0.30 else '#28a745' for x in pl_sorted['fy26_ebitda_pct']]
-            fig3 = go.Figure(go.Bar(
-                y=pl_sorted['area'], x=pl_sorted['fy26_ebitda_pct'] * 100,
-                orientation='h', marker_color=colors,
-                text=[f"{x:.0f}%" for x in pl_sorted['fy26_ebitda_pct'] * 100],
+    # ── Top Expansion Picks ──
+    st.markdown("### 🏆 Top 5 Expansion Opportunities")
+    
+    col_same, col_new = st.columns(2)
+    
+    with col_same:
+        st.markdown("**Same-City (Add Clinics)**")
+        for _, row in top_same.iterrows():
+            cei = row['cei_same']
+            badge = "🟢" if cei > 60 else "🟡" if cei > 40 else "🔴"
+            st.markdown(f"""
+            {badge} **{row['city_name']}** — CEI: **{cei:.0f}** · {int(row['clinics'])} clinics · 
+            L3M Rev: {fmt_inr(row['l3m_rev_cr'] * 1e7)} · Web Orders: {fmt_num(row['web_orders'])}
+            """)
+    
+    with col_new:
+        st.markdown("**New-City (Open First Clinic)**")
+        for _, row in top_new.head(5).iterrows():
+            cei = row['cei_new']
+            badge = "🟢" if cei > 60 else "🟡" if cei > 40 else "🔴"
+            st.markdown(f"""
+            {badge} **{row['City']}** — CEI: **{cei:.0f}** · 
+            Web Orders: {fmt_num(row['total_orders'])} · Revenue: {fmt_inr(row['total_revenue'])}
+            """)
+    
+    # ── Insights ──
+    st.markdown("---")
+    
+    # Auto-generated insights
+    high_growth_cities = same_city_scores[same_city_scores['growth_pct'] > 0.2]
+    saturated_cities = same_city_scores[same_city_scores['sales_per_cabin_l'] > same_city_scores['sales_per_cabin_l'].quantile(0.75)]
+    high_cannibal = cannibal_matrix[cannibal_matrix['overlap_pct'] > 0.3] if len(cannibal_matrix) > 0 else pd.DataFrame()
+    
+    insights = []
+    if len(saturated_cities) > 0:
+        top_sat = saturated_cities.iloc[0]
+        insights.append(f"🔥 **{top_sat['city_name']}** has the highest capacity utilization ({fmt_inr(top_sat['sales_per_cabin_l'] * 1e5)}/cabin) — strong candidate for an additional clinic.")
+    if len(high_cannibal) > 0:
+        insights.append(f"⚠️ **{len(high_cannibal)} clinic pairs** show >30% pincode overlap — review catchment boundaries before adding clinics in those cities.")
+    if len(high_growth_cities) > 0:
+        growth_list = ', '.join(high_growth_cities.head(3)['city_name'].tolist())
+        insights.append(f"📈 **{growth_list}** showing >20% revenue growth L3M — momentum cities for expansion.")
+    
+    top_unserved = new_city_scores.head(1)
+    if len(top_unserved) > 0:
+        insights.append(f"🌍 **{top_unserved.iloc[0]['City']}** leads new-city whitespace with {fmt_num(top_unserved.iloc[0]['total_orders'])} web orders and no clinic.")
+    
+    for insight in insights:
+        st.markdown(f'<div class="insight-box">{insight}</div>', unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TAB 2: SAME-CITY EXPANSION
+# ═══════════════════════════════════════════════════════════════════════
+with tab2:
+    st.markdown("### Same-City Expansion Analysis")
+    st.markdown("*Where should we add clinics in cities we already operate in?*")
+    
+    # ── CEI Ranking Table ──
+    st.markdown("#### Composite Expansion Index — Existing Cities")
+    
+    display_same = same_city_scores.copy()
+    display_same['CEI'] = display_same['cei_same'].round(0).astype(int)
+    display_same['L3M Rev'] = display_same['l3m_rev_cr'].apply(lambda x: fmt_inr(x * 1e7))
+    display_same['Growth'] = display_same['growth_pct'].apply(lambda x: f"{x*100:+.0f}%")
+    display_same['Rev/Cabin'] = display_same['sales_per_cabin_l'].apply(lambda x: fmt_inr(x * 1e5))
+    display_same['Web Orders'] = display_same['web_orders'].apply(lambda x: fmt_num(x))
+    display_same['EBITDA'] = display_same['avg_ebitda_pct'].apply(lambda x: pct(x))
+    display_same['Pincodes'] = display_same['pincodes_served'].astype(int)
+    
+    st.dataframe(
+        display_same[['city_name','clinics','total_cabins','CEI','L3M Rev','Growth',
+                       'Rev/Cabin','Web Orders','EBITDA','Pincodes']].rename(columns={
+            'city_name':'City','clinics':'Clinics','total_cabins':'Cabins'
+        }),
+        use_container_width=True, height=400,
+        column_config={
+            'CEI': st.column_config.ProgressColumn("CEI Score", min_value=0, max_value=100, format="%d"),
+        }
+    )
+    
+    st.markdown("---")
+    
+    # ── CEI Dimension Radar for selected city ──
+    st.markdown("#### Deep-Dive: City Expansion Profile")
+    
+    city_options = same_city_scores['city_name'].tolist()
+    selected_city = st.selectbox("Select City", city_options, key='same_city_select')
+    city_data = same_city_scores[same_city_scores['city_name'] == selected_city].iloc[0]
+    
+    col_radar, col_metrics = st.columns([1, 1])
+    
+    with col_radar:
+        categories = ['Demand', 'Revenue', 'Growth', 'Capacity', 'O2O Conv.', 'Whitespace', 'EBITDA']
+        values = [city_data['d1_demand'], city_data['d2_revenue'], city_data['d3_growth'],
+                  city_data['d4_capacity'], city_data['d5_o2o'], city_data['d6_whitespace'], city_data['d7_ebitda']]
+        
+        fig_radar = go.Figure(data=go.Scatterpolar(
+            r=values + [values[0]], theta=categories + [categories[0]],
+            fill='toself', fillcolor='rgba(255,107,53,0.2)',
+            line=dict(color='#FF6B35', width=2.5),
+            marker=dict(size=6)
+        ))
+        fig_radar.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, 100], showticklabels=False)),
+            title=f"CEI Profile — {selected_city}", height=380,
+            margin=dict(l=60, r=60, t=50, b=30)
+        )
+        st.plotly_chart(fig_radar, use_container_width=True)
+    
+    with col_metrics:
+        st.markdown(f"""<div class="kpi-hero">
+            <h3>Composite Expansion Index</h3>
+            <p>{city_data['cei_same']:.0f} / 100</p>
+            <span>{'✅ Strong expansion candidate' if city_data['cei_same'] > 55 else '⚠️ Moderate — validate before expanding' if city_data['cei_same'] > 35 else '❌ Weak — consolidate first'}</span>
+        </div>""", unsafe_allow_html=True)
+        
+        m1, m2 = st.columns(2)
+        m1.metric("Clinics", int(city_data['clinics']))
+        m2.metric("Cabins", int(city_data['total_cabins']))
+        m3, m4 = st.columns(2)
+        m3.metric("L3M Monthly Rev", fmt_inr(city_data['l3m_rev_cr'] * 1e7))
+        m4.metric("Revenue Growth", f"{city_data['growth_pct']*100:+.0f}%")
+        m5, m6 = st.columns(2)
+        m5.metric("Sales/Cabin", fmt_inr(city_data['sales_per_cabin_l'] * 1e5))
+        m6.metric("Web Orders", fmt_num(city_data['web_orders']))
+        
+        # Recommendation
+        if city_data['cei_same'] > 55 and city_data['sales_per_cabin_l'] > same_city_scores['sales_per_cabin_l'].median():
+            st.markdown('<div class="risk-low">✅ <b>Expand</b> — high demand + capacity strain suggests a new clinic will capture incremental revenue without cannibalizing existing locations.</div>', unsafe_allow_html=True)
+        elif city_data['cei_same'] > 35:
+            st.markdown('<div class="insight-box">⚠️ <b>Selective</b> — expand only if cannibalization analysis shows low overlap and there are underserved pincodes.</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="risk-high">❌ <b>Hold</b> — current clinics are underperforming. Fix operations before adding capacity.</div>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # ── Cannibalization Risk ──
+    st.markdown("#### 🔴 Cannibalization Risk Matrix")
+    
+    if len(cannibal_matrix) > 0:
+        city_code = same_city_scores[same_city_scores['city_name'] == selected_city]['city_code'].values[0]
+        city_cannibal = cannibal_matrix[cannibal_matrix['city_code'] == city_code]
+        
+        if len(city_cannibal) > 0:
+            for _, row in city_cannibal.iterrows():
+                risk_class = "risk-high" if row['risk_level'] == 'High' else "insight-box" if row['risk_level'] == 'Medium' else "risk-low"
+                st.markdown(f"""<div class="{risk_class}">
+                    <b>{row['clinic_1']}</b> ↔ <b>{row['clinic_2']}</b> · 
+                    Overlap: <b>{row['overlap_pct']*100:.0f}%</b> ({row['shared_pincodes']} shared pincodes / {row['total_pincodes']} total) · 
+                    Revenue at risk: <b>{fmt_inr(row['overlap_revenue'])}</b> · 
+                    Risk: <b>{row['risk_level']}</b>
+                </div>""", unsafe_allow_html=True)
+        else:
+            st.info(f"Only 1 clinic in {selected_city} — no cannibalization pairs to analyze.")
+    else:
+        st.info("No multi-clinic cities found for cannibalization analysis.")
+    
+    st.markdown("---")
+    
+    # ── Pincode Saturation Map ──
+    st.markdown("#### Pincode Demand Distribution")
+    
+    city_code_sel = same_city_scores[same_city_scores['city_name'] == selected_city]['city_code'].values[0]
+    city_clinics = master[master['city'] == city_code_sel]['area'].tolist()
+    city_pin_data = pin_demand[pin_demand['Clinic Loc'].isin(city_clinics)]
+    
+    if len(city_pin_data) > 0:
+        # Top pincodes by demand
+        top_pins = city_pin_data.groupby(['Zip','City','State']).agg(
+            total_qty=('qty','sum'), total_rev=('revenue','sum'), clinics_serving=('Clinic Loc','nunique')
+        ).reset_index().sort_values('total_qty', ascending=False).head(20)
+        
+        top_pins['Revenue'] = top_pins['total_rev'].apply(lambda x: fmt_inr(x))
+        top_pins['Multi-Clinic'] = top_pins['clinics_serving'].apply(lambda x: '⚠️ Yes' if x > 1 else '✅ No')
+        
+        st.dataframe(
+            top_pins[['Zip','City','total_qty','Revenue','clinics_serving','Multi-Clinic']].rename(columns={
+                'Zip':'Pincode','total_qty':'Demand (Qty)','clinics_serving':'Clinics Serving'
+            }),
+            use_container_width=True, height=400
+        )
+        
+        # Pincodes served by multiple clinics = saturation signal
+        multi_served = top_pins[top_pins['clinics_serving'] > 1]
+        if len(multi_served) > 0:
+            st.markdown(f'<div class="insight-box">⚠️ <b>{len(multi_served)} pincodes</b> are served by multiple clinics in {selected_city} — review if adding another clinic would increase saturation or target an underserved zone.</div>', unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TAB 3: NEW-CITY WHITESPACE
+# ═══════════════════════════════════════════════════════════════════════
+with tab3:
+    st.markdown("### New-City Whitespace Discovery")
+    st.markdown("*Cities with proven online demand but no Gynoveda clinic — your expansion frontier.*")
+    
+    # ── Whitespace Scoring Table ──
+    display_new = new_city_scores.head(30).copy()
+    display_new['CEI'] = display_new['cei_new'].round(0).astype(int)
+    display_new['Orders'] = display_new['total_orders'].apply(lambda x: fmt_num(x))
+    display_new['Revenue'] = display_new['total_revenue'].apply(lambda x: fmt_inr(x))
+    display_new['Growth'] = display_new['trend_growth'].apply(lambda x: f"{x*100:+.0f}%")
+    
+    # O2O projected patients
+    display_new['Projected Monthly NTB'] = (display_new['total_orders'] * (o2o_conversion / 100) / 12).astype(int)
+    display_new['Projected Monthly Rev'] = display_new['Projected Monthly NTB'] * rev_per_ntb * 1000
+    display_new['Proj. Rev (₹L/mo)'] = (display_new['Projected Monthly Rev'] / 1e5).round(1)
+    
+    # Breakeven check
+    display_new['Months to OpEx BE'] = np.where(
+        display_new['Proj. Rev (₹L/mo)'] > 0,
+        np.ceil(monthly_opex / display_new['Proj. Rev (₹L/mo)'] * 3).astype(int),  # Conservative: takes 3x initial months
+        99
+    )
+    
+    st.dataframe(
+        display_new[['City','CEI','Orders','Revenue','Growth','Projected Monthly NTB',
+                      'Proj. Rev (₹L/mo)','Months to OpEx BE']].rename(columns={'City':'City'}),
+        use_container_width=True, height=500,
+        column_config={
+            'CEI': st.column_config.ProgressColumn("CEI Score", min_value=0, max_value=100, format="%d"),
+        }
+    )
+    
+    st.markdown("---")
+    
+    # ── Demand Heatmap ──
+    st.markdown("#### Online Demand Heatmap")
+    
+    fig_bar = go.Figure(go.Bar(
+        y=display_new.head(20)['City'],
+        x=display_new.head(20)['total_orders'],
+        orientation='h',
+        marker=dict(color=display_new.head(20)['cei_new'],
+                    colorscale='YlOrRd', showscale=True,
+                    colorbar=dict(title="CEI")),
+        text=display_new.head(20)['Orders'],
+        textposition='outside'
+    ))
+    fig_bar.update_layout(title="Top 20 Unserved Cities by Web Demand", height=550,
+                         margin=dict(l=120, r=60, t=40, b=20),
+                         xaxis_title="Total Web Orders", yaxis=dict(autorange='reversed'))
+    st.plotly_chart(fig_bar, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # ── O2O Conversion Projection ──
+    st.markdown("#### Online-to-Offline Conversion Projections")
+    st.markdown(f"*Based on **{o2o_conversion}%** conversion rate from web orders to clinic NTB patients (adjustable in sidebar)*")
+    
+    # Use actual O2O ratios from existing cities as benchmarks
+    existing_o2o = same_city_scores[same_city_scores['web_orders'] > 100].copy()
+    existing_o2o['actual_o2o'] = existing_o2o['clinic_demand'] / existing_o2o['web_orders']
+    
+    if len(existing_o2o) > 0:
+        avg_o2o = existing_o2o['actual_o2o'].median()
+        
+        col_o2o1, col_o2o2 = st.columns(2)
+        
+        with col_o2o1:
+            fig_o2o = go.Figure(go.Bar(
+                y=existing_o2o.sort_values('actual_o2o', ascending=True)['city_name'],
+                x=existing_o2o.sort_values('actual_o2o', ascending=True)['actual_o2o'],
+                orientation='h', marker_color='#4ECDC4',
+                text=[f"{x:.1f}x" for x in existing_o2o.sort_values('actual_o2o', ascending=True)['actual_o2o']],
                 textposition='outside'
             ))
-            fig3.update_layout(title="FY26 EBITDA % by Clinic", height=max(350, len(pl)*18),
-                              margin=dict(l=100, r=40, t=40, b=20),
-                              xaxis_title="EBITDA %", yaxis_title="",
-                              xaxis=dict(range=[-10, 60]))
-            st.plotly_chart(fig3, use_container_width=True)
-    
-    with col_b:
-        # Clinic count growth
-        df_cc['month'] = pd.to_datetime(df_cc['month'])
-        fig4 = go.Figure(go.Scatter(x=df_cc['month'], y=df_cc['active_clinics'],
-                                     mode='lines+markers+text', line=dict(color='#FF6B35', width=3),
-                                     text=df_cc['active_clinics'].astype(int),
-                                     textposition='top center', textfont=dict(size=9)))
-        fig4.update_layout(title="Active Clinic Count Over Time", height=350,
-                          margin=dict(l=20, r=20, t=40, b=20),
-                          yaxis_title="Clinics", xaxis_title="")
-        st.plotly_chart(fig4, use_container_width=True)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# TAB 2: CLINIC DEEP-DIVE
-# ═══════════════════════════════════════════════════════════════════════════
-with tab2:
-    # Clinic selector
-    enriched_master = master.copy()
-    enriched_master['label'] = enriched_master['area'] + ' (' + enriched_master['city'] + ', ' + enriched_master['tier'] + ')'
-    
-    col_sel1, col_sel2 = st.columns([1, 2])
-    with col_sel1:
-        zone_filter = st.selectbox("Filter by Zone", ["All"] + sorted(master['zone'].dropna().unique().tolist()), key='zone_f')
-    with col_sel2:
-        if zone_filter != "All":
-            options = enriched_master[enriched_master['zone'] == zone_filter]['label'].tolist()
-        else:
-            options = enriched_master['label'].tolist()
-        selected_clinic = st.selectbox("Select Clinic", options, key='clinic_sel')
-    
-    if selected_clinic:
-        clinic_area = selected_clinic.split(' (')[0]
-        clinic_row = master[master['area'] == clinic_area].iloc[0] if len(master[master['area'] == clinic_area]) > 0 else None
+            fig_o2o.update_layout(title="Actual O2O Multiplier (Clinic Demand / Web Orders)",
+                                 height=400, margin=dict(l=100, r=40, t=40, b=20),
+                                 xaxis_title="O2O Ratio")
+            st.plotly_chart(fig_o2o, use_container_width=True)
         
-        if clinic_row is not None:
-            clinic_code = clinic_row['code']
-            
-            # Clinic header
-            st.markdown(f"""<div class="kpi-box">
-                <h3>{clinic_row['city']} · {clinic_row['tier']} · {clinic_row['zone']} · {clinic_row['cabins']} cabins · Launched {clinic_row['launch']}</h3>
-                <p>{clinic_area} (#{int(clinic_code)})</p>
+        with col_o2o2:
+            st.markdown(f"""<div class="insight-box">
+                <b>Benchmark:</b> Existing cities show a median O2O multiplier of <b>{avg_o2o:.1f}x</b> — 
+                meaning for every 1 web order, clinics generate {avg_o2o:.1f} patient transactions on average. 
+                This validates the online-to-offline flywheel. New-city projections use a conservative 
+                <b>{o2o_conversion}%</b> first-year conversion rate, ramping up as the clinic matures.
             </div>""", unsafe_allow_html=True)
             
-            # Get clinic data from each dataset
-            s_row = sales[sales['code'] == clinic_code]
-            cx1_row = data['cx1'][data['cx1']['code'] == clinic_code]
-            rcx_row = data['rcx'][data['rcx']['code'] == clinic_code]
-            cac_row = data['cac'][data['cac']['code'] == clinic_code]
-            ltv_row = data['ltv'][data['ltv']['code'] == clinic_code]
-            pl_row = data['pl'][data['pl']['code'] == clinic_code]
-            
-            # KPI cards
-            k1, k2, k3, k4, k5, k6 = st.columns(6)
-            
-            # Latest month sales
-            if len(s_row) > 0:
-                latest_sales = s_row[latest_month].values[0] if latest_month in s_row.columns else 0
-                l3m_sales = s_row[l3m].mean(axis=1).values[0] if all(m in s_row.columns for m in l3m) else 0
-                k1.metric("Latest Sales", fmt_inr(latest_sales * 1e7), f"L3M avg: {fmt_inr(l3m_sales * 1e7)}")
-            
-            if len(cx1_row) > 0:
-                cx1_months = [c for c in cx1_row.columns if c not in ['area','code']]
-                latest_1cx = cx1_row[cx1_months[-1]].values[0] if cx1_months else 0
-                k2.metric("Latest 1Cx", f"{int(latest_1cx)}")
-            
-            if len(rcx_row) > 0:
-                rcx_months = [c for c in rcx_row.columns if c not in ['area','code']]
-                latest_rcx = rcx_row[rcx_months[-1]].values[0] if rcx_months else 0
-                k3.metric("Latest rCx", f"{int(latest_rcx)}")
-            
-            if len(cac_row) > 0:
-                cac_months = [c for c in cac_row.columns if c not in ['area','code','city','zone','avg_cac']]
-                latest_cac = cac_row[cac_months[-1]].values[0] if cac_months else 0
-                k4.metric("Latest CAC", fmt_inr(latest_cac))
-            
-            if len(ltv_row) > 0:
-                ltv_months = [c for c in ltv_row.columns if c not in ['area','code','city','cx_base','ltv_k']]
-                latest_ltv = ltv_row[ltv_months[-1]].values[0] if ltv_months else 0
-                ltv_k = ltv_row['ltv_k'].values[0] if 'ltv_k' in ltv_row.columns else 0
-                k5.metric("Latest LTV", fmt_inr(latest_ltv))
-            
-            if len(pl_row) > 0:
-                ebitda = pl_row['fy26_ebitda_pct'].values[0]
-                fy_sales = pl_row['fy26_sales_l'].values[0]
-                tag = "tag-green" if ebitda >= 0.30 else "tag-red" if ebitda < 0.15 else "tag-blue"
-                k6.metric("FY26 EBITDA %", f"{ebitda*100:.0f}%", f"Sales: {fmt_inr(fy_sales * 1e5)}")
-            
-            st.markdown("---")
-            
-            # Charts: Sales + Customers over time
-            ch1, ch2 = st.columns(2)
-            
-            with ch1:
-                if len(s_row) > 0:
-                    s_data = s_row[month_cols].T.reset_index()
-                    s_data.columns = ['month', 'sales_cr']
-                    s_data['month'] = pd.to_datetime(s_data['month'])
-                    s_data = s_data[s_data['sales_cr'] > 0]
-                    fig = go.Figure(go.Bar(x=s_data['month'], y=s_data['sales_cr'],
-                                          marker_color='#FF6B35', opacity=0.85))
-                    fig.update_layout(title=f"Monthly Sales — {clinic_area}", height=300,
-                                    margin=dict(l=20, r=20, t=40, b=20), yaxis_title="₹ Crores")
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            with ch2:
-                if len(cx1_row) > 0 and len(rcx_row) > 0:
-                    cx1_data = cx1_row[cx1_months].T.reset_index()
-                    cx1_data.columns = ['month', '1cx']
-                    rcx_data = rcx_row[rcx_months].T.reset_index()
-                    rcx_data.columns = ['month', 'rcx']
-                    merged = cx1_data.merge(rcx_data, on='month', how='outer').fillna(0)
-                    merged['month'] = pd.to_datetime(merged['month'])
-                    merged = merged[(merged['1cx'] > 0) | (merged['rcx'] > 0)]
-                    
-                    fig2 = go.Figure()
-                    fig2.add_trace(go.Bar(x=merged['month'], y=merged['1cx'], name='New (1Cx)',
-                                         marker_color='#FF6B35'))
-                    fig2.add_trace(go.Bar(x=merged['month'], y=merged['rcx'], name='Repeat (rCx)',
-                                         marker_color='#4ECDC4'))
-                    fig2.update_layout(title=f"Customers — {clinic_area}", height=300, barmode='stack',
-                                      margin=dict(l=20, r=20, t=40, b=20), yaxis_title="Customers",
-                                      legend=dict(orientation='h', y=1.12))
-                    st.plotly_chart(fig2, use_container_width=True)
-            
-            # CAC vs LTV chart
-            ch3, ch4 = st.columns(2)
-            with ch3:
-                if len(cac_row) > 0 and len(ltv_row) > 0:
-                    cac_data = cac_row[cac_months].T.reset_index()
-                    cac_data.columns = ['month', 'cac']
-                    ltv_data = ltv_row[ltv_months].T.reset_index()
-                    ltv_data.columns = ['month', 'ltv']
-                    eco = cac_data.merge(ltv_data, on='month', how='inner')
-                    eco['month'] = pd.to_datetime(eco['month'])
-                    eco = eco[(eco['cac'] > 0) | (eco['ltv'] > 0)]
-                    
-                    fig3 = go.Figure()
-                    fig3.add_trace(go.Scatter(x=eco['month'], y=eco['cac'], name='CAC',
-                                             mode='lines+markers', line=dict(color='#dc3545', width=2)))
-                    fig3.add_trace(go.Scatter(x=eco['month'], y=eco['ltv'], name='LTV',
-                                             mode='lines+markers', line=dict(color='#28a745', width=2)))
-                    fig3.update_layout(title=f"CAC vs LTV — {clinic_area}", height=300,
-                                      margin=dict(l=20, r=20, t=40, b=20), yaxis_title="₹",
-                                      legend=dict(orientation='h', y=1.12))
-                    st.plotly_chart(fig3, use_container_width=True)
-            
-            with ch4:
-                if len(pl_row) > 0:
-                    # Monthly P&L trend
-                    pl_months = [c.replace('_sales','') for c in pl_row.columns if c.endswith('_sales') and c != 'fy26_sales_l']
-                    pl_months = [m for m in pl_months if m != 'Fy26']
-                    if pl_months:
-                        pl_trend = pd.DataFrame({
-                            'month': pl_months,
-                            'sales': [pl_row[f'{m}_sales'].values[0] for m in pl_months],
-                            'tacos': [pl_row[f'{m}_tacos'].values[0] for m in pl_months],
-                            'ebitda': [pl_row[f'{m}_ebitda'].values[0] * 100 for m in pl_months]
-                        })
-                        fig4 = make_subplots(specs=[[{"secondary_y": True}]])
-                        fig4.add_trace(go.Bar(x=pl_trend['month'], y=pl_trend['sales'], name='Sales (₹L)',
-                                             marker_color='#FF6B35', opacity=0.7), secondary_y=False)
-                        fig4.add_trace(go.Scatter(x=pl_trend['month'], y=pl_trend['ebitda'], name='EBITDA %',
-                                                  mode='lines+markers', line=dict(color='#28a745', width=2.5)),
-                                      secondary_y=True)
-                        fig4.update_layout(title=f"Monthly P&L — {clinic_area}", height=300,
-                                          margin=dict(l=20, r=20, t=40, b=20),
-                                          legend=dict(orientation='h', y=1.12))
-                        fig4.update_yaxes(title_text="₹ Lakhs", secondary_y=False)
-                        fig4.update_yaxes(title_text="EBITDA %", secondary_y=True)
-                        st.plotly_chart(fig4, use_container_width=True)
-
-    # ── Clinic comparison table ──
-    with st.expander("📋 All Clinics — Performance Table", expanded=False):
-        # Build comparison table
-        comp = master[['area','code','city','tier','zone','cabins','launch']].copy()
-        
-        # Add latest sales
-        for _, row in comp.iterrows():
-            code = row['code']
-            s = sales[sales['code'] == code]
-            if len(s) > 0 and latest_month in s.columns:
-                comp.loc[comp['code'] == code, 'latest_sales_cr'] = s[latest_month].values[0]
-                comp.loc[comp['code'] == code, 'l3m_avg_cr'] = s[l3m].mean(axis=1).values[0]
-            
-            c1 = data['cx1'][data['cx1']['code'] == code]
-            cx1_mcols = [c for c in data['cx1'].columns if c not in ['area','code']]
-            if len(c1) > 0 and cx1_mcols:
-                comp.loc[comp['code'] == code, 'latest_1cx'] = c1[cx1_mcols[-1]].values[0]
-            
-            p = data['pl'][data['pl']['code'] == code]
-            if len(p) > 0:
-                comp.loc[comp['code'] == code, 'fy26_ebitda'] = p['fy26_ebitda_pct'].values[0] * 100
-        
-        comp = comp.sort_values('latest_sales_cr', ascending=False, na_position='last')
-        comp['latest_sales_cr'] = comp['latest_sales_cr'].apply(lambda x: f"₹{x:.2f} Cr" if pd.notna(x) else "-")
-        comp['l3m_avg_cr'] = comp['l3m_avg_cr'].apply(lambda x: f"₹{x:.2f} Cr" if pd.notna(x) else "-")
-        comp['fy26_ebitda'] = comp['fy26_ebitda'].apply(lambda x: f"{x:.0f}%" if pd.notna(x) else "-")
-        
-        st.dataframe(comp.rename(columns={
-            'area': 'Clinic', 'code': 'Code', 'city': 'City', 'tier': 'Tier',
-            'zone': 'Zone', 'cabins': 'Cabins', 'launch': 'Launch',
-            'latest_sales_cr': f'Sales ({latest_month})', 'l3m_avg_cr': 'L3M Avg',
-            'latest_1cx': 'Latest 1Cx', 'fy26_ebitda': 'FY26 EBITDA%'
-        }), use_container_width=True, height=500)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# TAB 3: EXPANSION ROI
-# ═══════════════════════════════════════════════════════════════════════════
-with tab3:
-    st.markdown("### Clinic Ramp-Up Economics (from actual MIS data)")
+            # Top 5 new city projections
+            st.markdown("**Top 5 New-City Revenue Projections (Year 1)**")
+            for _, row in display_new.head(5).iterrows():
+                y1_rev = row['Proj. Rev (₹L/mo)'] * 12
+                y1_profit = y1_rev * (target_ebitda / 100) - monthly_opex * 12
+                color = "🟢" if y1_profit > 0 else "🔴"
+                st.markdown(f"{color} **{row['City']}**: {row['Projected Monthly NTB']} NTB/mo → "
+                           f"₹{row['Proj. Rev (₹L/mo)']:.1f}L/mo → Year 1: {fmt_inr(y1_rev * 1e5)} revenue, "
+                           f"{fmt_inr(y1_profit * 1e5)} {'profit' if y1_profit > 0 else 'loss'}")
     
-    # Ramp curve charts
-    ramp_s = data['ramp_sales']
-    ramp_c = data['ramp_1cx']
+    # ── YoY Web Demand Trend ──
+    st.markdown("---")
+    st.markdown("#### Web Demand Trend (All Cities)")
     
+    yoy = web_pin.groupby('year')['orders'].sum().reset_index()
+    yoy = yoy[yoy['year'] >= 2020]
+    fig_yoy = go.Figure(go.Bar(x=yoy['year'].astype(str), y=yoy['orders'],
+                                marker_color='#FF6B35',
+                                text=yoy['orders'].apply(lambda x: fmt_num(x)),
+                                textposition='outside'))
+    fig_yoy.update_layout(title="National Web Orders by Year", height=300,
+                         margin=dict(l=20, r=20, t=40, b=20), yaxis_title="Orders")
+    st.plotly_chart(fig_yoy, use_container_width=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TAB 4: REVENUE FORECASTER
+# ═══════════════════════════════════════════════════════════════════════
+with tab4:
+    st.markdown("### Revenue Ramp Forecaster")
+    st.markdown("*Project revenue for new clinics using actual ramp curves from your 61-clinic network.*")
+    
+    # ── Actual Ramp Curves ──
     rc1, rc2 = st.columns(2)
+    
     with rc1:
         fig_ramp = go.Figure()
         fig_ramp.add_trace(go.Scatter(x=ramp_s['month_num'], y=ramp_s['avg_sales_l'],
-                                       mode='lines+markers', name='Avg Sales (₹L)',
-                                       line=dict(color='#FF6B35', width=3)))
-        fig_ramp.update_layout(title="Average Clinic Sales Ramp (M0→M30)", height=350,
+                                       mode='lines+markers', name='Avg Sales (₹L/mo)',
+                                       line=dict(color='#FF6B35', width=3), marker=dict(size=5)))
+        # Add envelope: use clinics count as confidence
+        fig_ramp.add_hline(y=monthly_opex, line_dash="dash", line_color="#dc3545",
+                          annotation_text=f"OpEx Breakeven (₹{monthly_opex}L)")
+        total_monthly = monthly_opex + (capex_per_clinic / 24)  # 24-month amortization
+        fig_ramp.add_hline(y=total_monthly, line_dash="dot", line_color="#FFA000",
+                          annotation_text=f"Full Breakeven (₹{total_monthly:.1f}L)")
+        fig_ramp.update_layout(title="Average Clinic Sales Ramp (M0→M30)", height=380,
                               margin=dict(l=20, r=20, t=40, b=20),
                               xaxis_title="Month Since Launch", yaxis_title="₹ Lakhs/month")
-        # Add breakeven lines
-        fig_ramp.add_hline(y=0.31, line_dash="dash", line_color="#dc3545",
-                          annotation_text="OpEx Breakeven (₹3.1L)")
-        fig_ramp.add_hline(y=0.54, line_dash="dash", line_color="#ffc107",
-                          annotation_text="Full Breakeven (₹5.4L incl Capex)")
         st.plotly_chart(fig_ramp, use_container_width=True)
     
     with rc2:
         fig_ramp2 = go.Figure()
         fig_ramp2.add_trace(go.Scatter(x=ramp_c['month_num'], y=ramp_c['avg_1cx'],
-                                        mode='lines+markers', name='Avg 1Cx',
-                                        line=dict(color='#4ECDC4', width=3)))
-        fig_ramp2.update_layout(title="Average New Customer Ramp (M0→M30)", height=350,
+                                        mode='lines+markers', name='Avg New Patients',
+                                        line=dict(color='#4ECDC4', width=3), marker=dict(size=5)))
+        fig_ramp2.update_layout(title="Average New Patient Ramp (M0→M30)", height=380,
                                margin=dict(l=20, r=20, t=40, b=20),
-                               xaxis_title="Month Since Launch", yaxis_title="New Customers/month")
+                               xaxis_title="Month Since Launch", yaxis_title="New Patients/month")
         st.plotly_chart(fig_ramp2, use_container_width=True)
     
     st.markdown("---")
     
-    # ── Unit Economics Calculator ──
-    st.markdown("### New Clinic Investment Calculator")
+    # ── Scenario Simulator ──
+    st.markdown("### Scenario Simulator")
     
-    # Get actual network averages for defaults
-    pl_data = data['pl']
-    avg_ebitda = pl_data['fy26_ebitda_pct'].mean() if len(pl_data) > 0 else 0.30
+    sim1, sim2, sim3 = st.columns(3)
+    with sim1:
+        n_clinics = st.number_input("New Clinics to Open", value=20, step=5, min_value=1, max_value=200, key='n_sim')
+        scenario = st.radio("Scenario", ["Conservative (0.85x)", "Base Case (1.0x)", "Optimistic (1.15x)"], index=1)
+    with sim2:
+        steady_month = st.number_input("Months to Steady State", value=12, step=1, min_value=3, max_value=36, key='ss_month')
+        steady_sales = st.number_input("Steady-State Sales (₹L/clinic/mo)", 
+                                        value=round(ramp_s['avg_sales_l'].iloc[-1], 1) if len(ramp_s) > 0 else 20.0,
+                                        step=1.0, format="%.1f", key='ss_val')
+    with sim3:
+        wave_1_pct = st.slider("Wave 1 Launch (%)", 20, 100, 50)
+        wave_2_month = st.number_input("Wave 2 Start (Month)", value=6, step=1, min_value=1)
     
-    # Use actual ramp curve: what month does avg clinic hit breakeven?
-    opex_be = ramp_s[ramp_s['avg_sales_l'] >= 0.31]
-    full_be = ramp_s[ramp_s['avg_sales_l'] >= 0.54]
-    opex_be_month = opex_be.iloc[0]['month_num'] if len(opex_be) > 0 else 'Never'
-    full_be_month = full_be.iloc[0]['month_num'] if len(full_be) > 0 else 'Never'
+    scenario_mult = {'Conservative (0.85x)': 0.85, 'Base Case (1.0x)': 1.0, 'Optimistic (1.15x)': 1.15}[scenario]
     
-    ec1, ec2, ec3 = st.columns(3)
-    with ec1:
-        capex = st.number_input("Capex per Clinic (₹L)", value=28.0, step=1.0, key='capex')
-        monthly_opex = st.number_input("Monthly OpEx (₹L)", value=3.1, step=0.1, key='opex')
-    with ec2:
-        n_new_clinics = st.number_input("New Clinics to Open", value=20, step=5, key='n_new')
-        ramp_months = st.number_input("Months to Steady State", value=12, step=1, key='ramp_m')
-    with ec3:
-        steady_sales_l = st.number_input("Steady-State Monthly Sales (₹L/clinic)", value=round(ramp_s['avg_sales_l'].iloc[-1] * 100) / 100 if len(ramp_s) > 0 else 0.35, step=0.05, key='ss_sales')
-        target_ebitda = st.number_input("Target EBITDA %", value=int(avg_ebitda * 100), step=5, key='t_ebitda')
+    # Build 24-month projection
+    wave_1_n = int(n_clinics * wave_1_pct / 100)
+    wave_2_n = n_clinics - wave_1_n
     
-    # Projections
-    total_capex = capex * n_new_clinics
-    monthly_opex_total = monthly_opex * n_new_clinics
-    steady_revenue_monthly = steady_sales_l * n_new_clinics  # ₹L per month
-    steady_ebitda_monthly = steady_revenue_monthly * (target_ebitda / 100)
-    
-    # Time to payback
-    if steady_ebitda_monthly > 0:
-        payback_months = total_capex / steady_ebitda_monthly
-    else:
-        payback_months = float('inf')
-    
-    # Year 1 projection using actual ramp curve
-    y1_revenue = 0
-    for m in range(12):
-        if m < len(ramp_s):
-            y1_revenue += ramp_s.iloc[m]['avg_sales_l'] * n_new_clinics
-        else:
-            y1_revenue += steady_sales_l * n_new_clinics
-    
-    y1_opex = monthly_opex * 12 * n_new_clinics
-    y1_ebitda = y1_revenue - y1_opex  # simplified
-    
-    st.markdown("---")
-    
-    # Results
-    r1, r2, r3, r4, r5 = st.columns(5)
-    r1.metric("Total Capex", fmt_inr(total_capex * 1e5))
-    r2.metric("Year 1 Revenue", fmt_inr(y1_revenue * 1e5))
-    r3.metric("OpEx Breakeven", f"M{opex_be_month}" if isinstance(opex_be_month, (int, float)) else opex_be_month)
-    r4.metric("Full Breakeven", f"M{full_be_month}" if isinstance(full_be_month, (int, float)) else full_be_month)
-    r5.metric("Capex Payback", f"{payback_months:.0f} months" if payback_months < 100 else "N/A")
-    
-    # 24-month projection chart
-    proj_months = list(range(24))
-    proj_rev = []
-    proj_opex_cum = []
-    proj_ebitda_cum = []
+    proj_data = []
     cum_rev = 0
     cum_opex = 0
-    for m in proj_months:
+    cum_ebitda = 0
+    
+    for m in range(24):
+        # Wave 1 clinics (launch at M0)
+        w1_rev = 0
         if m < len(ramp_s):
-            rev = ramp_s.iloc[m]['avg_sales_l'] * n_new_clinics
+            w1_rev = ramp_s.iloc[m]['avg_sales_l'] * scenario_mult * wave_1_n
         else:
-            rev = steady_sales_l * n_new_clinics
-        cum_rev += rev
-        cum_opex += monthly_opex * n_new_clinics
-        proj_rev.append(rev)
-        proj_opex_cum.append(cum_opex)
-        proj_ebitda_cum.append(cum_rev - cum_opex)
+            w1_rev = steady_sales * scenario_mult * wave_1_n
+        
+        # Wave 2 clinics (launch at wave_2_month)
+        w2_rev = 0
+        w2_month = m - wave_2_month
+        if w2_month >= 0:
+            if w2_month < len(ramp_s):
+                w2_rev = ramp_s.iloc[w2_month]['avg_sales_l'] * scenario_mult * wave_2_n
+            else:
+                w2_rev = steady_sales * scenario_mult * wave_2_n
+        
+        total_rev = w1_rev + w2_rev
+        active = wave_1_n + (wave_2_n if m >= wave_2_month else 0)
+        total_opex = monthly_opex * active
+        monthly_ebitda = total_rev - total_opex
+        
+        cum_rev += total_rev
+        cum_opex += total_opex
+        cum_ebitda += monthly_ebitda
+        
+        proj_data.append({
+            'month': m,
+            'active_clinics': active,
+            'monthly_rev_l': total_rev,
+            'monthly_opex_l': total_opex,
+            'monthly_ebitda_l': monthly_ebitda,
+            'cum_rev_l': cum_rev,
+            'cum_opex_l': cum_opex,
+            'cum_ebitda_l': cum_ebitda
+        })
     
-    df_proj = pd.DataFrame({'Month': proj_months, 'Monthly Revenue (₹L)': proj_rev,
-                            'Cumulative EBITDA (₹L)': proj_ebitda_cum})
+    df_proj = pd.DataFrame(proj_data)
+    total_capex = capex_per_clinic * n_clinics
     
+    # Results KPIs
+    st.markdown("---")
+    
+    r1, r2, r3, r4, r5 = st.columns(5)
+    r1.metric("Total Capex", fmt_inr(total_capex * 1e5))
+    
+    y1_rev = df_proj[df_proj['month'] < 12]['monthly_rev_l'].sum()
+    r2.metric("Year 1 Revenue", fmt_inr(y1_rev * 1e5))
+    
+    # OpEx breakeven month
+    opex_be = df_proj[df_proj['monthly_ebitda_l'] > 0]
+    opex_be_month = int(opex_be.iloc[0]['month']) if len(opex_be) > 0 else 'N/A'
+    r3.metric("OpEx Breakeven", f"M{opex_be_month}" if isinstance(opex_be_month, int) else opex_be_month)
+    
+    # Capex payback
+    capex_payback = df_proj[df_proj['cum_ebitda_l'] >= total_capex]
+    payback = int(capex_payback.iloc[0]['month']) if len(capex_payback) > 0 else 'N/A'
+    r4.metric("Capex Payback", f"M{payback}" if isinstance(payback, int) else "24+ months")
+    
+    y2_ebitda = df_proj.iloc[-1]['cum_ebitda_l'] - total_capex
+    r5.metric("Net 24M Return", fmt_inr(y2_ebitda * 1e5))
+    
+    # Projection chart
     fig_proj = make_subplots(specs=[[{"secondary_y": True}]])
-    fig_proj.add_trace(go.Bar(x=df_proj['Month'], y=df_proj['Monthly Revenue (₹L)'],
-                              name='Monthly Revenue', marker_color='#FF6B35', opacity=0.7), secondary_y=False)
-    fig_proj.add_trace(go.Scatter(x=df_proj['Month'], y=df_proj['Cumulative EBITDA (₹L)'],
-                                  name='Cum. EBITDA', mode='lines', line=dict(color='#28a745', width=3)),
+    
+    fig_proj.add_trace(go.Bar(x=df_proj['month'], y=df_proj['monthly_rev_l'],
+                              name='Monthly Revenue (₹L)', marker_color='#FF6B35', opacity=0.7),
+                      secondary_y=False)
+    fig_proj.add_trace(go.Bar(x=df_proj['month'], y=-df_proj['monthly_opex_l'],
+                              name='Monthly OpEx (₹L)', marker_color='#dc3545', opacity=0.4),
+                      secondary_y=False)
+    fig_proj.add_trace(go.Scatter(x=df_proj['month'], y=df_proj['cum_ebitda_l'],
+                                  name='Cum. EBITDA (₹L)', mode='lines',
+                                  line=dict(color='#28a745', width=3)),
                       secondary_y=True)
-    fig_proj.add_hline(y=total_capex, line_dash="dash", line_color="#dc3545",
+    fig_proj.add_hline(y=total_capex, line_dash="dash", line_color="#5E35B1",
                       annotation_text=f"Total Capex (₹{total_capex:.0f}L)", secondary_y=True)
-    fig_proj.update_layout(title=f"24-Month Projection — {n_new_clinics} New Clinics", height=400,
-                          margin=dict(l=20, r=20, t=40, b=20), legend=dict(orientation='h', y=1.12))
+    
+    fig_proj.update_layout(
+        title=f"24-Month Projection — {n_clinics} Clinics ({scenario})",
+        height=450, margin=dict(l=20, r=20, t=50, b=20),
+        legend=dict(orientation='h', y=1.15), barmode='relative'
+    )
     fig_proj.update_yaxes(title_text="₹ Lakhs/month", secondary_y=False)
     fig_proj.update_yaxes(title_text="Cumulative ₹ Lakhs", secondary_y=True)
     st.plotly_chart(fig_proj, use_container_width=True)
     
-    # ── Network P&L summary ──
-    with st.expander("📊 FY26 Network P&L Summary"):
+    # ── Tier-wise Breakdown ──
+    with st.expander("📊 Existing Network P&L by Tier"):
+        pl_data = data['pl']
         if len(pl_data) > 0:
-            total_fy26_sales = pl_data['fy26_sales_l'].sum()
-            total_fy26_tacos = pl_data['fy26_tacos_l'].sum()
-            total_fy26_ebitda = total_fy26_sales - total_fy26_tacos
+            pl_m = pl_data.merge(master[['code','tier','zone','city']], on='code', how='left')
             
-            s1, s2, s3, s4 = st.columns(4)
-            s1.metric("FY26 Network Sales", fmt_inr(total_fy26_sales * 1e5))
-            s2.metric("FY26 TACOS", fmt_inr(total_fy26_tacos * 1e5))
-            s3.metric("FY26 EBITDA", fmt_inr(total_fy26_ebitda * 1e5))
-            s4.metric("Avg EBITDA %", f"{avg_ebitda*100:.0f}%")
-            
-            # Tier-wise breakdown
-            pl_m = pl_data.merge(master[['code','tier','zone']], on='code', how='left')
             tier_summary = pl_m.groupby('tier').agg(
                 clinics=('code', 'count'),
-                total_sales=('fy26_sales_l', 'sum'),
                 avg_ebitda=('fy26_ebitda_pct', 'mean')
             ).reset_index()
-            tier_summary['total_sales'] = tier_summary['total_sales'].apply(lambda x: fmt_inr(x * 1e5))
-            tier_summary['avg_ebitda'] = tier_summary['avg_ebitda'].apply(lambda x: f"{x*100:.0f}%")
-            st.dataframe(tier_summary.rename(columns={
-                'tier': 'Tier', 'clinics': 'Clinics', 'total_sales': 'FY26 Sales', 'avg_ebitda': 'Avg EBITDA%'
-            }), use_container_width=True)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# TAB 4: PINCODE DRILL-DOWN
-# ═══════════════════════════════════════════════════════════════════════════
-with tab4:
-    st.markdown("### Online-to-Offline Demand Mapping")
-    
-    pin_sub1, pin_sub2 = st.tabs(["🌐 Web Demand by City", "🏥 Clinic Catchment Pincodes"])
-    
-    with pin_sub1:
-        web_city = data['web_city'].copy()
-        web_city = web_city[web_city['total_orders'] > 0].sort_values('total_orders', ascending=False)
-        
-        # Top 30 cities
-        top_cities = web_city.head(30)
-        
-        fig_wc = go.Figure(go.Bar(
-            y=top_cities['City'], x=top_cities['total_orders'],
-            orientation='h', marker_color='#FF6B35',
-            text=top_cities['total_orders'].apply(lambda x: fmt_num(x)),
-            textposition='outside'
-        ))
-        fig_wc.update_layout(title="Top 30 Cities by Web Orders (All-Time)", height=700,
-                            margin=dict(l=120, r=60, t=40, b=20),
-                            xaxis_title="Total Orders", yaxis_title="",
-                            yaxis=dict(autorange='reversed'))
-        st.plotly_chart(fig_wc, use_container_width=True)
-        
-        # Cities with high web demand but no clinic
-        clinic_cities = set(master['city'].unique())
-        web_city['has_clinic'] = web_city['City'].isin(clinic_cities) | web_city['City'].apply(
-            lambda x: any(x.lower() in c.lower() or c.lower() in x.lower() for c in clinic_cities) if pd.notna(x) else False)
-        
-        whitespace = web_city[~web_city['has_clinic']].head(20)
-        if len(whitespace) > 0:
-            st.markdown("#### 🎯 High-Demand Cities Without Clinics")
-            fig_ws = go.Figure(go.Bar(
-                y=whitespace['City'], x=whitespace['total_orders'],
-                orientation='h', marker_color='#28a745',
-                text=whitespace['total_orders'].apply(lambda x: fmt_num(x)),
-                textposition='outside'
-            ))
-            fig_ws.update_layout(title="Top 20 Unserved Cities by Web Demand", height=500,
-                                margin=dict(l=120, r=60, t=40, b=20),
-                                xaxis_title="Total Web Orders", yaxis_title="",
-                                yaxis=dict(autorange='reversed'))
-            st.plotly_chart(fig_ws, use_container_width=True)
-        
-        # Year-over-year trend
-        web_pin = data['web_pin']
-        yoy = web_pin.groupby('year')['orders'].sum().reset_index()
-        yoy = yoy[yoy['year'] >= 2020]
-        fig_yoy = go.Figure(go.Bar(x=yoy['year'].astype(str), y=yoy['orders'],
-                                    marker_color='#4ECDC4',
-                                    text=yoy['orders'].apply(lambda x: fmt_num(x)),
-                                    textposition='outside'))
-        fig_yoy.update_layout(title="Web Orders by Year", height=300,
-                             margin=dict(l=20, r=20, t=40, b=20), yaxis_title="Orders")
-        st.plotly_chart(fig_yoy, use_container_width=True)
-    
-    with pin_sub2:
-        # Clinic-wise pincode catchment
-        pin_demand = data['pin_demand']
-        pin_ft = data['pin_ft']
-        
-        clinic_options = sorted(pin_demand['Clinic Loc'].dropna().unique().tolist()) if 'Clinic Loc' in pin_demand.columns else []
-        
-        if clinic_options:
-            sel_clinic_pin = st.selectbox("Select Clinic", clinic_options, key='pin_clinic')
             
-            clinic_pins = pin_demand[pin_demand['Clinic Loc'] == sel_clinic_pin].sort_values('qty', ascending=False).head(25)
+            if 'fy26_sales_l' in pl_m.columns:
+                tier_sales = pl_m.groupby('tier')['fy26_sales_l'].sum().reset_index()
+                tier_summary = tier_summary.merge(tier_sales, on='tier', how='left')
+                tier_summary['total_sales'] = tier_summary['fy26_sales_l'].apply(lambda x: fmt_inr(x * 1e5) if pd.notna(x) else '-')
             
-            if len(clinic_pins) > 0:
-                c_p1, c_p2 = st.columns([2, 1])
-                with c_p1:
-                    fig_cp = go.Figure(go.Bar(
-                        y=clinic_pins['Zip'].astype(str), x=clinic_pins['qty'],
-                        orientation='h', marker_color='#FF6B35',
-                        text=clinic_pins['qty'].apply(lambda x: fmt_num(x)),
-                        textposition='outside'
-                    ))
-                    fig_cp.update_layout(title=f"Top 25 Pincodes — {sel_clinic_pin}", height=600,
-                                        margin=dict(l=80, r=40, t=40, b=20),
-                                        xaxis_title="Quantity", yaxis_title="Pincode",
-                                        yaxis=dict(autorange='reversed'))
-                    st.plotly_chart(fig_cp, use_container_width=True)
-                
-                with c_p2:
-                    st.markdown("**Top Pincodes**")
-                    display_pins = clinic_pins[['Zip', 'City', 'State', 'qty', 'revenue']].copy()
-                    display_pins['revenue'] = display_pins['revenue'].apply(lambda x: fmt_inr(x) if pd.notna(x) else '-')
-                    display_pins.columns = ['Pincode', 'City', 'State', 'Qty', 'Revenue']
-                    st.dataframe(display_pins, use_container_width=True, height=550)
-        
-        # First-time customer pincodes (cross-clinic)
-        with st.expander("📍 All First-Time Customer Pincodes (Top 50)"):
-            ft_top = pin_ft.sort_values('Total Quantity', ascending=False).head(50)
-            ft_top['Total'] = ft_top['Total'].apply(lambda x: fmt_inr(x) if pd.notna(x) else '-')
-            st.dataframe(ft_top.rename(columns={
-                'Pincode': 'Pincode', 'Total Quantity': 'First-Time Qty',
-                'Total': 'Revenue', 'SubCity': 'Area', 'City': 'City', 'State': 'State'
-            }), use_container_width=True, height=500)
+            tier_summary['avg_ebitda'] = tier_summary['avg_ebitda'].apply(lambda x: pct(x))
+            
+            display_cols = ['tier', 'clinics', 'avg_ebitda']
+            col_rename = {'tier': 'Tier', 'clinics': 'Clinics', 'avg_ebitda': 'Avg EBITDA%'}
+            if 'total_sales' in tier_summary.columns:
+                display_cols.append('total_sales')
+                col_rename['total_sales'] = 'FY26 Sales'
+            
+            st.dataframe(tier_summary[display_cols].rename(columns=col_rename), use_container_width=True)
 
 
-# ── Footer ──────────────────────────────────────────────────────────────────
+# ── Footer ──────────────────────────────────────────────────────────────
 st.markdown("---")
-st.caption(f"Data: Gynoveda MIS ({month_cols[0]} to {month_cols[-1]}) · {len(master)} clinics · Built Feb 2026")
+st.caption(f"Gynoveda Expansion Intelligence · {active_months[0]} to {active_months[-1]} · {len(master)} clinics · CEI Engine v1.0")
