@@ -172,7 +172,15 @@ with st.sidebar:
     scenario_mult = {"Conservative": 0.85, "Base Case": 1.0, "Optimistic": 1.15}[scenario]
 
     st.markdown("---")
-    show_threshold = st.slider("Same-City NTB Appt Threshold", 100, 500, 150, 10)
+    show_threshold = st.slider("Same-City NTB Show Threshold", 100, 500, 150, 10)
+
+    ntb_pop_ratio = st.radio(
+        "NTB:Pop Ratio for New Cities",
+        ["Median (3.8/lakh)", "Conservative (P25: 2.6/lakh)"],
+        index=0,
+        help="Ratio used to estimate monthly NTB potential for new cities based on population.",
+    )
+    ntb_ratio_val = 3.8 if "Median" in ntb_pop_ratio else 2.6
     rev_per_ntb = st.number_input("₹ Revenue per NTB Patient", value=22000, step=1000)
     show_to_conv = st.slider("Show → Purchase Conversion%", 50, 100, 75, 5,
                               help="Of patients who show up, what % convert to NTB purchase. Verified ~75-80% from clinic order data (Jul-25 to Jan-26).")
@@ -198,6 +206,10 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+# ── EARLY COMPUTATION (needed across slides) ──────────────────────────────
+conversion_rate = show_to_conv / 100
+opex_monthly = monthly_opex * 1e5
+capex = capex_per_clinic * 1e5
 
 # ── HEADER ──────────────────────────────────────────────────────────────────
 st.markdown("# 🏥 Gynoveda FY27 Expansion Plan")
@@ -462,72 +474,261 @@ with st.expander("📋 Full State-Wise Benchmark Detail"):
 # ═══════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="slide-header">🗺️ SLIDE 3 — EXPANSION STRATEGY: Where to Open Next'
-    '<div class="slide-sub">Micro-Market Identification for Saturated Clinics</div></div>',
+    '<div class="slide-header">🗺️ EXPANSION STRATEGY — Where to Open Next'
+    '<div class="slide-sub">Same-City Satellites & New City Opportunities</div></div>',
     unsafe_allow_html=True,
 )
 
-saturated = cp[cp["l3m_appt"] >= show_threshold].sort_values("l3m_appt", ascending=False)
+exp_tab1, exp_tab2 = st.tabs(["🏙️ Same-City Expansion", "🌍 New City Expansion"])
 
-st.markdown(f"**Clinics at Capacity (≥{show_threshold} NTB Appt/Month, L3M avg)**")
+# ── TAB 1: SAME-CITY EXPANSION ───────────────────────────────────────────
+with exp_tab1:
+    saturated = cp[cp["l3m_appt"] >= show_threshold].sort_values("l3m_appt", ascending=False)
 
-col_sat_chart, col_sat_cards = st.columns([1.2, 1])
+    st.markdown(f"### Same-City — Clinics at Capacity (≥{show_threshold} NTB Shows/Month)")
 
-with col_sat_chart:
-    top_sat = saturated.head(10).sort_values("l3m_appt", ascending=True)
-    bar_colors = ["#28a745" if s >= 0.25 else "#ffc107" if s >= 0.18 else "#dc3545"
-                  for s in top_sat["l3m_show"]]
-    fig_sat = go.Figure(go.Bar(
-        y=top_sat["clinic_name"], x=top_sat["l3m_appt"], orientation="h",
-        marker_color=bar_colors,
-        text=top_sat.apply(
-            lambda r: f"{int(r['l3m_appt'])} appt | {r['l3m_ntb']} vis | {r['util_pct']:.0%} util | {r['l3m_show']:.0%} show%",
-            axis=1,
-        ),
-        textposition="inside", textfont=dict(color="white", size=11),
-    ))
-    fig_sat.add_vline(x=show_threshold, line_dash="dash", line_color="red",
-                      annotation_text=f"Threshold: {show_threshold}")
-    fig_sat.update_layout(
-        title=f"Clinics with ≥{show_threshold} Avg Monthly Appts",
-        height=380, margin=dict(l=110, r=20, t=40, b=40),
-        xaxis_title="Monthly NTB Appointments (L3M)",
-    )
-    st.plotly_chart(fig_sat, use_container_width=True)
-    mc1, mc2 = st.columns(2)
-    mc1.metric("Clinics Qualifying", f"{len(saturated)}")
-    mc2.metric("Avg Utilization", f"{saturated['util_pct'].mean():.0%}")
+    col_sat_chart, col_sat_cards = st.columns([1.2, 1])
 
-with col_sat_cards:
-    st.markdown("**🔍 Top 5 Saturated — Expansion Candidates**")
+    with col_sat_chart:
+        # Step 1: Saturated clinics bar chart
+        st.markdown(f"**Step 1: Clinics with ≥{show_threshold} Avg Monthly NTB Shows**")
+        top_sat = saturated.head(10).sort_values("l3m_ntb", ascending=True)
+        bar_colors = ["#28a745" if s >= 0.25 else "#ffc107" if s >= 0.18 else "#dc3545"
+                      for s in top_sat["l3m_show"]]
+        fig_sat = go.Figure(go.Bar(
+            y=top_sat["clinic_name"], x=top_sat["l3m_ntb"], orientation="h",
+            marker_color=bar_colors,
+            text=top_sat.apply(
+                lambda r: f"{r['l3m_ntb']} shows | {r['util_pct']:.0%} util | {r['l3m_show']:.0%} show%",
+                axis=1,
+            ),
+            textposition="inside", textfont=dict(color="white", size=11),
+        ))
+        fig_sat.add_vline(x=show_threshold, line_dash="dash", line_color="red",
+                          annotation_text=f"Threshold: {show_threshold}")
+        fig_sat.update_layout(
+            height=380, margin=dict(l=110, r=20, t=10, b=40),
+            xaxis_title="Monthly NTB Shows",
+        )
+        st.plotly_chart(fig_sat, use_container_width=True)
+        mc1, mc2 = st.columns(2)
+        mc1.metric("Clinics Qualify", f"{len(saturated)}")
+        mc2.metric("Avg Utilization", f"{saturated['util_pct'].mean():.0%}")
 
-    # Get top catchment areas from clinic_zip_summary
-    czs = data["clinic_zip"]
+    with col_sat_cards:
+        czs = data["clinic_zip"]
+        for _, row in saturated.head(5).iterrows():
+            clinic_zips = czs[czs["Clinic_Loc"] == row["clinic_name"]]
+            top_cities = clinic_zips.sort_values("total_qty", ascending=False).head(3)
+            top_areas = ", ".join(top_cities["City"].dropna().unique()[:3])
+            city_label = clinic_state_map.get(row["clinic_name"], row.get("city_code", ""))
+            trend_emoji = "🟢" if row["l3m_show"] >= 0.25 else "🟡" if row["l3m_show"] >= 0.18 else "🔴"
+            st.markdown(f"""
+            <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin:8px 0;border-left:4px solid #FF6B35;">
+            <b>{row['clinic_name']}</b> ({city_label}) — {int(row['cabins'])} cabins<br>
+            Shows: <b>{row['l3m_ntb']}/mo</b> | Util: <b>{row['util_pct']:.0%}</b> |
+            Show%: <b>{row['l3m_show']:.1%}</b> | {trend_emoji}
+            <span style="color:#888;">Declining L3M</span><br>
+            </div>
+            """, unsafe_allow_html=True)
 
-    for _, row in saturated.head(5).iterrows():
-        clinic_zips = czs[czs["Clinic_Loc"] == row["clinic_name"]]
-        top_cities = clinic_zips.sort_values("total_qty", ascending=False).head(3)
-        top_areas = ", ".join(top_cities["City"].dropna().unique()[:3])
+    # Step 2: Micro-markets for saturated clinics
+    st.markdown("---")
+    st.markdown("**Step 2: Micro-Market Identification for Saturated Clinics**")
+    exp_same = data["expansion_same"]
 
-        trend_emoji = "🟢" if row["l3m_show"] >= 0.25 else "🟡" if row["l3m_show"] >= 0.18 else "🔴"
-        visits_mo = int(row["l3m_appt"] * row["l3m_show"])
-        st.markdown(f"""
-        <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin:8px 0;border-left:4px solid #FF6B35;">
-        <b>{row['clinic_name']}</b> ({row['city_code']}) — {int(row['cabins'])} cabins<br>
-        Appt: <b>{int(row['l3m_appt'])}/mo</b> | Visits: <b>{visits_mo}/mo</b> |
-        Show%: <b>{row['l3m_show']:.0%}</b> | Util: <b>{row['util_pct']:.0%}</b> | {trend_emoji}<br>
-        <span style="color:#666;font-size:0.8rem;">Top catchments: {top_areas}</span>
+    # Map city codes to expansion_same city names
+    _code_to_city = {
+        "MUM": "Mumbai", "NDL": "Delhi", "BLR": "Bengaluru", "HYD": "Hyderabad",
+        "KOL": "Kolkata", "AHM": "Ahmedabad", "PUN": "Pune", "LKO": "Lucknow",
+        "SUR": "Surat", "PAT": "Patna", "THN": "Mumbai", "NVM": "Mumbai",
+    }
+
+    # Group saturated clinics by parent city
+    micro_by_city = {}
+    for _, row in saturated.iterrows():
+        cc = str(row.get("city_code", ""))
+        parent_city = _code_to_city.get(cc, cc)
+        if parent_city in exp_same["City"].values:
+            if parent_city not in micro_by_city:
+                micro_by_city[parent_city] = {"shows": 0, "count": len(exp_same[exp_same["City"] == parent_city])}
+            micro_by_city[parent_city]["shows"] += row["l3m_ntb"]
+
+    if micro_by_city:
+        mc_list = [{"city": k, "parent_shows": v["shows"], "micro_count": v["count"]}
+                   for k, v in micro_by_city.items()]
+        mc_df = pd.DataFrame(mc_list).sort_values("parent_shows", ascending=False).head(6)
+        col_mc, col_mc_info = st.columns([1, 1])
+        with col_mc:
+            fig_mc = go.Figure(go.Bar(
+                y=mc_df["city"][::-1], x=mc_df["micro_count"][::-1], orientation="h",
+                marker_color="#28a745",
+                text=mc_df.apply(
+                    lambda r: f"{r['micro_count']} pins | Parent: {r['parent_shows']} shows/mo", axis=1
+                ).values[::-1],
+                textposition="inside", textfont=dict(color="white"),
+            ))
+            fig_mc.update_layout(
+                title="Step 2: Proposed Micro-Markets by Saturated City",
+                height=300, margin=dict(l=100, r=20, t=40, b=20),
+            )
+            st.plotly_chart(fig_mc, use_container_width=True)
+        with col_mc_info:
+            total_no_shows = saturated["l3m_appt"].sum() - saturated["l3m_ntb"].sum()
+            recoverable = int(total_no_shows * 0.30)
+            recovery_rev = recoverable * conversion_rate * rev_per_ntb
+            st.markdown(f"""
+            <div style="background:#fff3cd;border-radius:8px;padding:16px;border-left:4px solid #ff6b35;">
+            <b>📍 No-Show Recovery Logic:</b><br><br>
+            These {len(saturated)} clinics book <b>{int(saturated['l3m_appt'].sum()):,}</b> NTB appointments/mo
+            but only <b>{int(saturated['l3m_ntb'].sum()):,}</b> show up.<br><br>
+            <b>{int(total_no_shows):,} patients/month</b> are no-shows from these saturated clinics.
+            Distance and travel time are primary barriers.<br><br>
+            Satellite clinics in top no-show pincodes can recover an estimated
+            <b>30%</b> of these patients → <b>{fmt_inr(recovery_rev)}/month</b> in recovered revenue.<br><br>
+            <b>This is not new CAC — these patients are already acquired.</b>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # City-level micro-market expanders
+    unique_cities_same = exp_same["City"].unique()
+    for city_name in unique_cities_same[:6]:
+        city_rows = exp_same[exp_same["City"] == city_name]
+        with st.expander(f"📍 {city_name} — {len(city_rows)} Micro-Markets"):
+            st.dataframe(
+                city_rows[["S.No", "Micro-Market Pincode", "Micro-Market Area",
+                           "Expansion Rationale", "National IVFs Present", "Regional IVFs Present"]],
+                hide_index=True, use_container_width=True,
+            )
+
+# ── TAB 2: NEW CITY EXPANSION ────────────────────────────────────────────
+with exp_tab2:
+    exp_new = data["expansion_new"]
+
+    # Aggregate by city
+    new_cities = exp_new.groupby(["City", "State", "Tier"]).agg(
+        web_orders=("Web Order Qty", "first"),
+        population=("Est. Population", "first"),
+        proj_ntb=("Projected Monthly NTB", "first"),
+        locations=("Pincode", "count"),
+    ).reset_index().sort_values("web_orders", ascending=False)
+
+    # Revenue projections
+    new_cities["monthly_rev"] = (new_cities["proj_ntb"] * conversion_rate * rev_per_ntb).astype(int)
+    new_cities["annual_rev"] = new_cities["monthly_rev"] * 12
+    new_cities["monthly_profit"] = new_cities["monthly_rev"] - opex_monthly
+    new_cities["profitable"] = new_cities["monthly_profit"] > 0
+
+    total_new_annual = new_cities["annual_rev"].sum()
+    total_new_profit = new_cities[new_cities["profitable"]]["monthly_profit"].sum() * 12
+    profitable_count = new_cities["profitable"].sum()
+
+    st.markdown("### New City Expansion — Untapped Markets with Online Demand")
+
+    # Header metrics
+    nc1, nc2, nc3, nc4 = st.columns(4)
+    nc1.metric("New City Candidates", f"{len(new_cities)}", f"{new_cities['locations'].sum()} micro-markets")
+    nc2.metric("Total Web Orders", fmt_num(new_cities["web_orders"].sum()), "All-time 1cx orders")
+    nc3.metric("Projected Annual Revenue", fmt_inr(total_new_annual), f"@ {ntb_pop_ratio.split('(')[0].strip()} ratio")
+    nc4.metric("Profitable Cities", f"{profitable_count} of {len(new_cities)}", f"Above ₹{opex_monthly/1e5:.1f}L OpEx")
+
+    col_nc_chart, col_nc_info = st.columns([1.5, 1])
+
+    with col_nc_chart:
+        # Top cities bar chart by online demand
+        nc_sorted = new_cities.sort_values("web_orders", ascending=True)
+        tier_colors = {"Tier-2": "#1a73e8", "Tier-3": "#34a853"}
+        fig_nc = go.Figure(go.Bar(
+            y=nc_sorted["City"],
+            x=nc_sorted["web_orders"],
+            orientation="h",
+            marker_color=[tier_colors.get(t, "#999") for t in nc_sorted["Tier"]],
+            text=nc_sorted.apply(
+                lambda r: f"{r['web_orders']:,} orders | {r['Tier']} | ₹{r['annual_rev']/1e5:.0f}L/yr",
+                axis=1,
+            ),
+            textposition="inside",
+            textfont=dict(color="white", size=11),
+        ))
+        fig_nc.update_layout(
+            title="New City Opportunities — Ranked by Online Demand (1cx Orders)",
+            height=500, margin=dict(l=130, r=20, t=40, b=40),
+            xaxis_title="All-Time Web Orders",
+        )
+        st.plotly_chart(fig_nc, use_container_width=True)
+
+    with col_nc_info:
+        # Tier breakdown
+        tier_summary = new_cities.groupby("Tier").agg(
+            cities=("City", "count"),
+            total_rev=("annual_rev", "sum"),
+            avg_orders=("web_orders", "mean"),
+        ).reset_index()
+
+        st.markdown("""
+        <div style="background:#e8f5e9;border-radius:8px;padding:16px;border-left:4px solid #28a745;">
+        <b>🌍 New City Strategy:</b><br><br>
+        <b>Selection Criteria:</b><br>
+        • ≥850+ all-time web orders (proven online demand)<br>
+        • No existing Gynoveda clinic within 50km<br>
+        • Population ≥1.5 lakh (addressable market)<br>
+        • IVF competitor presence confirms fertility demand<br><br>
+        <b>Revenue Model:</b><br>
+        NTB Projected = Population × NTB:Pop ratio<br>
+        Monthly Rev = NTB × 75% Conv × ₹22K/patient<br><br>
+        <b>Rollout:</b> 5 micro-market pincodes scouted per city<br>
+        for optimal clinic placement.
         </div>
         """, unsafe_allow_html=True)
 
-# Same-city micro-market table from pre-computed data
-st.markdown("**📍 Same-City Expansion Micro-Markets (Pre-Identified)**")
-exp_same = data["expansion_same"]
-st.dataframe(
-    exp_same[["S.No", "City", "Existing Clinics", "Micro-Market Pincode",
-              "Micro-Market Area", "Expansion Rationale"]].head(15),
-    hide_index=True, use_container_width=True, height=350,
-)
+        st.markdown("")
+        for _, tier_row in tier_summary.iterrows():
+            tier_label = tier_row["Tier"]
+            color = "#1a73e8" if "2" in tier_label else "#34a853"
+            st.markdown(f"""
+            <div style="background:#f8f9fa;border-radius:6px;padding:10px;margin:6px 0;border-left:4px solid {color};">
+            <b>{tier_label}</b>: {tier_row['cities']} cities |
+            ₹{tier_row['total_rev']/1e7:.1f} Cr/yr |
+            Avg {tier_row['avg_orders']:.0f} orders
+            </div>
+            """, unsafe_allow_html=True)
+
+    # Revenue projection table
+    st.markdown("---")
+    st.markdown("**Per-City Revenue Projection**")
+    proj_df = new_cities[["City", "State", "Tier", "web_orders", "population",
+                          "proj_ntb", "monthly_rev", "annual_rev", "profitable"]].copy()
+    proj_df.columns = ["City", "State", "Tier", "Web Orders", "Est. Population",
+                       "Proj. NTB/mo", "Monthly Rev (₹)", "Annual Rev (₹)", "Profitable"]
+    proj_df["Monthly Rev (₹)"] = proj_df["Monthly Rev (₹)"].apply(lambda x: f"₹{x/1e5:.1f}L")
+    proj_df["Annual Rev (₹)"] = proj_df["Annual Rev (₹)"].apply(lambda x: f"₹{x/1e5:.0f}L")
+    proj_df["Profitable"] = proj_df["Profitable"].map({True: "✅", False: "❌"})
+    st.dataframe(proj_df, hide_index=True, use_container_width=True, height=400)
+
+    # Expandable city-level micro-market details
+    st.markdown("---")
+    st.markdown("**Micro-Market Scouting — 5 Locations per City**")
+    for city_name in new_cities["City"]:
+        city_data = exp_new[exp_new["City"] == city_name]
+        city_info = new_cities[new_cities["City"] == city_name].iloc[0]
+        with st.expander(f"🌍 {city_name} ({city_info['State']}) — {city_info['Tier']} | "
+                         f"{city_info['web_orders']:,} orders | ₹{city_info['annual_rev']/1e5:.0f}L/yr"):
+            st.dataframe(
+                city_data[["Pincode", "Area Name", "Location Rationale",
+                           "National IVFs", "Regional IVFs"]],
+                hide_index=True, use_container_width=True,
+            )
+
+    # Summary callout
+    st.markdown(f"""
+    <div style="background:#e8f5e9;border-radius:8px;padding:16px;margin-top:16px;border-left:4px solid #28a745;">
+    <b>💰 New City Portfolio Impact:</b><br>
+    {len(new_cities)} new cities × 5 micro-market options each = {new_cities['locations'].sum()} scouted locations<br>
+    Projected Annual Revenue: <b>{fmt_inr(total_new_annual)}</b> |
+    Profitable: <b>{profitable_count}/{len(new_cities)}</b> cities above ₹{opex_monthly/1e5:.1f}L OpEx breakeven<br>
+    Combined with Same-City expansion, this creates a comprehensive national footprint strategy.
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
