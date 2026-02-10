@@ -173,6 +173,8 @@ with st.sidebar:
     st.markdown("---")
     show_threshold = st.slider("Same-City NTB Appt Threshold", 100, 500, 150, 10)
     rev_per_ntb = st.number_input("₹ Revenue per NTB Patient", value=22000, step=1000)
+    show_to_conv = st.slider("Show → Purchase Conversion%", 50, 100, 75, 5,
+                              help="Of patients who show up, what % convert to NTB purchase. Verified ~75-80% from clinic order data (Jul-25 to Jan-26).")
     monthly_opex = st.number_input("Monthly OpEx per Clinic (₹L)", value=3.1, step=0.1, format="%.1f")
     capex_per_clinic = st.number_input("Capex per Clinic (₹L)", value=28.0, step=1.0, format="%.1f")
     # Internal benchmark: P75 of active clinics (≥30 appt/mo)
@@ -187,9 +189,10 @@ with st.sidebar:
     st.markdown("---")
     st.markdown(
         '<div style="background:#f0f4ff;border-radius:6px;padding:10px;font-size:0.72rem;color:#444;">'
-        '<b>📚 Benchmark</b><br>'
-        '• <b>Gynoveda P75 Internal:</b> Top-quartile Show% of active clinics (≥30 appt/mo). '
-        'Proven & achievable — 25% of your own clinics already exceed this.'
+        '<b>📚 Data Model & Benchmark</b><br>'
+        '<b>Funnel:</b> Appt Booked → Show% (~20%) → Clinic Visit → Conversion (75%) → NTB Purchase<br>'
+        '<b>Show% Benchmark:</b> Gynoveda P75 of active clinics. Proven & achievable.<br>'
+        '<b>Conversion:</b> Verified 75-80% from ZipData clinic orders (Jul-25 to Jan-26).'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -422,10 +425,11 @@ sc3.markdown(f'<div class="insight-card insight-red"><b style="font-size:2rem;co
 
 st.markdown(
     '<div style="background:#f0f4ff;border-left:3px solid #1a73e8;padding:10px 14px;border-radius:0 6px 6px 0;margin:12px 0;font-size:0.8rem;color:#555;">'
-    f'<b>📚 Benchmark:</b> '
-    f'Gynoveda Internal P75 = <b>{industry_show}%</b> Show%. '
-    f'This is the top-quartile threshold of active clinics (≥30 appt/mo). '
-    f'<b>{_above_bench}</b> clinics already achieve or exceed this, proving it is attainable across diverse markets.'
+    f'<b>📚 Data Model:</b> '
+    f'NTB Appt = total appointments booked. '
+    f'<b>Show% = % who actually visit the clinic</b> (P75 benchmark: {industry_show}%). '
+    f'Of those who show, <b>{show_to_conv}% convert to NTB purchase</b> (verified from ZipData Jul-25 to Jan-26). '
+    f'Revenue per converted NTB = ₹{rev_per_ntb:,}.'
     '</div>',
     unsafe_allow_html=True,
 )
@@ -523,7 +527,7 @@ st.markdown(
 
 target_show = industry_show / 100
 cp["show_gap"] = (target_show - cp["l3m_show"]).clip(lower=0)
-conversion_rate = data["rev_assumptions"].get("conversion_pct", 0.4)
+conversion_rate = show_to_conv / 100
 rev_per_show = conversion_rate * rev_per_ntb
 cp["additional_ntb"] = (cp["l3m_appt"] * cp["show_gap"]).astype(int)
 cp["additional_rev_annual"] = cp["additional_ntb"] * rev_per_show * 12
@@ -612,7 +616,7 @@ electricity = 0.05e5
 um1, um2, um3, um4, um5, um6 = st.columns(6)
 um1.metric("Monthly OpEx/Clinic", fmt_inr(opex_monthly), "Rent + Dr×2 + Staff")
 um2.metric("Capex (Construction)", fmt_inr(capex))
-um3.metric("Breakeven NTB Shows", f"{breakeven_shows}/month", f"@ {conversion_rate:.0%} conv × {fmt_inr(rev_per_ntb)}")
+um3.metric("Breakeven NTB Shows", f"{breakeven_shows}/month", f"@ {conversion_rate:.0%} conv × {fmt_inr(rev_per_ntb)}/patient")
 um4.metric("Profitable Clinics", f"{profitable_clinics} of {len(cp)}", f"↑ {len(cp)-profitable_clinics} below breakeven")
 um5.metric("Avg Margin", f"{avg_profit/avg_revenue*100:.0f}%" if avg_revenue > 0 else "N/A")
 um6.metric("Network Annual Profit", fmt_inr(network_annual_profit), f"After {fmt_inr(opex_monthly)}/mo OpEx")
