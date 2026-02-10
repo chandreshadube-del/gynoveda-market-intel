@@ -1,787 +1,898 @@
-import { useState, useMemo } from "react";
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, ComposedChart, PieChart, Pie, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend } from "recharts";
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import numpy as np
+from datetime import datetime
+import warnings
+warnings.filterwarnings("ignore")
 
-// ═══════════════════════════════════════════════════════════
-// DATA
-// ═══════════════════════════════════════════════════════════
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PAGE CONFIG
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+st.set_page_config(
+    page_title="Gynoveda North Star",
+    page_icon="star",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
-const MONTHLY_CLINIC_TREND = [
-  { month: "Jan 25", qty: 38331, rev: 315, visits: 17077, appt: 7631, showPct: 19.4 },
-  { month: "Feb 25", qty: 53109, rev: 394, visits: 20312, appt: 11395, showPct: 16.8 },
-  { month: "Mar 25", qty: 61803, rev: 475, visits: 23765, appt: 10700, showPct: 16.6 },
-  { month: "Apr 25", qty: 74212, rev: 598, visits: 29262, appt: 13484, showPct: 20.4 },
-  { month: "May 25", qty: 93878, rev: 725, visits: 36875, appt: 15948, showPct: 22.8 },
-  { month: "Jun 25", qty: 121365, rev: 927, visits: 46918, appt: 19623, showPct: 22.4 },
-  { month: "Jul 25", qty: 150308, rev: 1105, visits: 50186, appt: 27030, showPct: 23.3 },
-  { month: "Aug 25", qty: 172717, rev: 1221, visits: 51814, appt: 32457, showPct: 22.3 },
-  { month: "Sep 25", qty: 166051, rev: 1181, visits: 47794, appt: 28477, showPct: 21.0 },
-  { month: "Oct 25", qty: 152121, rev: 1042, visits: 39286, appt: 26807, showPct: 20.0 },
-  { month: "Nov 25", qty: 174238, rev: 1278, visits: 42206, appt: 28941, showPct: 19.0 },
-  { month: "Dec 25", qty: 168289, rev: 1227, visits: 38101, appt: 24195, showPct: 20.0 },
-  { month: "Jan 26", qty: 159511, rev: 1191, visits: 35481, appt: 23641, showPct: 19.0 },
-];
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# CUSTOM CSS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-const ZONE_DATA = [
-  { zone: "West 1", qty: 501783, rev: 4010, appt: 64051, showPct: 24.1, clinics: 15, color: "#FF6B35" },
-  { zone: "North 1", qty: 328416, rev: 2318, appt: 56422, showPct: 17.5, clinics: 13, color: "#1E96FC" },
-  { zone: "West 2", qty: 283382, rev: 1961, appt: 46699, showPct: 18.5, clinics: 12, color: "#F0C808" },
-  { zone: "South", qty: 236559, rev: 1840, appt: 30786, showPct: 26.8, clinics: 8, color: "#2EC4B6" },
-  { zone: "East", qty: 229272, rev: 1594, appt: 28761, showPct: 25.7, clinics: 8, color: "#9B5DE5" },
-  { zone: "North 2", qty: 159011, rev: 1226, appt: 43610, showPct: 13.8, clinics: 5, color: "#F15BB5" },
-];
+/* Global */
+.stApp { background: #0A0A0F; }
+html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; color: #E0E0E0; }
+header[data-testid="stHeader"] { background: transparent; }
+.block-container { padding-top: 1.5rem; padding-bottom: 1rem; max-width: 1400px; }
 
-const TOP_CLINICS = [
-  { name: "Malad", zone: "West 1", region: "MMR", rev: 734.7, qty: 92710, pincodes: 485, cabin: 3, appt: 7082, showPct: 30.5, launch: "Oct 2023" },
-  { name: "JP Nagar", zone: "South", region: "BMR", rev: 553.0, qty: 69539, pincodes: 467, cabin: 3, appt: 5779, showPct: 33.7, launch: "Dec 2023" },
-  { name: "Lajpat", zone: "North 1", region: "NCR", rev: 513.2, qty: 69911, pincodes: 436, cabin: 3, appt: 8613, showPct: 21.1, launch: "Jan 2024" },
-  { name: "Dadar", zone: "West 1", region: "MMR", rev: 505.7, qty: 67822, pincodes: 289, cabin: 2, appt: 8298, showPct: 23.3, launch: "Aug 2024" },
-  { name: "Viman Nagar", zone: "West 1", region: "PMR", rev: 463.6, qty: 56597, pincodes: 342, cabin: 2, appt: 7108, showPct: 21.8, launch: "Sep 2023" },
-  { name: "Rajouri", zone: "North 1", region: "NCR", rev: 450.8, qty: 62270, pincodes: 260, cabin: 3, appt: 6754, showPct: 17.2, launch: "Nov 2023" },
-  { name: "Ballygunge", zone: "East", region: "KMR", rev: 437.2, qty: 57874, pincodes: 766, cabin: 2, appt: 6428, showPct: 27.1, launch: "Nov 2023" },
-  { name: "Thane", zone: "West 1", region: "MMR", rev: 426.1, qty: 55610, pincodes: 242, cabin: 2, appt: 7207, showPct: 25.3, launch: "Jul 2024" },
-  { name: "Badakdev", zone: "West 2", region: "Gujarat", rev: 412.9, qty: 64791, pincodes: 317, cabin: 2, appt: 8956, showPct: 20.9, launch: "Mar 2024" },
-  { name: "Madhapur", zone: "South", region: "HMR", rev: 387.3, qty: 51836, pincodes: 355, cabin: 3, appt: 5889, showPct: 31.5, launch: "Mar 2024" },
-  { name: "Kharghar", zone: "West 1", region: "MMR", rev: 385.0, qty: 48567, pincodes: 105, cabin: 2, appt: 4453, showPct: 28.6, launch: "Dec 2024" },
-  { name: "Dharam", zone: "West 1", region: "ROM", rev: 359.2, qty: 48533, pincodes: 305, cabin: 2, appt: 9403, showPct: 15.6, launch: "Sep 2024" },
-  { name: "Virar", zone: "West 1", region: "MMR", rev: 323.5, qty: 46709, pincodes: 95, cabin: 2, appt: 4638, showPct: 28.1, launch: "Oct 2024" },
-  { name: "Sec-51", zone: "North 1", region: "NCR", rev: 308.0, qty: 42240, pincodes: 218, cabin: 2, appt: 6017, showPct: 20.3, launch: "May 2024" },
-  { name: "Gomati", zone: "North 2", region: "UP", rev: 294.0, qty: 35227, pincodes: 413, cabin: 2, appt: 9485, showPct: 14.7, launch: "Jul 2024" },
-];
+/* Hide streamlit branding */
+#MainMenu, footer { visibility: hidden; }
 
-const ECOM_YEARLY = [
-  { year: "2020", orders: 17157, rev: 2.8 },
-  { year: "2021", orders: 40701, rev: 7.6 },
-  { year: "2022", orders: 140046, rev: 20.8 },
-  { year: "2023", orders: 139248, rev: 27.3 },
-  { year: "2024", orders: 40939, rev: 10.6 },
-  { year: "2025", orders: 12921, rev: 3.3 },
-];
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 4px; background: transparent; border-bottom: 1px solid rgba(255,255,255,0.04);
+    padding-bottom: 0;
+}
+.stTabs [data-baseweb="tab"] {
+    background: transparent; border-radius: 8px 8px 0 0; padding: 10px 24px;
+    color: #666; font-weight: 600; font-size: 13px; border: none;
+}
+.stTabs [aria-selected="true"] {
+    background: rgba(255,107,53,0.1); color: #FF6B35 !important;
+    border-bottom: 2px solid #FF6B35;
+}
+.stTabs [data-baseweb="tab"]:hover { color: #ccc; }
+.stTabs [data-baseweb="tab-panel"] { padding-top: 1.5rem; }
 
-const ECOM_TOP_CITIES = [
-  { city: "Mumbai", orders: 33884, rev: 5.85, clinicRev: 18.72, hasClinic: true },
-  { city: "Delhi", orders: 27248, rev: 4.72, clinicRev: 6.86, hasClinic: true },
-  { city: "Bengaluru", orders: 24658, rev: 4.38, clinicRev: 7.20, hasClinic: true },
-  { city: "Pune", orders: 14913, rev: 2.75, clinicRev: 5.74, hasClinic: true },
-  { city: "Hyderabad", orders: 13653, rev: 2.48, clinicRev: 3.19, hasClinic: true },
-  { city: "Gurgaon", orders: 6800, rev: 1.19, clinicRev: 0, hasClinic: false },
-  { city: "Noida/GBN", orders: 6032, rev: 1.08, clinicRev: 1.73, hasClinic: true },
-  { city: "Ghaziabad", orders: 5750, rev: 1.04, clinicRev: 0, hasClinic: false },
-  { city: "Ahmedabad", orders: 5417, rev: 1.01, clinicRev: 2.40, hasClinic: true },
-  { city: "Lucknow", orders: 4871, rev: 0.92, clinicRev: 1.65, hasClinic: true },
-  { city: "Kolkata", orders: 4651, rev: 0.83, clinicRev: 5.80, hasClinic: true },
-  { city: "Goa", orders: 4482, rev: 0.81, clinicRev: 0, hasClinic: true },
-  { city: "Guwahati", orders: 4126, rev: 0.74, clinicRev: 0, hasClinic: true },
-  { city: "Nagpur", orders: 3364, rev: 0.63, clinicRev: 1.91, hasClinic: true },
-];
+/* Metrics */
+[data-testid="stMetric"] {
+    background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%);
+    border: 1px solid rgba(255,255,255,0.06); border-radius: 14px;
+    padding: 18px 20px;
+}
+[data-testid="stMetricLabel"] { color: #888 !important; font-size: 11px !important; letter-spacing: 0.06em; text-transform: uppercase; }
+[data-testid="stMetricValue"] { color: #fff !important; font-size: 26px !important; font-weight: 700 !important; }
+[data-testid="stMetricDelta"] { font-size: 12px !important; }
 
-const REGION_APPT_DATA = [
-  { name: "MMR", appt: 35021, showPct: 27.1 },
-  { name: "PMR", appt: 12219, showPct: 24.5 },
-  { name: "Gujarat", appt: 28256, showPct: 18.9 },
-  { name: "NCR", appt: 35235, showPct: 17.6 },
-  { name: "BMR", appt: 13032, showPct: 31.6 },
-  { name: "KMR", appt: 12579, showPct: 23.3 },
-  { name: "HMR", appt: 10662, showPct: 26.3 },
-  { name: "UP", appt: 43610, showPct: 13.8 },
-  { name: "Central", appt: 12165, showPct: 19.9 },
-  { name: "Punjab", appt: 18271, showPct: 17.7 },
-  { name: "NE", appt: 5520, showPct: 29.8 },
-];
-
-const STATE_ECOM = [
-  { state: "Maharashtra", ecomRev: 12.18, clinicRev: 31.9, pincodes: 812 },
-  { state: "Uttar Pradesh", ecomRev: 7.21, clinicRev: 12.4, pincodes: 747 },
-  { state: "Karnataka", ecomRev: 6.20, clinicRev: 9.0, pincodes: 459 },
-  { state: "Delhi", ecomRev: 4.72, clinicRev: 6.9, pincodes: 100 },
-  { state: "Gujarat", ecomRev: 4.16, clinicRev: 8.7, pincodes: 497 },
-  { state: "West Bengal", ecomRev: 3.69, clinicRev: 5.8, pincodes: 785 },
-  { state: "Telangana", ecomRev: 3.17, clinicRev: 3.9, pincodes: 206 },
-  { state: "Haryana", ecomRev: 3.05, clinicRev: 0, pincodes: 0 },
-  { state: "Punjab", ecomRev: 2.88, clinicRev: 3.7, pincodes: 265 },
-  { state: "Madhya Pradesh", ecomRev: 2.61, clinicRev: 3.1, pincodes: 232 },
-];
-
-// ═══════════════════════════════════════════════════════════
-// UTILS
-// ═══════════════════════════════════════════════════════════
-
-const fmt = (n) => {
-  if (n >= 10000000) return `₹${(n / 10000000).toFixed(1)}Cr`;
-  if (n >= 100000) return `₹${(n / 100000).toFixed(0)}L`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
-  return n?.toLocaleString("en-IN") ?? "—";
-};
-
-const fmtCompact = (n) => {
-  if (n >= 100000) return `${(n / 1000).toFixed(0)}K`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
-  return n?.toLocaleString("en-IN") ?? "—";
-};
-
-const ZONE_COLORS = {
-  "West 1": "#FF6B35",
-  "North 1": "#1E96FC",
-  "West 2": "#F0C808",
-  "South": "#2EC4B6",
-  "East": "#9B5DE5",
-  "North 2": "#F15BB5",
-};
-
-// ═══════════════════════════════════════════════════════════
-// COMPONENTS
-// ═══════════════════════════════════════════════════════════
-
-const CustomTooltip = ({ active, payload, label }) => {
-  if (!active || !payload?.length) return null;
-  return (
-    <div style={{
-      background: "rgba(15,15,20,0.95)",
-      border: "1px solid rgba(255,255,255,0.1)",
-      borderRadius: 8,
-      padding: "10px 14px",
-      fontSize: 12,
-      color: "#E0E0E0",
-      boxShadow: "0 8px 32px rgba(0,0,0,0.4)"
-    }}>
-      <div style={{ fontWeight: 600, marginBottom: 6, color: "#fff" }}>{label}</div>
-      {payload.map((p, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: p.color }} />
-          <span style={{ color: "#999" }}>{p.name}:</span>
-          <span style={{ fontWeight: 600 }}>{typeof p.value === "number" && p.value < 1 ? `${(p.value * 100).toFixed(1)}%` : p.value?.toLocaleString("en-IN")}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-function KPICard({ label, value, sub, accent, icon }) {
-  return (
-    <div style={{
-      background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)",
-      border: "1px solid rgba(255,255,255,0.06)",
-      borderRadius: 16,
-      padding: "20px 24px",
-      position: "relative",
-      overflow: "hidden",
-    }}>
-      <div style={{
-        position: "absolute", top: -20, right: -20, width: 80, height: 80,
-        borderRadius: "50%", background: accent, opacity: 0.06, filter: "blur(20px)"
-      }} />
-      <div style={{ fontSize: 11, fontWeight: 500, color: "#888", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
-        {icon && <span style={{ marginRight: 6 }}>{icon}</span>}{label}
-      </div>
-      <div style={{ fontSize: 28, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1.1 }}>
-        {value}
-      </div>
-      {sub && <div style={{ fontSize: 12, color: accent, marginTop: 6, fontWeight: 500 }}>{sub}</div>}
-    </div>
-  );
+/* Selectbox / multiselect */
+.stSelectbox > div > div, .stMultiSelect > div > div {
+    background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08);
+    color: #ccc; border-radius: 8px;
 }
 
-function SectionHeader({ title, subtitle }) {
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, color: "#fff", margin: 0, letterSpacing: "-0.01em" }}>{title}</h2>
-      {subtitle && <p style={{ fontSize: 12, color: "#666", margin: "4px 0 0", fontWeight: 400 }}>{subtitle}</p>}
+/* DataFrame */
+.stDataFrame { border-radius: 12px; overflow: hidden; }
+
+/* Divider */
+hr { border-color: rgba(255,255,255,0.04) !important; }
+
+/* KPI card custom */
+.kpi-card {
+    background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+    border: 1px solid rgba(255,255,255,0.06); border-radius: 14px;
+    padding: 20px 22px; position: relative; overflow: hidden;
+}
+.kpi-label { font-size: 11px; font-weight: 500; color: #888; letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 6px; }
+.kpi-value { font-size: 28px; font-weight: 700; color: #fff; line-height: 1.1; }
+.kpi-sub { font-size: 12px; font-weight: 500; margin-top: 6px; }
+
+/* Section header */
+.section-hdr { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 4px; letter-spacing: -0.01em; }
+.section-sub { font-size: 12px; color: #555; margin-bottom: 16px; }
+
+/* Zone card */
+.zone-card {
+    border-radius: 14px; padding: 20px; border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.02); transition: all 0.2s;
+}
+.zone-card:hover { border-color: rgba(255,255,255,0.12); }
+
+/* Plotly chart background */
+.js-plotly-plot .plotly .main-svg { background: transparent !important; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+/* Expander */
+.streamlit-expanderHeader { background: rgba(255,255,255,0.03); border-radius: 8px; }
+</style>
+""", unsafe_allow_html=True)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# DATA LOADING
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+@st.cache_data(ttl=3600)
+def load_ntb_show():
+    """Load NTB Show Month Wise - clinic appointments and show rates"""
+    import openpyxl
+    wb = openpyxl.load_workbook("NTB_Show_Month_Wise.xlsx", read_only=True, data_only=True)
+    ws = wb["Sheet1"]
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+
+    # Extract month headers
+    months = []
+    for i in range(8, len(rows[1]), 2):
+        if rows[1][i] and hasattr(rows[1][i], "strftime"):
+            months.append(rows[1][i].strftime("%Y-%m"))
+
+    # Grand total row
+    grand = rows[2]
+    grand_total_appt = grand[6]
+    grand_avg_show = grand[7]
+
+    # Monthly grand totals
+    monthly_grand = []
+    for j, m in enumerate(months):
+        col_appt = 8 + j * 2
+        col_show = col_appt + 1
+        appt = grand[col_appt] if col_appt < len(grand) else 0
+        show = grand[col_show] if col_show < len(grand) else 0
+        monthly_grand.append({"month": m, "appt": appt or 0, "show_pct": (show or 0) * 100})
+
+    # Clinics
+    clinics = []
+    for r in rows[2:]:
+        code = r[2]
+        if code and code != "-":
+            monthly = []
+            for j, m in enumerate(months):
+                col_a = 8 + j * 2
+                col_s = col_a + 1
+                a = r[col_a] if col_a < len(r) else 0
+                s = r[col_s] if col_s < len(r) else 0
+                monthly.append({"month": m, "appt": a or 0, "show_pct": (s or 0) * 100})
+            launch_str = r[3].strftime("%Y-%m-%d") if hasattr(r[3], "strftime") else str(r[3])
+            clinics.append({
+                "area": r[0], "city": r[1], "code": str(r[2]),
+                "launch": launch_str, "cabin": r[4], "region": r[5],
+                "total_appt": r[6] or 0, "avg_show_pct": (r[7] or 0) * 100,
+                "monthly": monthly,
+            })
+
+    # Region / sub-region summary rows
+    summaries = []
+    for r in rows[2:]:
+        code = r[2]
+        if (code == "-" or code is None) and r[0] not in ["Clinics", None]:
+            summaries.append({
+                "area": r[0], "total_appt": r[6] or 0,
+                "avg_show_pct": (r[7] or 0) * 100,
+            })
+
+    return {
+        "grand_total_appt": grand_total_appt,
+        "grand_avg_show": grand_avg_show * 100,
+        "monthly_grand": pd.DataFrame(monthly_grand),
+        "clinics": clinics,
+        "clinics_df": pd.DataFrame([{
+            "Clinic": c["area"], "City": c["city"], "Code": c["code"],
+            "Launch": c["launch"], "Cabin": c["cabin"], "Zone": c["region"],
+            "Total Appts": c["total_appt"], "Avg Show %": round(c["avg_show_pct"], 1),
+        } for c in clinics]),
+        "summaries": summaries,
+        "months": months,
+    }
+
+
+@st.cache_data(ttl=3600)
+def load_clinic_firsttime():
+    """Load Clinic-wise FirstTime by Pincode"""
+    df = pd.read_excel("Clinic_wise_FirstTime_TotalQuantity_by_Pincode.xlsx", sheet_name="FirstTime_by_Pincode")
+    df.columns = ["Pincode", "Qty", "Revenue", "SubCity", "City", "State"]
+    df["Pincode"] = df["Pincode"].astype(str)
+    df["Qty"] = pd.to_numeric(df["Qty"], errors="coerce").fillna(0).astype(int)
+    df["Revenue"] = pd.to_numeric(df["Revenue"], errors="coerce").fillna(0)
+    return df
+
+
+@st.cache_data(ttl=3600)
+def load_clinic_ntb():
+    """Load ZipData_Clinic_NTB - transactional clinic data"""
+    import openpyxl
+    wb = openpyxl.load_workbook("ZipData_Clinic_NTB.xlsx", read_only=True, data_only=True)
+    ws = wb["Data"]
+
+    from collections import defaultdict
+    clinic_agg = defaultdict(lambda: {"qty": 0, "rev": 0, "region": "", "zone": "", "cabin": 0, "launch": "", "pincodes": set()})
+    month_agg = defaultdict(lambda: {"qty": 0, "rev": 0, "visits": 0})
+    zone_month = defaultdict(lambda: defaultdict(lambda: {"qty": 0, "rev": 0}))
+    zone_agg = defaultdict(lambda: {"qty": 0, "rev": 0})
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        date, qty, total, cust_type, clinic, region, zone = row[0], row[1] or 0, row[2] or 0, row[3], row[4] or "Unknown", row[5] or "", row[6] or ""
+        zipcode, cabin, launch = row[7], row[12], row[11]
+
+        clinic_agg[clinic]["qty"] += qty
+        clinic_agg[clinic]["rev"] += total
+        clinic_agg[clinic]["region"] = region
+        clinic_agg[clinic]["zone"] = zone
+        clinic_agg[clinic]["cabin"] = cabin or 0
+        if launch and hasattr(launch, "strftime"):
+            clinic_agg[clinic]["launch"] = launch.strftime("%Y-%m-%d")
+        if zipcode:
+            clinic_agg[clinic]["pincodes"].add(str(zipcode))
+
+        if hasattr(date, "strftime"):
+            ym = date.strftime("%Y-%m")
+            month_agg[ym]["qty"] += qty
+            month_agg[ym]["rev"] += total
+            month_agg[ym]["visits"] += 1
+            zone_month[zone][ym]["qty"] += qty
+            zone_month[zone][ym]["rev"] += total
+
+        if zone:
+            zone_agg[zone]["qty"] += qty
+            zone_agg[zone]["rev"] += total
+
+    wb.close()
+
+    clinic_df = pd.DataFrame([{
+        "Clinic": k, "Zone": v["zone"], "Region": v["region"], "Cabin": v["cabin"],
+        "Launch": v["launch"], "Qty": v["qty"], "Revenue": v["rev"],
+        "Pincodes": len(v["pincodes"]),
+        "Rev_L": round(v["rev"] / 100000, 1),
+    } for k, v in clinic_agg.items()]).sort_values("Revenue", ascending=False)
+
+    month_df = pd.DataFrame([{"month": k, **v} for k, v in month_agg.items()]).sort_values("month")
+    month_df["rev_lakhs"] = month_df["rev"] / 100000
+
+    zone_df = pd.DataFrame([{"Zone": k, "Qty": v["qty"], "Revenue": v["rev"], "Rev_Cr": round(v["rev"] / 10000000, 2)} for k, v in zone_agg.items() if k]).sort_values("Revenue", ascending=False)
+
+    # Zone monthly for trend
+    zone_month_records = []
+    for z, months in zone_month.items():
+        if z:
+            for m, vals in months.items():
+                zone_month_records.append({"Zone": z, "month": m, "qty": vals["qty"], "rev": vals["rev"]})
+    zone_month_df = pd.DataFrame(zone_month_records).sort_values("month") if zone_month_records else pd.DataFrame()
+
+    return {
+        "clinic_df": clinic_df,
+        "month_df": month_df,
+        "zone_df": zone_df,
+        "zone_month_df": zone_month_df,
+    }
+
+
+@st.cache_data(ttl=3600)
+def load_ecom():
+    """Load 1CX e-commerce orders"""
+    import openpyxl
+    wb = openpyxl.load_workbook("1cx_order_qty_pincode_of_website__2020__2025__Curative__others.xlsx", read_only=True, data_only=True)
+    ws = wb["Sheet1"]
+
+    from collections import defaultdict
+    year_agg = defaultdict(lambda: {"orders": 0, "qty": 0, "rev": 0})
+    state_agg = defaultdict(lambda: {"orders": 0, "qty": 0, "rev": 0})
+    city_agg = defaultdict(lambda: {"orders": 0, "qty": 0, "rev": 0, "state": ""})
+    product_agg = defaultdict(lambda: {"orders": 0, "rev": 0})
+    total_orders = 0
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        total_orders += 1
+        date, qty, total = row[0], row[3] or 0, row[4] or 0
+        state, city = row[10] or "Unknown", row[9] or "Unknown"
+        product_type = row[11] or "-"
+        year = date.year if hasattr(date, "year") else "Unknown"
+
+        year_agg[year]["orders"] += 1
+        year_agg[year]["qty"] += qty
+        year_agg[year]["rev"] += total
+        state_agg[state]["orders"] += 1
+        state_agg[state]["qty"] += qty
+        state_agg[state]["rev"] += total
+        city_agg[city]["orders"] += 1
+        city_agg[city]["qty"] += qty
+        city_agg[city]["rev"] += total
+        city_agg[city]["state"] = state
+        product_agg[product_type]["orders"] += 1
+        product_agg[product_type]["rev"] += total
+
+    wb.close()
+
+    total_rev = sum(v["rev"] for v in year_agg.values())
+    total_qty = sum(v["qty"] for v in year_agg.values())
+
+    year_df = pd.DataFrame([{"Year": str(k), "Orders": v["orders"], "Qty": v["qty"], "Revenue": v["rev"], "Rev_Cr": round(v["rev"]/1e7, 1)} for k, v in year_agg.items()]).sort_values("Year")
+    state_df = pd.DataFrame([{"State": k, "Orders": v["orders"], "Qty": v["qty"], "Revenue": v["rev"], "Rev_Cr": round(v["rev"]/1e7, 2)} for k, v in state_agg.items()]).sort_values("Revenue", ascending=False)
+    city_df = pd.DataFrame([{"City": k, "State": v["state"], "Orders": v["orders"], "Qty": v["qty"], "Revenue": v["rev"], "Rev_Cr": round(v["rev"]/1e7, 2)} for k, v in city_agg.items()]).sort_values("Revenue", ascending=False)
+    product_df = pd.DataFrame([{"Product": k, "Orders": v["orders"], "Revenue": v["rev"], "Rev_Cr": round(v["rev"]/1e7, 1)} for k, v in product_agg.items()]).sort_values("Revenue", ascending=False)
+
+    return {
+        "total_orders": total_orders, "total_rev": total_rev, "total_qty": total_qty,
+        "year_df": year_df, "state_df": state_df, "city_df": city_df, "product_df": product_df,
+    }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# LOAD DATA
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ntb = load_ntb_show()
+clinic_ft = load_clinic_firsttime()
+clinic_ntb = load_clinic_ntb()
+ecom = load_ecom()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# HELPERS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ZONE_COLORS = {
+    "West 1": "#FF6B35", "North 1": "#1E96FC", "West 2": "#F0C808",
+    "South": "#2EC4B6", "East": "#9B5DE5", "North 2": "#F15BB5",
+}
+
+PLOTLY_LAYOUT = dict(
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(family="DM Sans, sans-serif", color="#999", size=11),
+    margin=dict(l=40, r=20, t=40, b=40),
+    xaxis=dict(gridcolor="rgba(255,255,255,0.04)", zerolinecolor="rgba(255,255,255,0.04)"),
+    yaxis=dict(gridcolor="rgba(255,255,255,0.04)", zerolinecolor="rgba(255,255,255,0.04)"),
+    legend=dict(font=dict(size=11, color="#888"), bgcolor="rgba(0,0,0,0)"),
+    hoverlabel=dict(bgcolor="#1a1a2e", font_size=12, font_family="DM Sans"),
+)
+
+def fmt_cr(val):
+    return f"{val/1e7:.1f}" if val >= 1e7 else f"{val/1e5:.0f}L"
+
+def fmt_lakhs(val):
+    return f"{val/1e5:.1f}L"
+
+def kpi_html(label, value, sub="", accent="#FF6B35"):
+    return f"""
+    <div class="kpi-card">
+        <div style="position:absolute;top:-15px;right:-15px;width:70px;height:70px;border-radius:50%;background:{accent};opacity:0.05;filter:blur(18px);"></div>
+        <div class="kpi-label">{label}</div>
+        <div class="kpi-value">{value}</div>
+        <div class="kpi-sub" style="color:{accent};">{sub}</div>
     </div>
-  );
-}
+    """
 
-function ZoneTag({ zone }) {
-  return (
-    <span style={{
-      display: "inline-block",
-      padding: "2px 8px",
-      borderRadius: 4,
-      fontSize: 10,
-      fontWeight: 600,
-      background: `${ZONE_COLORS[zone] || "#666"}22`,
-      color: ZONE_COLORS[zone] || "#666",
-      letterSpacing: "0.03em",
-    }}>{zone}</span>
-  );
-}
+def section_header(title, subtitle=""):
+    st.markdown(f'<div class="section-hdr">{title}</div>', unsafe_allow_html=True)
+    if subtitle:
+        st.markdown(f'<div class="section-sub">{subtitle}</div>', unsafe_allow_html=True)
 
-// ═══════════════════════════════════════════════════════════
-// TABS
-// ═══════════════════════════════════════════════════════════
 
-const TABS = ["Command Center", "Clinic Deep Dive", "Online→Offline Flywheel", "Zone Intelligence"];
-
-export default function NorthStarDashboard() {
-  const [activeTab, setActiveTab] = useState(0);
-  const [sortClinic, setSortClinic] = useState("rev");
-  const [selectedZone, setSelectedZone] = useState(null);
-
-  const filteredClinics = useMemo(() => {
-    let clinics = [...TOP_CLINICS];
-    if (selectedZone) clinics = clinics.filter(c => c.zone === selectedZone);
-    return clinics.sort((a, b) => b[sortClinic] - a[sortClinic]);
-  }, [sortClinic, selectedZone]);
-
-  const totalClinicRev = MONTHLY_CLINIC_TREND.reduce((s, m) => s + m.rev, 0);
-  const latestMonth = MONTHLY_CLINIC_TREND[MONTHLY_CLINIC_TREND.length - 1];
-  const prevMonth = MONTHLY_CLINIC_TREND[MONTHLY_CLINIC_TREND.length - 2];
-  const momGrowth = ((latestMonth.rev - prevMonth.rev) / prevMonth.rev * 100).toFixed(1);
-
-  return (
-    <div style={{
-      fontFamily: "'DM Sans', 'Helvetica Neue', sans-serif",
-      background: "#0A0A0F",
-      color: "#E0E0E0",
-      minHeight: "100vh",
-      padding: 0,
-    }}>
-      {/* GOOGLE FONT */}
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-
-      {/* HEADER */}
-      <div style={{
-        background: "linear-gradient(180deg, rgba(255,107,53,0.08) 0%, transparent 100%)",
-        borderBottom: "1px solid rgba(255,255,255,0.04)",
-        padding: "24px 32px 16px",
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
-              <div style={{
-                width: 10, height: 10, borderRadius: "50%",
-                background: "#2EC4B6", boxShadow: "0 0 12px #2EC4B6",
-                animation: "pulse 2s infinite",
-              }} />
-              <span style={{ fontSize: 11, color: "#2EC4B6", fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase" }}>
-                Live • North Star
-              </span>
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# HEADER
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hdr_left, hdr_right = st.columns([4, 1])
+with hdr_left:
+    st.markdown("""
+    <div style="margin-bottom:8px;">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2EC4B6;box-shadow:0 0 10px #2EC4B6;margin-right:8px;vertical-align:middle;"></span>
+        <span style="font-size:11px;color:#2EC4B6;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;">Live &bull; North Star</span>
+    </div>
+    <h1 style="font-size:32px;font-weight:800;margin:0;letter-spacing:-0.03em;
+        background:linear-gradient(135deg,#fff 40%,#FF6B35);
+        -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
+        Gynoveda Expansion Command
+    </h1>
+    <p style="font-size:13px;color:#444;margin:6px 0 0;">
+        61 Clinics &middot; 7,415 Pincodes &middot; 6 Zones &middot; Jan 2025 &rarr; Jan 2026
+    </p>
+    """, unsafe_allow_html=True)
+with hdr_right:
+    latest = clinic_ntb["month_df"].iloc[-1] if len(clinic_ntb["month_df"]) > 1 else None
+    prev = clinic_ntb["month_df"].iloc[-2] if len(clinic_ntb["month_df"]) > 2 else None
+    if latest is not None and prev is not None:
+        mom = (latest["rev_lakhs"] - prev["rev_lakhs"]) / prev["rev_lakhs"] * 100
+        arrow = "down_arrow" if mom < 0 else "up_arrow"
+        st.markdown(f"""
+        <div style="text-align:right;padding-top:16px;">
+            <div style="font-size:11px;color:#555;">Latest Period</div>
+            <div style="font-size:18px;font-weight:700;color:#fff;">{latest['month']}</div>
+            <div style="font-size:13px;color:{'#F15BB5' if mom < 0 else '#2EC4B6'};font-weight:600;">
+                {'&#x25BC;' if mom < 0 else '&#x25B2;'} {abs(mom):.1f}% MoM
             </div>
-            <h1 style={{
-              fontSize: 32, fontWeight: 800, color: "#fff",
-              margin: 0, letterSpacing: "-0.03em",
-              background: "linear-gradient(135deg, #fff 40%, #FF6B35 100%)",
-              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-            }}>
-              Gynoveda Expansion Command
-            </h1>
-            <p style={{ fontSize: 13, color: "#555", margin: "6px 0 0", fontWeight: 400 }}>
-              61 Clinics · 7,415 Pincodes · 6 Zones · Jan 2025 → Jan 2026
-            </p>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 11, color: "#555", marginBottom: 4 }}>Latest Period</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>Jan 2026</div>
-            <div style={{ fontSize: 12, color: momGrowth > 0 ? "#F15BB5" : "#2EC4B6", fontWeight: 600 }}>
-              {momGrowth > 0 ? "↓" : "↑"} {Math.abs(momGrowth)}% MoM
-            </div>
-          </div>
         </div>
+        """, unsafe_allow_html=True)
 
-        {/* TAB NAV */}
-        <div style={{ display: "flex", gap: 4 }}>
-          {TABS.map((tab, i) => (
-            <button key={i} onClick={() => setActiveTab(i)} style={{
-              padding: "8px 18px",
-              borderRadius: 8,
-              border: "none",
-              background: activeTab === i ? "rgba(255,107,53,0.15)" : "transparent",
-              color: activeTab === i ? "#FF6B35" : "#666",
-              fontSize: 12,
-              fontWeight: activeTab === i ? 700 : 500,
-              cursor: "pointer",
-              transition: "all 0.2s",
-              fontFamily: "inherit",
-            }}>{tab}</button>
-          ))}
-        </div>
-      </div>
+st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-      <div style={{ padding: "24px 32px" }}>
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TABS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+tab1, tab2, tab3, tab4 = st.tabs([
+    "Command Center",
+    "Clinic Deep Dive",
+    "Online to Offline Flywheel",
+    "Zone Intelligence",
+])
 
-        {/* ════════════════ TAB 0: COMMAND CENTER ════════════════ */}
-        {activeTab === 0 && (
-          <div>
-            {/* KPI ROW */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 16, marginBottom: 32 }}>
-              <KPICard label="Total NTB Appointments" value="2.70L" sub="Jan 25 – Jan 26" accent="#FF6B35" icon="📅" />
-              <KPICard label="Avg Show Rate" value="20.6%" sub="National Average" accent="#2EC4B6" icon="✓" />
-              <KPICard label="Clinic Revenue (NTB)" value={`₹${(totalClinicRev / 100).toFixed(0)}Cr`} sub="Cumulative 13 months" accent="#F0C808" icon="💰" />
-              <KPICard label="Active Clinics" value="61" sub="Across 6 Zones" accent="#9B5DE5" icon="🏥" />
-              <KPICard label="Pincode Reach" value="7,415" sub="Clinic Customers" accent="#1E96FC" icon="📍" />
-              <KPICard label="E-Com 1CX Orders" value="3.91L" sub="₹72.3Cr Lifetime" accent="#F15BB5" icon="🛒" />
-            </div>
+# ================================================================
+# TAB 1: COMMAND CENTER
+# ================================================================
+with tab1:
+    # KPI Row
+    total_ntb_rev = clinic_ntb["month_df"]["rev"].sum()
+    total_ntb_rev_cr = total_ntb_rev / 1e7
 
-            {/* REVENUE TREND */}
-            <div style={{
-              background: "rgba(255,255,255,0.02)",
-              border: "1px solid rgba(255,255,255,0.05)",
-              borderRadius: 16, padding: 24, marginBottom: 24,
-            }}>
-              <SectionHeader title="NTB Revenue Trajectory" subtitle="Monthly Clinic Revenue (₹ Lakhs) & Show Rate %" />
-              <ResponsiveContainer width="100%" height={300}>
-                <ComposedChart data={MONTHLY_CLINIC_TREND} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
-                  <defs>
-                    <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#FF6B35" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#FF6B35" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} />
-                  <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} />
-                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} domain={[10, 30]} unit="%" />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Area yAxisId="left" type="monotone" dataKey="rev" name="Revenue (₹L)" fill="url(#revGrad)" stroke="#FF6B35" strokeWidth={2.5} dot={false} />
-                  <Line yAxisId="right" type="monotone" dataKey="showPct" name="Show Rate %" stroke="#2EC4B6" strokeWidth={2} dot={{ r: 3, fill: "#2EC4B6" }} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
+    k1, k2, k3, k4, k5, k6 = st.columns(6)
+    with k1:
+        st.markdown(kpi_html("Total NTB Appointments", f"{ntb['grand_total_appt']:,.0f}", "Jan 25 - Jan 26", "#FF6B35"), unsafe_allow_html=True)
+    with k2:
+        st.markdown(kpi_html("Avg Show Rate", f"{ntb['grand_avg_show']:.1f}%", "National Average", "#2EC4B6"), unsafe_allow_html=True)
+    with k3:
+        st.markdown(kpi_html("Clinic NTB Revenue", f"Rs.{total_ntb_rev_cr:.0f}Cr", "Cumulative 13 months", "#F0C808"), unsafe_allow_html=True)
+    with k4:
+        st.markdown(kpi_html("Active Clinics", "61", "Across 6 Zones", "#9B5DE5"), unsafe_allow_html=True)
+    with k5:
+        st.markdown(kpi_html("Pincode Reach", "7,415", "Clinic Customers", "#1E96FC"), unsafe_allow_html=True)
+    with k6:
+        st.markdown(kpi_html("E-Com 1CX Orders", f"{ecom['total_orders']:,.0f}", f"Rs.{ecom['total_rev']/1e7:.1f}Cr Lifetime", "#F15BB5"), unsafe_allow_html=True)
 
-            {/* ZONE PERFORMANCE GRID */}
-            <div style={{
-              background: "rgba(255,255,255,0.02)",
-              border: "1px solid rgba(255,255,255,0.05)",
-              borderRadius: 16, padding: 24,
-            }}>
-              <SectionHeader title="Zone Performance Matrix" subtitle="Revenue, Appointments & Show Rate by Zone" />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-                {ZONE_DATA.map((z) => (
-                  <div key={z.zone} style={{
-                    background: `linear-gradient(135deg, ${z.color}08, transparent)`,
-                    border: `1px solid ${z.color}20`,
-                    borderRadius: 12, padding: 18,
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = `${z.color}50`}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = `${z.color}20`}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                      <span style={{ fontSize: 15, fontWeight: 700, color: z.color }}>{z.zone}</span>
-                      <span style={{ fontSize: 11, color: "#666" }}>{z.clinics} clinics</span>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                      <div>
-                        <div style={{ fontSize: 10, color: "#555", marginBottom: 2 }}>Revenue</div>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>₹{(z.rev / 100).toFixed(1)}Cr</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 10, color: "#555", marginBottom: 2 }}>NTB Appts</div>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{fmtCompact(z.appt)}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 10, color: "#555", marginBottom: 2 }}>Show %</div>
-                        <div style={{
-                          fontSize: 16, fontWeight: 700,
-                          color: z.showPct >= 25 ? "#2EC4B6" : z.showPct >= 20 ? "#F0C808" : "#F15BB5"
-                        }}>{z.showPct}%</div>
-                      </div>
-                    </div>
-                    {/* Revenue share bar */}
-                    <div style={{ marginTop: 10, background: "rgba(255,255,255,0.04)", borderRadius: 4, height: 4, overflow: "hidden" }}>
-                      <div style={{
-                        width: `${(z.rev / 4010) * 100}%`,
-                        height: "100%", background: z.color, borderRadius: 4,
-                        transition: "width 0.5s",
-                      }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
 
-        {/* ════════════════ TAB 1: CLINIC DEEP DIVE ════════════════ */}
-        {activeTab === 1 && (
-          <div>
-            {/* FILTERS */}
-            <div style={{ display: "flex", gap: 12, marginBottom: 24, alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: "#666" }}>Sort by:</span>
-              {[
-                { key: "rev", label: "Revenue" },
-                { key: "qty", label: "Quantity" },
-                { key: "showPct", label: "Show %" },
-                { key: "pincodes", label: "Reach" },
-              ].map(s => (
-                <button key={s.key} onClick={() => setSortClinic(s.key)} style={{
-                  padding: "6px 14px", borderRadius: 6, border: "1px solid",
-                  borderColor: sortClinic === s.key ? "#FF6B35" : "rgba(255,255,255,0.08)",
-                  background: sortClinic === s.key ? "rgba(255,107,53,0.12)" : "transparent",
-                  color: sortClinic === s.key ? "#FF6B35" : "#888",
-                  fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-                }}>{s.label}</button>
-              ))}
-              <div style={{ flex: 1 }} />
-              <span style={{ fontSize: 12, color: "#666" }}>Zone:</span>
-              <button onClick={() => setSelectedZone(null)} style={{
-                padding: "6px 12px", borderRadius: 6, border: "1px solid",
-                borderColor: !selectedZone ? "#9B5DE5" : "rgba(255,255,255,0.08)",
-                background: !selectedZone ? "rgba(155,93,229,0.12)" : "transparent",
-                color: !selectedZone ? "#9B5DE5" : "#888",
-                fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-              }}>All</button>
-              {Object.keys(ZONE_COLORS).map(z => (
-                <button key={z} onClick={() => setSelectedZone(z)} style={{
-                  padding: "6px 12px", borderRadius: 6, border: "1px solid",
-                  borderColor: selectedZone === z ? ZONE_COLORS[z] : "rgba(255,255,255,0.08)",
-                  background: selectedZone === z ? `${ZONE_COLORS[z]}20` : "transparent",
-                  color: selectedZone === z ? ZONE_COLORS[z] : "#888",
-                  fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-                }}>{z}</button>
-              ))}
-            </div>
+    # Revenue Trajectory
+    section_header("NTB Revenue Trajectory", "Monthly Clinic Revenue (Rs. Lakhs) & Show Rate %")
 
-            {/* CLINIC TABLE */}
-            <div style={{
-              background: "rgba(255,255,255,0.02)",
-              border: "1px solid rgba(255,255,255,0.05)",
-              borderRadius: 16, overflow: "hidden",
-            }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr style={{ background: "rgba(255,255,255,0.03)" }}>
-                    {["#", "Clinic", "Zone", "Region", "Cabin", "Launch", "Revenue (₹L)", "Qty", "NTB Appts", "Show %", "Pincodes"].map(h => (
-                      <th key={h} style={{
-                        padding: "12px 14px", textAlign: "left", fontWeight: 600,
-                        color: "#666", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase",
-                        borderBottom: "1px solid rgba(255,255,255,0.04)",
-                      }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredClinics.map((c, i) => (
-                    <tr key={c.name} style={{
-                      borderBottom: "1px solid rgba(255,255,255,0.03)",
-                      transition: "background 0.15s",
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}
-                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                    >
-                      <td style={{ padding: "10px 14px", color: "#444", fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{i + 1}</td>
-                      <td style={{ padding: "10px 14px", fontWeight: 700, color: "#fff" }}>{c.name}</td>
-                      <td style={{ padding: "10px 14px" }}><ZoneTag zone={c.zone} /></td>
-                      <td style={{ padding: "10px 14px", color: "#888" }}>{c.region}</td>
-                      <td style={{ padding: "10px 14px" }}>
-                        <span style={{
-                          display: "inline-block", padding: "2px 8px", borderRadius: 4,
-                          background: c.cabin === 3 ? "rgba(46,196,182,0.12)" : "rgba(240,200,8,0.12)",
-                          color: c.cabin === 3 ? "#2EC4B6" : "#F0C808",
-                          fontSize: 11, fontWeight: 600,
-                        }}>{c.cabin}C</span>
-                      </td>
-                      <td style={{ padding: "10px 14px", color: "#888", fontSize: 11 }}>{c.launch}</td>
-                      <td style={{ padding: "10px 14px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontWeight: 700, color: "#fff", fontFamily: "'JetBrains Mono', monospace" }}>
-                            {c.rev.toFixed(0)}
-                          </span>
-                          <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: 2, height: 4, maxWidth: 80 }}>
-                            <div style={{ width: `${(c.rev / 735) * 100}%`, height: "100%", background: "#FF6B35", borderRadius: 2 }} />
-                          </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: "10px 14px", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "#ccc" }}>
-                        {fmtCompact(c.qty)}
-                      </td>
-                      <td style={{ padding: "10px 14px", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "#ccc" }}>
-                        {fmtCompact(c.appt)}
-                      </td>
-                      <td style={{ padding: "10px 14px" }}>
-                        <span style={{
-                          fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 12,
-                          color: c.showPct >= 28 ? "#2EC4B6" : c.showPct >= 22 ? "#F0C808" : "#F15BB5",
-                        }}>{c.showPct}%</span>
-                      </td>
-                      <td style={{ padding: "10px 14px", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "#ccc" }}>
-                        {c.pincodes}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+    mdf = clinic_ntb["month_df"].copy()
+    ntb_monthly = ntb["monthly_grand"]
 
-            {/* CLINIC CHARTS */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 24 }}>
-              <div style={{
-                background: "rgba(255,255,255,0.02)",
-                border: "1px solid rgba(255,255,255,0.05)",
-                borderRadius: 16, padding: 24,
-              }}>
-                <SectionHeader title="Revenue vs Show Rate" subtitle="Bubble = Pincode Reach" />
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={filteredClinics.slice(0, 10)} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#666" }} axisLine={false} tickLine={false} angle={-30} textAnchor="end" height={60} />
-                    <YAxis tick={{ fontSize: 10, fill: "#666" }} axisLine={false} tickLine={false} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="rev" name="Revenue (₹L)" radius={[6, 6, 0, 0]}>
-                      {filteredClinics.slice(0, 10).map((c, i) => (
-                        <Cell key={i} fill={ZONE_COLORS[c.zone] || "#666"} fillOpacity={0.8} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+    fig_rev = make_subplots(specs=[[{"secondary_y": True}]])
+    fig_rev.add_trace(
+        go.Scatter(x=mdf["month"], y=mdf["rev_lakhs"], name="Revenue (Rs.L)",
+                   fill="tozeroy", fillcolor="rgba(255,107,53,0.08)",
+                   line=dict(color="#FF6B35", width=2.5), mode="lines"),
+        secondary_y=False,
+    )
+    fig_rev.add_trace(
+        go.Scatter(x=ntb_monthly["month"], y=ntb_monthly["show_pct"], name="Show Rate %",
+                   line=dict(color="#2EC4B6", width=2, dash="dot"),
+                   mode="lines+markers", marker=dict(size=5, color="#2EC4B6")),
+        secondary_y=True,
+    )
+    fig_rev.update_layout(**PLOTLY_LAYOUT, height=340, title="")
+    fig_rev.update_yaxes(title_text="Revenue (Rs. Lakhs)", secondary_y=False, gridcolor="rgba(255,255,255,0.04)", title_font=dict(size=11, color="#555"))
+    fig_rev.update_yaxes(title_text="Show Rate %", secondary_y=True, gridcolor="rgba(255,255,255,0.02)", range=[10, 30], title_font=dict(size=11, color="#555"))
+    st.plotly_chart(fig_rev, use_container_width=True)
 
-              <div style={{
-                background: "rgba(255,255,255,0.02)",
-                border: "1px solid rgba(255,255,255,0.05)",
-                borderRadius: 16, padding: 24,
-              }}>
-                <SectionHeader title="Regional Show Rate Radar" subtitle="NTB Show % across metro regions" />
-                <ResponsiveContainer width="100%" height={280}>
-                  <RadarChart data={REGION_APPT_DATA}>
-                    <PolarGrid stroke="rgba(255,255,255,0.08)" />
-                    <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: "#999" }} />
-                    <PolarRadiusAxis tick={{ fontSize: 9, fill: "#555" }} domain={[0, 35]} />
-                    <Radar name="Show %" dataKey="showPct" stroke="#FF6B35" fill="#FF6B35" fillOpacity={0.15} strokeWidth={2} />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-        )}
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-        {/* ════════════════ TAB 2: ONLINE→OFFLINE FLYWHEEL ════════════════ */}
-        {activeTab === 2 && (
-          <div>
-            {/* FLYWHEEL KPIs */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 28 }}>
-              <KPICard label="E-Com Lifetime Orders" value="3.91L" sub="₹72.3Cr Revenue" accent="#F15BB5" icon="🌐" />
-              <KPICard label="Curative Share" value="91%" sub="₹66.4Cr of ₹72.3Cr" accent="#2EC4B6" icon="💊" />
-              <KPICard label="Clinic NTB Revenue" value="₹105Cr" sub="14.1L Qty · 7,415 Pincodes" accent="#FF6B35" icon="🏥" />
-              <KPICard label="Conversion Multiplier" value="1.45x" sub="Clinic Rev / E-Com Rev per city" accent="#F0C808" icon="🔄" />
-            </div>
+    # Zone Performance Matrix
+    section_header("Zone Performance Matrix", "Revenue, Appointments & Show Rate by Zone")
 
-            {/* ECOM YEARLY TREND */}
-            <div style={{
-              background: "rgba(255,255,255,0.02)",
-              border: "1px solid rgba(255,255,255,0.05)",
-              borderRadius: 16, padding: 24, marginBottom: 24,
-            }}>
-              <SectionHeader title="E-Commerce 1CX Revenue Journey" subtitle="First-time customer orders by year (₹ Crores)" />
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={ECOM_YEARLY} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis dataKey="year" tick={{ fontSize: 12, fill: "#888" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} unit="Cr" />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="rev" name="Revenue (₹Cr)" radius={[8, 8, 0, 0]}>
-                    {ECOM_YEARLY.map((_, i) => (
-                      <Cell key={i} fill={i === 2 ? "#FF6B35" : i === 3 ? "#FF6B35" : "#FF6B3566"} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+    zdf = clinic_ntb["zone_df"].copy()
+    # Merge with NTB show data for appt and show%
+    zone_show_map = {}
+    for s in ntb["summaries"]:
+        if s["area"] in ZONE_COLORS:
+            zone_show_map[s["area"]] = s
 
-            {/* CITY FLYWHEEL MAP */}
-            <div style={{
-              background: "rgba(255,255,255,0.02)",
-              border: "1px solid rgba(255,255,255,0.05)",
-              borderRadius: 16, padding: 24,
-            }}>
-              <SectionHeader title="City-Level Online → Offline Flywheel" subtitle="E-commerce demand vs Clinic revenue by city. Blue bars = E-Com, Orange = Clinic" />
-              <ResponsiveContainer width="100%" height={360}>
-                <BarChart data={ECOM_TOP_CITIES} layout="vertical" margin={{ top: 5, right: 30, left: 70, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis type="number" tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} unit="Cr" />
-                  <YAxis type="category" dataKey="city" tick={{ fontSize: 11, fill: "#ccc" }} axisLine={false} tickLine={false} width={65} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="rev" name="E-Com Rev (₹Cr)" radius={[0, 4, 4, 0]} fill="#1E96FC" fillOpacity={0.7} barSize={12} />
-                  <Bar dataKey="clinicRev" name="Clinic Rev (₹Cr)" radius={[0, 4, 4, 0]} fill="#FF6B35" fillOpacity={0.85} barSize={12} />
-                </BarChart>
-              </ResponsiveContainer>
-              <div style={{ marginTop: 16, display: "flex", gap: 24 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 12, height: 12, borderRadius: 3, background: "#F15BB5" }} />
-                  <span style={{ fontSize: 11, color: "#888" }}>🚩 Gurgaon & Ghaziabad: High e-com demand, no dedicated clinic</span>
+    zone_cards_data = []
+    for _, row in zdf.iterrows():
+        z = row["Zone"]
+        show_info = zone_show_map.get(z, {})
+        zone_cards_data.append({
+            "zone": z, "rev_cr": row["Rev_Cr"], "qty": row["Qty"],
+            "appt": show_info.get("total_appt", 0),
+            "show_pct": show_info.get("avg_show_pct", 0),
+            "color": ZONE_COLORS.get(z, "#666"),
+        })
+
+    cols = st.columns(3)
+    for i, zc in enumerate(zone_cards_data):
+        with cols[i % 3]:
+            show_color = "#2EC4B6" if zc["show_pct"] >= 25 else "#F0C808" if zc["show_pct"] >= 20 else "#F15BB5"
+            rev_pct = (zc["rev_cr"] / max(z["rev_cr"] for z in zone_cards_data)) * 100 if zone_cards_data else 0
+            st.markdown(f"""
+            <div class="zone-card" style="border-left:3px solid {zc['color']};margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                    <span style="font-size:16px;font-weight:700;color:{zc['color']};">{zc['zone']}</span>
                 </div>
-              </div>
+                <div style="display:flex;gap:20px;">
+                    <div><div style="font-size:10px;color:#555;">Revenue</div><div style="font-size:18px;font-weight:700;color:#fff;">Rs.{zc['rev_cr']}Cr</div></div>
+                    <div><div style="font-size:10px;color:#555;">NTB Appts</div><div style="font-size:18px;font-weight:700;color:#fff;">{zc['appt']:,}</div></div>
+                    <div><div style="font-size:10px;color:#555;">Show %</div><div style="font-size:18px;font-weight:700;color:{show_color};">{zc['show_pct']:.1f}%</div></div>
+                </div>
+                <div style="margin-top:10px;background:rgba(255,255,255,0.04);border-radius:4px;height:4px;overflow:hidden;">
+                    <div style="width:{rev_pct:.0f}%;height:100%;background:{zc['color']};border-radius:4px;"></div>
+                </div>
             </div>
+            """, unsafe_allow_html=True)
 
-            {/* STATE COMPARISON */}
-            <div style={{
-              background: "rgba(255,255,255,0.02)",
-              border: "1px solid rgba(255,255,255,0.05)",
-              borderRadius: 16, padding: 24, marginTop: 24,
-            }}>
-              <SectionHeader title="State Demand → Clinic Revenue Conversion" subtitle="How well are we converting online demand into clinic revenue?" />
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  <thead>
-                    <tr style={{ background: "rgba(255,255,255,0.03)" }}>
-                      {["State", "E-Com Rev (₹Cr)", "Clinic Rev (₹Cr)", "Multiplier", "Pincodes", "Signal"].map(h => (
-                        <th key={h} style={{
-                          padding: "10px 14px", textAlign: "left", fontWeight: 600,
-                          color: "#666", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase",
-                          borderBottom: "1px solid rgba(255,255,255,0.04)",
-                        }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {STATE_ECOM.map((s) => {
-                      const mult = s.clinicRev > 0 ? (s.clinicRev / s.ecomRev).toFixed(1) : "—";
-                      const signal = s.clinicRev === 0 ? "🔴 No clinic presence" :
-                        parseFloat(mult) >= 2.0 ? "🟢 Strong conversion" :
-                          parseFloat(mult) >= 1.0 ? "🟡 Moderate" : "🟠 Under-penetrated";
-                      return (
-                        <tr key={s.state} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
-                          <td style={{ padding: "10px 14px", fontWeight: 600, color: "#fff" }}>{s.state}</td>
-                          <td style={{ padding: "10px 14px", fontFamily: "'JetBrains Mono', monospace", color: "#1E96FC" }}>₹{s.ecomRev.toFixed(2)}</td>
-                          <td style={{ padding: "10px 14px", fontFamily: "'JetBrains Mono', monospace", color: "#FF6B35" }}>
-                            {s.clinicRev > 0 ? `₹${s.clinicRev.toFixed(1)}` : "—"}
-                          </td>
-                          <td style={{ padding: "10px 14px", fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#fff" }}>{mult}x</td>
-                          <td style={{ padding: "10px 14px", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "#888" }}>{s.pincodes || "—"}</td>
-                          <td style={{ padding: "10px 14px", fontSize: 11 }}>{signal}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* ════════════════ TAB 3: ZONE INTELLIGENCE ════════════════ */}
-        {activeTab === 3 && (
-          <div>
-            {/* ZONE COMPARISON */}
-            <div style={{
-              background: "rgba(255,255,255,0.02)",
-              border: "1px solid rgba(255,255,255,0.05)",
-              borderRadius: 16, padding: 24, marginBottom: 24,
-            }}>
-              <SectionHeader title="Zone Revenue & Efficiency" subtitle="Revenue share, appointments, and show rate conversion" />
-              <ResponsiveContainer width="100%" height={320}>
-                <ComposedChart data={ZONE_DATA} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis dataKey="zone" tick={{ fontSize: 12, fill: "#ccc" }} axisLine={false} tickLine={false} />
-                  <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} label={{ value: "Revenue (₹L)", angle: -90, position: "insideLeft", fill: "#555", fontSize: 10 }} />
-                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} domain={[10, 30]} label={{ value: "Show %", angle: 90, position: "insideRight", fill: "#555", fontSize: 10 }} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar yAxisId="left" dataKey="rev" name="Revenue (₹L)" radius={[8, 8, 0, 0]} barSize={48}>
-                    {ZONE_DATA.map((z, i) => (
-                      <Cell key={i} fill={z.color} fillOpacity={0.7} />
-                    ))}
-                  </Bar>
-                  <Line yAxisId="right" type="monotone" dataKey="showPct" name="Show %" stroke="#fff" strokeWidth={2.5} dot={{ r: 5, fill: "#fff", stroke: "#0A0A0F", strokeWidth: 2 }} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
+# ================================================================
+# TAB 2: CLINIC DEEP DIVE
+# ================================================================
+with tab2:
+    cdf = clinic_ntb["clinic_df"].copy()
 
-            {/* ZONE DETAIL CARDS */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
-              {ZONE_DATA.map((z) => {
-                const zoneClinics = TOP_CLINICS.filter(c => c.zone === z.zone);
-                const topClinic = zoneClinics[0];
-                return (
-                  <div key={z.zone} style={{
-                    background: `linear-gradient(135deg, ${z.color}06, transparent)`,
-                    border: `1px solid ${z.color}18`,
-                    borderRadius: 16, padding: 24,
-                  }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                      <div>
-                        <h3 style={{ fontSize: 20, fontWeight: 800, color: z.color, margin: 0 }}>{z.zone}</h3>
-                        <span style={{ fontSize: 11, color: "#555" }}>{z.clinics} clinics</span>
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 22, fontWeight: 700, color: "#fff" }}>₹{(z.rev / 100).toFixed(1)}Cr</div>
-                        <div style={{ fontSize: 11, color: "#666" }}>
-                          {((z.rev / ZONE_DATA.reduce((s, zz) => s + zz.rev, 0)) * 100).toFixed(0)}% share
-                        </div>
-                      </div>
-                    </div>
+    # Merge with NTB show data
+    ntb_clinics_df = ntb["clinics_df"].copy()
+    cdf = cdf.merge(
+        ntb_clinics_df[["Clinic", "Total Appts", "Avg Show %"]],
+        on="Clinic", how="left"
+    )
+    cdf["Total Appts"] = cdf["Total Appts"].fillna(0).astype(int)
+    cdf["Avg Show %"] = cdf["Avg Show %"].fillna(0)
 
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
-                      <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: 10, textAlign: "center" }}>
-                        <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>NTB Qty</div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{fmtCompact(z.qty)}</div>
-                      </div>
-                      <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: 10, textAlign: "center" }}>
-                        <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>Appointments</div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{fmtCompact(z.appt)}</div>
-                      </div>
-                      <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: 10, textAlign: "center" }}>
-                        <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>Show Rate</div>
-                        <div style={{
-                          fontSize: 14, fontWeight: 700,
-                          color: z.showPct >= 25 ? "#2EC4B6" : z.showPct >= 20 ? "#F0C808" : "#F15BB5",
-                        }}>{z.showPct}%</div>
-                      </div>
-                    </div>
+    # Filters
+    fcol1, fcol2, fcol3 = st.columns([2, 2, 3])
+    with fcol1:
+        sort_by = st.selectbox("Sort by", ["Revenue", "Qty", "Avg Show %", "Pincodes", "Total Appts"], index=0)
+    with fcol2:
+        zones_available = sorted(cdf["Zone"].dropna().unique().tolist())
+        zone_filter = st.multiselect("Filter Zone", zones_available, default=[])
+    with fcol3:
+        cabin_filter = st.multiselect("Filter Cabin", sorted(cdf["Cabin"].dropna().unique().tolist()), default=[])
 
-                    {topClinic && (
-                      <div style={{
-                        background: "rgba(255,255,255,0.02)", borderRadius: 8, padding: 10,
-                        border: "1px solid rgba(255,255,255,0.04)",
-                      }}>
-                        <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>🏆 Top Clinic</div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{topClinic.name}</span>
-                          <span style={{ fontSize: 12, color: z.color, fontWeight: 600 }}>₹{topClinic.rev.toFixed(0)}L</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+    display_df = cdf.copy()
+    if zone_filter:
+        display_df = display_df[display_df["Zone"].isin(zone_filter)]
+    if cabin_filter:
+        display_df = display_df[display_df["Cabin"].isin(cabin_filter)]
 
-            {/* MONTHLY BY ZONE */}
-            <div style={{
-              background: "rgba(255,255,255,0.02)",
-              border: "1px solid rgba(255,255,255,0.05)",
-              borderRadius: 16, padding: 24, marginTop: 24,
-            }}>
-              <SectionHeader title="Monthly Visits Trajectory" subtitle="Total clinic visits per month — tracking the growth flywheel" />
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={MONTHLY_CLINIC_TREND} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                  <defs>
-                    <linearGradient id="visitGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#9B5DE5" stopOpacity={0.25} />
-                      <stop offset="100%" stopColor="#9B5DE5" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: "#666" }} axisLine={false} tickLine={false} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Area type="monotone" dataKey="visits" name="Clinic Visits" fill="url(#visitGrad)" stroke="#9B5DE5" strokeWidth={2.5} dot={{ r: 3, fill: "#9B5DE5" }} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        )}
-      </div>
+    sort_col = {"Revenue": "Revenue", "Qty": "Qty", "Avg Show %": "Avg Show %", "Pincodes": "Pincodes", "Total Appts": "Total Appts"}[sort_by]
+    display_df = display_df.sort_values(sort_col, ascending=False).head(25)
 
-      {/* FOOTER */}
-      <div style={{
-        padding: "16px 32px",
-        borderTop: "1px solid rgba(255,255,255,0.04)",
-        display: "flex", justifyContent: "space-between",
-        fontSize: 11, color: "#333",
-      }}>
-        <span>Gynoveda Expansion Intelligence · Data: Jan 2025 – Jan 2026</span>
-        <span>61 Clinics · 7,415 Pincodes · ₹105.2Cr Clinic NTB · ₹72.3Cr E-Com 1CX</span>
-      </div>
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
+    # Display table
+    show_cols = ["Clinic", "Zone", "Region", "Cabin", "Launch", "Rev_L", "Qty", "Total Appts", "Avg Show %", "Pincodes"]
+    st.dataframe(
+        display_df[show_cols].rename(columns={"Rev_L": "Revenue (Rs.L)"}),
+        use_container_width=True,
+        hide_index=True,
+        height=500,
+        column_config={
+            "Revenue (Rs.L)": st.column_config.ProgressColumn(
+                "Revenue (Rs.L)", format="%.0f", min_value=0,
+                max_value=float(display_df["Rev_L"].max()) if len(display_df) > 0 else 1,
+            ),
+            "Avg Show %": st.column_config.NumberColumn("Show %", format="%.1f%%"),
         }
-        * { box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-      `}</style>
-    </div>
-  );
-}
+    )
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # Charts row
+    ch1, ch2 = st.columns(2)
+    with ch1:
+        section_header("Top Clinics by Revenue", "Revenue in Rs. Lakhs, colored by Zone")
+        top10 = display_df.head(10)
+        fig_bar = go.Figure()
+        for _, row in top10.iterrows():
+            color = ZONE_COLORS.get(row["Zone"], "#666")
+            fig_bar.add_trace(go.Bar(
+                x=[row["Clinic"]], y=[row["Rev_L"]],
+                marker_color=color, name=row["Zone"],
+                showlegend=False, hovertemplate=f"{row['Clinic']}<br>Rs.{row['Rev_L']:.0f}L<br>Zone: {row['Zone']}<extra></extra>",
+            ))
+        fig_bar.update_layout(**PLOTLY_LAYOUT, height=320, showlegend=False)
+        fig_bar.update_xaxes(tickangle=-35)
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+    with ch2:
+        section_header("Show Rate Radar by Region", "NTB Show % across metro regions")
+        radar_data = [s for s in ntb["summaries"] if s["area"] in ["MMR","PMR","Gujarat","NCR","BMR","KMR","HMR","UP","Central","Punjab"]]
+        if radar_data:
+            fig_radar = go.Figure()
+            fig_radar.add_trace(go.Scatterpolar(
+                r=[r["avg_show_pct"] for r in radar_data],
+                theta=[r["area"] for r in radar_data],
+                fill="toself", fillcolor="rgba(255,107,53,0.1)",
+                line=dict(color="#FF6B35", width=2),
+                name="Show %",
+            ))
+            fig_radar.update_layout(
+                **{k: v for k, v in PLOTLY_LAYOUT.items() if k not in ["xaxis", "yaxis"]},
+                height=320,
+                polar=dict(
+                    bgcolor="rgba(0,0,0,0)",
+                    radialaxis=dict(visible=True, range=[0, 35], gridcolor="rgba(255,255,255,0.06)", color="#555"),
+                    angularaxis=dict(gridcolor="rgba(255,255,255,0.06)", color="#999"),
+                ),
+            )
+            st.plotly_chart(fig_radar, use_container_width=True)
+
+    # Clinic monthly trend selector
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    section_header("Individual Clinic Trajectory", "Select clinics to compare monthly appointment trends")
+
+    clinic_names = [c["area"] for c in ntb["clinics"]]
+    selected_clinics = st.multiselect("Select Clinics", clinic_names, default=clinic_names[:3])
+
+    if selected_clinics:
+        fig_clinic_trend = go.Figure()
+        colors = ["#FF6B35", "#2EC4B6", "#9B5DE5", "#F0C808", "#1E96FC", "#F15BB5"]
+        for i, cname in enumerate(selected_clinics):
+            clinic_data = next((c for c in ntb["clinics"] if c["area"] == cname), None)
+            if clinic_data:
+                months = [m["month"] for m in clinic_data["monthly"]]
+                appts = [m["appt"] for m in clinic_data["monthly"]]
+                fig_clinic_trend.add_trace(go.Scatter(
+                    x=months, y=appts, name=cname, mode="lines+markers",
+                    line=dict(color=colors[i % len(colors)], width=2),
+                    marker=dict(size=4),
+                ))
+        fig_clinic_trend.update_layout(**PLOTLY_LAYOUT, height=320, title="")
+        fig_clinic_trend.update_yaxes(title_text="NTB Appointments")
+        st.plotly_chart(fig_clinic_trend, use_container_width=True)
+
+
+# ================================================================
+# TAB 3: ONLINE TO OFFLINE FLYWHEEL
+# ================================================================
+with tab3:
+    # Flywheel KPIs
+    curative_rev = ecom["product_df"][ecom["product_df"]["Product"] == "Curative"]["Revenue"].sum()
+    clinic_total_rev = clinic_ft["Revenue"].sum()
+
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        st.markdown(kpi_html("E-Com Lifetime Orders", f"{ecom['total_orders']:,}", f"Rs.{ecom['total_rev']/1e7:.1f}Cr Revenue", "#F15BB5"), unsafe_allow_html=True)
+    with k2:
+        st.markdown(kpi_html("Curative Share", f"{curative_rev/ecom['total_rev']*100:.0f}%", f"Rs.{curative_rev/1e7:.1f}Cr of Rs.{ecom['total_rev']/1e7:.1f}Cr", "#2EC4B6"), unsafe_allow_html=True)
+    with k3:
+        st.markdown(kpi_html("Clinic NTB Reach", f"{len(clinic_ft):,}", f"Pincodes | Rs.{clinic_total_rev/1e7:.0f}Cr Rev", "#FF6B35"), unsafe_allow_html=True)
+    with k4:
+        st.markdown(kpi_html("Total Clinic NTB Qty", f"{clinic_ft['Qty'].sum():,}", "First-time customers", "#F0C808"), unsafe_allow_html=True)
+
+    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+
+    # E-Com Yearly Trend
+    ec1, ec2 = st.columns([2, 1])
+    with ec1:
+        section_header("E-Commerce 1CX Revenue Journey", "First-time customer orders by year (Rs. Crores)")
+        fig_ecom = go.Figure()
+        year_df = ecom["year_df"]
+        fig_ecom.add_trace(go.Bar(
+            x=year_df["Year"], y=year_df["Rev_Cr"], name="Revenue",
+            marker_color=["#FF6B3555", "#FF6B3577", "#FF6B35", "#FF6B35", "#FF6B3577", "#FF6B3555"],
+            text=year_df["Rev_Cr"].apply(lambda x: f"Rs.{x}Cr"),
+            textposition="outside", textfont=dict(size=11, color="#ccc"),
+        ))
+        fig_ecom.update_layout(**PLOTLY_LAYOUT, height=300, showlegend=False)
+        fig_ecom.update_yaxes(title_text="Revenue (Rs. Cr)")
+        st.plotly_chart(fig_ecom, use_container_width=True)
+
+    with ec2:
+        section_header("Product Mix", "E-Com revenue by product type")
+        fig_pie = go.Figure()
+        pdf = ecom["product_df"]
+        fig_pie.add_trace(go.Pie(
+            labels=pdf["Product"], values=pdf["Revenue"],
+            marker=dict(colors=["#FF6B35", "#2EC4B6", "#F0C808"]),
+            textinfo="label+percent", textfont=dict(size=11),
+            hole=0.5,
+        ))
+        fig_pie.update_layout(
+            **{k: v for k, v in PLOTLY_LAYOUT.items() if k not in ["xaxis", "yaxis"]},
+            height=300, showlegend=False,
+        )
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # City-Level Flywheel
+    section_header("City-Level Online to Offline Flywheel", "E-commerce demand (blue) vs Clinic First-Time Revenue (orange) by city")
+
+    # Build city comparison
+    ecom_cities = ecom["city_df"].head(15).copy()
+    clinic_city_agg = clinic_ft.groupby("City").agg({"Qty": "sum", "Revenue": "sum"}).reset_index()
+    clinic_city_agg["Clinic_Rev_Cr"] = clinic_city_agg["Revenue"] / 1e7
+
+    # Manual mapping for top cities
+    city_map = {
+        "Mumbai": "Mumbai", "Delhi": "Delhi", "Bengaluru": "Bengaluru",
+        "Pune": "Pune", "Hyderabad": "Hyderabad", "Gurgaon": "Gurgaon",
+        "Gautam Buddha Nagar": "Noida/GBN", "Ghaziabad": "Ghaziabad",
+        "Ahmedabad": "Ahmedabad", "Lucknow": "Lucknow", "Kolkata": "Kolkata",
+        "Goa": "Goa", "Kamrup": "Guwahati", "Nagpur": "Nagpur",
+    }
+
+    flywheel_data = []
+    for _, row in ecom_cities.iterrows():
+        city = row["City"]
+        label = city_map.get(city, city)
+        clinic_match = clinic_city_agg[clinic_city_agg["City"].str.contains(city, case=False, na=False)]
+        clinic_rev = clinic_match["Clinic_Rev_Cr"].sum() if len(clinic_match) > 0 else 0
+        flywheel_data.append({
+            "City": label, "E-Com Rev (Cr)": row["Rev_Cr"], "Clinic Rev (Cr)": round(clinic_rev, 2),
+        })
+
+    fly_df = pd.DataFrame(flywheel_data)
+
+    fig_fly = go.Figure()
+    fig_fly.add_trace(go.Bar(
+        y=fly_df["City"], x=fly_df["E-Com Rev (Cr)"], name="E-Com Rev (Rs.Cr)",
+        orientation="h", marker_color="#1E96FC", opacity=0.7,
+    ))
+    fig_fly.add_trace(go.Bar(
+        y=fly_df["City"], x=fly_df["Clinic Rev (Cr)"], name="Clinic Rev (Rs.Cr)",
+        orientation="h", marker_color="#FF6B35", opacity=0.85,
+    ))
+    fig_fly.update_layout(**PLOTLY_LAYOUT, height=420, barmode="group", title="")
+    fig_fly.update_xaxes(title_text="Revenue (Rs. Crores)")
+    fig_fly.update_yaxes(autorange="reversed")
+    st.plotly_chart(fig_fly, use_container_width=True)
+
+    st.info("**Expansion Signal:** Gurgaon (Rs.1.19Cr e-com) and Ghaziabad (Rs.1.04Cr e-com) show strong online demand but have no dedicated clinic presence. These are prime candidates for new clinic placement.")
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # State Conversion Table
+    section_header("State-Level Demand Conversion", "How well is online demand converting into clinic revenue?")
+
+    ecom_state = ecom["state_df"].head(12).copy()
+    clinic_state_agg = clinic_ft.groupby("State").agg({"Qty": "sum", "Revenue": "sum", "Pincode": "nunique"}).reset_index()
+    clinic_state_agg.columns = ["State", "Clinic_Qty", "Clinic_Rev", "Clinic_Pincodes"]
+    clinic_state_agg["Clinic_Rev_Cr"] = clinic_state_agg["Clinic_Rev"] / 1e7
+
+    state_comp = ecom_state.merge(clinic_state_agg, on="State", how="left")
+    state_comp["Clinic_Rev_Cr"] = state_comp["Clinic_Rev_Cr"].fillna(0)
+    state_comp["Multiplier"] = state_comp.apply(
+        lambda r: round(r["Clinic_Rev_Cr"] / r["Rev_Cr"], 1) if r["Clinic_Rev_Cr"] > 0 and r["Rev_Cr"] > 0 else 0, axis=1
+    )
+    state_comp["Signal"] = state_comp["Multiplier"].apply(
+        lambda x: "Strong Conversion" if x >= 2.0 else "Moderate" if x >= 1.0 else "Under-penetrated" if x > 0 else "No Clinic Presence"
+    )
+
+    st.dataframe(
+        state_comp[["State", "Rev_Cr", "Clinic_Rev_Cr", "Multiplier", "Signal"]].rename(columns={
+            "Rev_Cr": "E-Com Rev (Cr)", "Clinic_Rev_Cr": "Clinic Rev (Cr)"
+        }),
+        use_container_width=True, hide_index=True,
+        column_config={
+            "Multiplier": st.column_config.NumberColumn("Multiplier", format="%.1fx"),
+            "Signal": st.column_config.TextColumn("Signal"),
+        }
+    )
+
+
+# ================================================================
+# TAB 4: ZONE INTELLIGENCE
+# ================================================================
+with tab4:
+    # Zone Revenue vs Show Rate
+    section_header("Zone Revenue & Conversion Efficiency", "Revenue (bars) vs Show Rate % (line)")
+
+    fig_zone = make_subplots(specs=[[{"secondary_y": True}]])
+    for _, row in zdf.iterrows():
+        z = row["Zone"]
+        color = ZONE_COLORS.get(z, "#666")
+        show_info = zone_show_map.get(z, {})
+        fig_zone.add_trace(
+            go.Bar(x=[z], y=[row["Rev_Cr"]], name=z, marker_color=color, opacity=0.75,
+                   showlegend=False, hovertemplate=f"{z}<br>Rs.{row['Rev_Cr']}Cr<extra></extra>"),
+            secondary_y=False,
+        )
+
+    show_rates = []
+    zone_labels = []
+    for _, row in zdf.iterrows():
+        z = row["Zone"]
+        si = zone_show_map.get(z, {})
+        show_rates.append(si.get("avg_show_pct", 0))
+        zone_labels.append(z)
+
+    fig_zone.add_trace(
+        go.Scatter(x=zone_labels, y=show_rates, name="Show Rate %",
+                   line=dict(color="#fff", width=2.5),
+                   mode="lines+markers", marker=dict(size=8, color="#fff", line=dict(color="#0A0A0F", width=2))),
+        secondary_y=True,
+    )
+    fig_zone.update_layout(**PLOTLY_LAYOUT, height=340, title="")
+    fig_zone.update_yaxes(title_text="Revenue (Rs. Cr)", secondary_y=False, gridcolor="rgba(255,255,255,0.04)")
+    fig_zone.update_yaxes(title_text="Show Rate %", secondary_y=True, range=[10, 30], gridcolor="rgba(255,255,255,0.02)")
+    st.plotly_chart(fig_zone, use_container_width=True)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # Zone Deep Cards
+    section_header("Zone Deep Dive Cards", "Revenue share, top clinic, and key metrics per zone")
+
+    clinic_by_zone = clinic_ntb["clinic_df"].copy()
+
+    zone_cols = st.columns(2)
+    for i, (_, zrow) in enumerate(zdf.iterrows()):
+        z = zrow["Zone"]
+        color = ZONE_COLORS.get(z, "#666")
+        show_info = zone_show_map.get(z, {})
+        show_pct = show_info.get("avg_show_pct", 0)
+        total_appt = show_info.get("total_appt", 0)
+        rev_share = (zrow["Rev_Cr"] / zdf["Rev_Cr"].sum() * 100) if zdf["Rev_Cr"].sum() > 0 else 0
+        zone_clinics = clinic_by_zone[clinic_by_zone["Zone"] == z].sort_values("Revenue", ascending=False)
+        top_clinic = zone_clinics.iloc[0] if len(zone_clinics) > 0 else None
+        n_clinics = len(zone_clinics)
+        show_color = "#2EC4B6" if show_pct >= 25 else "#F0C808" if show_pct >= 20 else "#F15BB5"
+
+        top_clinic_html = ""
+        if top_clinic is not None:
+            top_clinic_html = f"""
+            <div style="background:rgba(255,255,255,0.02);border-radius:8px;padding:10px;border:1px solid rgba(255,255,255,0.04);margin-top:12px;">
+                <div style="font-size:10px;color:#555;margin-bottom:3px;">Top Performer</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:13px;font-weight:700;color:#fff;">{top_clinic['Clinic']}</span>
+                    <span style="font-size:12px;color:{color};font-weight:600;">Rs.{top_clinic['Rev_L']:.0f}L</span>
+                </div>
+            </div>
+            """
+
+        with zone_cols[i % 2]:
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg,{color}08,transparent);border:1px solid {color}20;border-radius:16px;padding:22px;margin-bottom:16px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                    <div>
+                        <div style="font-size:20px;font-weight:800;color:{color};">{z}</div>
+                        <span style="font-size:11px;color:#555;">{n_clinics} clinics</span>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:22px;font-weight:700;color:#fff;">Rs.{zrow['Rev_Cr']}Cr</div>
+                        <div style="font-size:11px;color:#666;">{rev_share:.0f}% share</div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:16px;">
+                    <div style="flex:1;background:rgba(255,255,255,0.03);border-radius:8px;padding:10px;text-align:center;">
+                        <div style="font-size:10px;color:#555;">NTB Qty</div>
+                        <div style="font-size:14px;font-weight:700;color:#fff;">{zrow['Qty']:,}</div>
+                    </div>
+                    <div style="flex:1;background:rgba(255,255,255,0.03);border-radius:8px;padding:10px;text-align:center;">
+                        <div style="font-size:10px;color:#555;">Appointments</div>
+                        <div style="font-size:14px;font-weight:700;color:#fff;">{total_appt:,}</div>
+                    </div>
+                    <div style="flex:1;background:rgba(255,255,255,0.03);border-radius:8px;padding:10px;text-align:center;">
+                        <div style="font-size:10px;color:#555;">Show %</div>
+                        <div style="font-size:14px;font-weight:700;color:{show_color};">{show_pct:.1f}%</div>
+                    </div>
+                </div>
+                {top_clinic_html}
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # Monthly Visits Trajectory
+    section_header("Monthly Visits Trajectory", "Tracking the growth flywheel across all clinics")
+
+    mdf_visits = clinic_ntb["month_df"].copy()
+    fig_visits = go.Figure()
+    fig_visits.add_trace(go.Scatter(
+        x=mdf_visits["month"], y=mdf_visits["visits"], name="Clinic Visits",
+        fill="tozeroy", fillcolor="rgba(155,93,229,0.08)",
+        line=dict(color="#9B5DE5", width=2.5), mode="lines+markers",
+        marker=dict(size=4, color="#9B5DE5"),
+    ))
+    fig_visits.update_layout(**PLOTLY_LAYOUT, height=300, title="")
+    fig_visits.update_yaxes(title_text="Total Visits")
+    st.plotly_chart(fig_visits, use_container_width=True)
+
+    # Zone Monthly Trend
+    if not clinic_ntb["zone_month_df"].empty:
+        section_header("Zone Revenue Trends", "Monthly revenue trajectory by zone")
+
+        zmdf = clinic_ntb["zone_month_df"].copy()
+        zmdf["rev_lakhs"] = zmdf["rev"] / 1e5
+        fig_zone_trend = go.Figure()
+        for z in zmdf["Zone"].unique():
+            if z in ZONE_COLORS:
+                zdata = zmdf[zmdf["Zone"] == z].sort_values("month")
+                fig_zone_trend.add_trace(go.Scatter(
+                    x=zdata["month"], y=zdata["rev_lakhs"], name=z,
+                    line=dict(color=ZONE_COLORS[z], width=2), mode="lines",
+                ))
+        fig_zone_trend.update_layout(**PLOTLY_LAYOUT, height=320, title="")
+        fig_zone_trend.update_yaxes(title_text="Revenue (Rs. Lakhs)")
+        st.plotly_chart(fig_zone_trend, use_container_width=True)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# FOOTER
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+st.markdown("""
+<div style="margin-top:40px;padding:16px 0;border-top:1px solid rgba(255,255,255,0.04);display:flex;justify-content:space-between;font-size:11px;color:#333;">
+    <span>Gynoveda Expansion Intelligence &middot; Data: Jan 2025 - Jan 2026</span>
+    <span>61 Clinics &middot; 7,415 Pincodes &middot; 6 Zones</span>
+</div>
+""", unsafe_allow_html=True)
