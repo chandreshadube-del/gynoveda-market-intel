@@ -175,10 +175,24 @@ with st.sidebar:
     rev_per_ntb = st.number_input("₹ Revenue per NTB Patient", value=22000, step=1000)
     monthly_opex = st.number_input("Monthly OpEx per Clinic (₹L)", value=3.1, step=0.1, format="%.1f")
     capex_per_clinic = st.number_input("Capex per Clinic (₹L)", value=28.0, step=1.0, format="%.1f")
-    industry_show = st.slider("Industry Benchmark Show%", 15, 35, 23, 1)
+    # Internal benchmark: P75 of active clinics (≥30 appt/mo)
+    _active = cp[cp["l3m_appt"] >= 30]
+    _p75 = int(round(_active["l3m_show"].quantile(0.75) * 100))
+    industry_show = st.slider("Gynoveda Benchmark Show%", 10, 50, _p75, 1)
+    _above_bench = (_active["l3m_show"] >= industry_show / 100).sum()
+    st.caption(f"_Default {_p75}% = Gynoveda P75 (top-quartile of {len(_active)} active clinics). {_above_bench} clinics already achieve this._")
 
     st.markdown("---")
     st.caption(f"Data: Jan-25 to Jan-26 · {len(cp)} Clinics")
+    st.markdown("---")
+    st.markdown(
+        '<div style="background:#f0f4ff;border-radius:6px;padding:10px;font-size:0.72rem;color:#444;">'
+        '<b>📚 Benchmark</b><br>'
+        '• <b>Gynoveda P75 Internal:</b> Top-quartile Show% of active clinics (≥30 appt/mo). '
+        'Proven & achievable — 25% of your own clinics already exceed this.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
 
 # ── HEADER ──────────────────────────────────────────────────────────────────
@@ -294,7 +308,7 @@ st.dataframe(top12, hide_index=True, use_container_width=True)
 st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
 st.markdown(
     '<div class="slide-header">⚠️ SLIDE 2 — THE CASE FOR CAUTION: Why We Must Be Smart, Not Just Fast'
-    '<div class="slide-sub">STATE-WISE SHOW% — Gynoveda vs Industry Standard (Verified Benchmarks)</div></div>',
+    '<div class="slide-sub">STATE-WISE SHOW% — Gynoveda vs Internal P75 Benchmark (Top-Quartile of Active Clinics)</div></div>',
     unsafe_allow_html=True,
 )
 
@@ -360,7 +374,7 @@ state_show["label"] = state_show.apply(
     lambda r: f"{r['avg_show']:.0%} ({int(r['clinic_count'])} cl)", axis=1
 )
 
-st.markdown("**Gynoveda Show% vs Industry Standard — State-Wise**")
+st.markdown("**Gynoveda Show% vs Internal P75 Benchmark — State-Wise**")
 
 fig_show = go.Figure()
 fig_show.add_trace(go.Bar(
@@ -387,7 +401,7 @@ fig_show.add_trace(go.Bar(
 fig_show.add_vline(x=industry_show, line_dash="dash", line_color="#1a73e8", line_width=2)
 fig_show.add_annotation(
     x=industry_show, y=1.02, yref="paper",
-    text=f"◆ {industry_show}% Benchmark", showarrow=False,
+    text=f"◆ {industry_show}% Gynoveda P75 Benchmark", showarrow=False,
     font=dict(color="#1a73e8", size=12, family="Arial Black"),
 )
 fig_show.update_layout(
@@ -405,6 +419,16 @@ sc1, sc2, sc3 = st.columns(3)
 sc1.markdown(f'<div class="insight-card insight-green"><b style="font-size:2rem;color:#28a745">{above}</b> states above standard</div>', unsafe_allow_html=True)
 sc2.markdown(f'<div class="insight-card"><b style="font-size:2rem;color:#ffc107">{at_std}</b> states at standard (±2ppt)</div>', unsafe_allow_html=True)
 sc3.markdown(f'<div class="insight-card insight-red"><b style="font-size:2rem;color:#dc3545">{below}</b> states below standard</div>', unsafe_allow_html=True)
+
+st.markdown(
+    '<div style="background:#f0f4ff;border-left:3px solid #1a73e8;padding:10px 14px;border-radius:0 6px 6px 0;margin:12px 0;font-size:0.8rem;color:#555;">'
+    f'<b>📚 Benchmark:</b> '
+    f'Gynoveda Internal P75 = <b>{industry_show}%</b> Show%. '
+    f'This is the top-quartile threshold of active clinics (≥30 appt/mo). '
+    f'<b>{_above_bench}</b> clinics already achieve or exceed this, proving it is attainable across diverse markets.'
+    '</div>',
+    unsafe_allow_html=True,
+)
 
 with st.expander("📋 Full State-Wise Benchmark Detail"):
     detail = state_show[["state", "avg_show", "gap", "clinic_count", "total_ntb"]].copy()
@@ -493,7 +517,7 @@ st.dataframe(
 st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
 st.markdown(
     '<div class="slide-header">🔧 SLIDE 4 — FIX BEFORE EXPAND: ₹0 CAC Revenue Unlock'
-    '<div class="slide-sub">What happens if underperforming clinics reach industry-standard Show%?</div></div>',
+    '<div class="slide-sub">What happens if underperforming clinics reach our own top-quartile Show%?</div></div>',
     unsafe_allow_html=True,
 )
 
@@ -532,7 +556,7 @@ with col_fix1:
         )
     )
     fig_scatter.add_hline(y=target_show, line_dash="dash", line_color="green",
-                          annotation_text=f"{industry_show}% benchmark")
+                          annotation_text=f"{industry_show}% P75 benchmark")
     fig_scatter.update_layout(
         title="Show% vs Appointments — Bubble = Revenue Unlock Potential",
         height=400, margin=dict(l=40, r=40, t=40, b=40), coloraxis_showscale=False,
@@ -853,4 +877,4 @@ over 3 years. Breakeven shifts from {breakeven_shows} → {yr3_be} shows/month.<
 """, unsafe_allow_html=True)
 
 st.markdown("---")
-st.caption(f"Gynoveda FY27 Expansion Intelligence | Data through Jan 2026 | {len(cp)} clinics | Generated {pd.Timestamp.now().strftime('%d-%b-%Y')}")
+st.caption(f"Gynoveda FY27 Expansion Intelligence | Data through Jan 2026 | {len(cp)} clinics | Benchmark: Internal P75 ({_p75}% Show%) | Generated {pd.Timestamp.now().strftime('%d-%b-%Y')}")
