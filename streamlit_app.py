@@ -130,7 +130,7 @@ cp["latest_ntb"] = (cp["latest_appt"] * cp["latest_show"]).astype(int)
 # L3M averages
 cp["l3m_appt"] = cp[[f"appt_{m}" for m in l3m_months]].mean(axis=1)
 cp["l3m_show"] = cp[[f"show_{m}" for m in l3m_months]].mean(axis=1)
-cp["l3m_ntb"] = (cp["l3m_appt"] * cp["l3m_show"]).astype(int)
+cp["l3m_ntb"] = (cp["l3m_appt"] * cp["l3m_show"]).astype(int)  # clinic visits (shows)
 
 # Cabin utilization (20 working days × 10 slots/cabin/day)
 cp["cabins"] = pd.to_numeric(cp["cabins"], errors="coerce").fillna(2).astype(int)
@@ -207,13 +207,14 @@ ntb_decline = (latest_ntb - peak_ntb) / peak_ntb if peak_ntb > 0 else 0
 network_show = cp["latest_show"].mean()
 ntb_per_clinic = latest_ntb / len(cp) if len(cp) > 0 else 0
 peak_per_clinic = peak_ntb / len(cp) if len(cp) > 0 else 0
+latest_appt_total = df_network["appt"].iloc[-1]
 
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Network NTB (Jan-26)", fmt_num(latest_ntb), f"{ntb_decline:+.0%} from peak")
-c2.metric("Network Show%", f"{network_show:.0%}", f"{'↑' if network_show > 0.18 else '↓'} vs 18% floor")
-c3.metric("Active Clinics", f"{len(cp)}")
-c4.metric("NTB/Clinic (Jan-26)", f"{ntb_per_clinic:.0f}", f"Peak was {peak_per_clinic:.0f}")
-c5.metric("Avg Cabin Util", f"{cp['util_pct'].mean():.0%}", "L3M average")
+c1.metric("NTB Appt Booked (Jan-26)", fmt_num(latest_appt_total))
+c2.metric("Clinic Visits (Jan-26)", fmt_num(latest_ntb), f"{ntb_decline:+.0%} from peak")
+c3.metric("Network Show%", f"{network_show:.0%}", f"{'↑' if network_show > 0.18 else '↓'} vs 18% floor")
+c4.metric("Active Clinics", f"{len(cp)}")
+c5.metric("Visits/Clinic (Jan-26)", f"{ntb_per_clinic:.0f}", f"Peak was {peak_per_clinic:.0f}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -317,15 +318,24 @@ st.markdown(
 
 col_trend, col_insight = st.columns([2, 1])
 with col_trend:
-    st.markdown("**Network NTB Trend — The Plateau Problem**")
+    st.markdown("**Network Funnel Trend — Appointments vs Clinic Visits**")
     fig_trend = make_subplots(specs=[[{"secondary_y": True}]])
     fig_trend.add_trace(
         go.Bar(
+            x=df_network["month"], y=df_network["appt"],
+            name="Appt Booked", marker_color="#B0BEC5", opacity=0.55,
+            text=df_network["appt"].apply(lambda x: fmt_num(x)),
+            textposition="outside",
+            hovertemplate="<b>%{x|%b %Y}</b><br>Appt Booked: %{y:,}<extra></extra>",
+        ), secondary_y=False,
+    )
+    fig_trend.add_trace(
+        go.Bar(
             x=df_network["month"], y=df_network["ntb"],
-            name="NTB Shows", marker_color="#FF6B35", opacity=0.85,
+            name="Clinic Visits (Shows)", marker_color="#FF6B35", opacity=0.85,
             text=df_network["ntb"].apply(lambda x: fmt_num(x)),
             textposition="outside",
-            hovertemplate="<b>%{x|%b %Y}</b><br>NTB Shows: %{y:,}<extra></extra>",
+            hovertemplate="<b>%{x|%b %Y}</b><br>Clinic Visits: %{y:,}<extra></extra>",
         ), secondary_y=False,
     )
     fig_trend.add_trace(
@@ -337,10 +347,11 @@ with col_trend:
         ), secondary_y=True,
     )
     fig_trend.update_layout(
-        height=350, margin=dict(l=40, r=40, t=10, b=40),
+        height=370, margin=dict(l=40, r=40, t=10, b=40),
         legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center",
                     font=dict(size=12)),
-        yaxis_title="Total NTB", yaxis2_title="Show %",
+        yaxis_title="Count", yaxis2_title="Show %",
+        barmode="overlay",
         plot_bgcolor="white",
     )
     fig_trend.update_yaxes(range=[0, 35], secondary_y=True)
@@ -350,16 +361,18 @@ with col_trend:
 with col_insight:
     peak_m = df_network.loc[df_network["ntb"].idxmax(), "month"].strftime("%b-%y")
     below_15 = (cp["latest_show"] < 0.15).sum()
+    latest_appt_network = df_network["appt"].iloc[-1]
     st.markdown(f"""
     <div class="insight-card insight-red">
-    <strong>📊 The Data Says:</strong><br>
-    • NTB peaked at <b>{fmt_num(peak_ntb)}</b> ({peak_m}), now <b>{fmt_num(latest_ntb)}</b> ({ntb_decline:+.0%})<br>
-    • NTB/clinic fell from <b>{peak_per_clinic:.0f}</b> to <b>{ntb_per_clinic:.0f}</b><br>
+    <strong>📊 The Funnel Says:</strong><br>
+    • <b>{fmt_num(latest_appt_network)}</b> appts booked (Jan-26), only <b>{fmt_num(latest_ntb)}</b> visited ({network_show:.0%} Show%)<br>
+    • Visits peaked at <b>{fmt_num(peak_ntb)}</b> ({peak_m}), now <b>{ntb_decline:+.0%}</b><br>
     • <b>{below_15}</b> clinics have Show% below 15%<br>
-    • Adding clinics without fixing Show% grows cost faster than revenue
+    • At 75% conversion, each lost visit = <b>{fmt_inr(0.75*rev_per_ntb)}</b> lost revenue
     </div>
     <div class="insight-card insight-blue">
     <strong>🎯 The answer:</strong> Not fewer or more clinics — <b>smarter clinics</b>.
+    Fix the funnel: Appt → Show → Purchase.
     </div>
     """, unsafe_allow_html=True)
 
@@ -496,11 +509,12 @@ with col_sat_cards:
         top_areas = ", ".join(top_cities["City"].dropna().unique()[:3])
 
         trend_emoji = "🟢" if row["l3m_show"] >= 0.25 else "🟡" if row["l3m_show"] >= 0.18 else "🔴"
+        visits_mo = int(row["l3m_appt"] * row["l3m_show"])
         st.markdown(f"""
         <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin:8px 0;border-left:4px solid #FF6B35;">
         <b>{row['clinic_name']}</b> ({row['city_code']}) — {int(row['cabins'])} cabins<br>
-        Shows: <b>{int(row['l3m_appt'])}/mo</b> | Util: <b>{row['util_pct']:.0%}</b> |
-        Show%: <b>{row['l3m_show']:.0%}</b> | {trend_emoji}<br>
+        Appt: <b>{int(row['l3m_appt'])}/mo</b> | Visits: <b>{visits_mo}/mo</b> |
+        Show%: <b>{row['l3m_show']:.0%}</b> | Util: <b>{row['util_pct']:.0%}</b> | {trend_emoji}<br>
         <span style="color:#666;font-size:0.8rem;">Top catchments: {top_areas}</span>
         </div>
         """, unsafe_allow_html=True)
@@ -529,16 +543,20 @@ target_show = industry_show / 100
 cp["show_gap"] = (target_show - cp["l3m_show"]).clip(lower=0)
 conversion_rate = show_to_conv / 100
 rev_per_show = conversion_rate * rev_per_ntb
-cp["additional_ntb"] = (cp["l3m_appt"] * cp["show_gap"]).astype(int)
-cp["additional_rev_annual"] = cp["additional_ntb"] * rev_per_show * 12
+cp["additional_visits"] = (cp["l3m_appt"] * cp["show_gap"]).astype(int)
+cp["additional_purchases"] = (cp["additional_visits"] * conversion_rate).astype(int)
+cp["additional_rev_annual"] = cp["additional_purchases"] * rev_per_ntb * 12
 
 underperforming = cp[cp["show_gap"] > 0].sort_values("additional_rev_annual", ascending=False)
 total_unlock = underperforming["additional_rev_annual"].sum()
+total_extra_visits = underperforming["additional_visits"].sum()
+total_extra_purchases = underperforming["additional_purchases"].sum()
 
-fm1, fm2, fm3 = st.columns(3)
+fm1, fm2, fm3, fm4 = st.columns(4)
 fm1.metric("Underperforming Clinics", f"{len(underperforming)} of {len(cp)}", f"Show% < {industry_show}%")
-fm2.metric("Annual Revenue Unlock", fmt_inr(total_unlock), "₹0 CAC — no new leases")
-fm3.metric("Avg Show% Gap", f"{underperforming['show_gap'].mean():.1%}", f"vs {industry_show}% target")
+fm2.metric("Extra Visits/mo Unlocked", fmt_num(total_extra_visits), f"@ {industry_show}% Show%")
+fm3.metric("Extra NTB Purchases/mo", fmt_num(total_extra_purchases), f"@ {show_to_conv}% conversion")
+fm4.metric("Annual Revenue Unlock", fmt_inr(total_unlock), "₹0 CAC — no new leases")
 
 col_fix1, col_fix2 = st.columns([1.2, 1])
 
@@ -571,14 +589,14 @@ with col_fix2:
     st.markdown(f"""
     <div class="insight-card insight-green">
     <strong>💰 {fmt_inr(total_unlock)} unlock</strong> from Show% fixes across
-    <b>{len(underperforming)}</b> clinics — zero new leases, zero CAC.
-    This is FY27's highest-ROI initiative.
+    <b>{len(underperforming)}</b> clinics — zero new leases, zero CAC.<br>
+    <b>{total_extra_visits:,}</b> extra visits/mo → <b>{total_extra_purchases:,}</b> NTB purchases/mo @ {show_to_conv}% conversion.
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("**Top 10 Revenue Unlock Opportunities**")
-    top_unlock = underperforming.head(10)[["clinic_name", "l3m_show", "show_gap", "additional_ntb", "additional_rev_annual"]].copy()
-    top_unlock.columns = ["Clinic", "Current Show%", "Gap", "Extra NTB/mo", "Annual Unlock ₹"]
+    top_unlock = underperforming.head(10)[["clinic_name", "l3m_show", "show_gap", "additional_visits", "additional_purchases", "additional_rev_annual"]].copy()
+    top_unlock.columns = ["Clinic", "Current Show%", "Gap", "Extra Visits/mo", "Extra NTB/mo", "Annual Unlock ₹"]
     top_unlock["Current Show%"] = (top_unlock["Current Show%"] * 100).round(1)
     top_unlock["Gap"] = (top_unlock["Gap"] * 100).round(1)
     top_unlock["Annual Unlock ₹"] = top_unlock["Annual Unlock ₹"].apply(lambda x: fmt_inr(x))
@@ -591,16 +609,17 @@ with col_fix2:
 st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
 st.markdown(
     '<div class="slide-header">💰 SLIDE 5 — UNIT ECONOMICS: Per Clinic P&L (Actual Costs)'
-    '<div class="slide-sub">What does it take to break even? How profitable is the average clinic?</div></div>',
+    f'<div class="slide-sub">Funnel: Appt → {industry_show}% Show → Clinic Visit → {show_to_conv}% Conversion → NTB Purchase @ {fmt_inr(rev_per_ntb)}</div></div>',
     unsafe_allow_html=True,
 )
 
 opex_monthly = monthly_opex * 1e5
 capex = capex_per_clinic * 1e5
-breakeven_shows = int(np.ceil(opex_monthly / rev_per_show))
+breakeven_visits = int(np.ceil(opex_monthly / rev_per_show))
 
-avg_shows = cp["l3m_ntb"].mean()
-avg_revenue = avg_shows * rev_per_show
+avg_visits = cp["l3m_ntb"].mean()
+avg_purchases = avg_visits * conversion_rate
+avg_revenue = avg_visits * rev_per_show
 avg_profit = avg_revenue - opex_monthly
 profitable_clinics = (cp["l3m_ntb"] * rev_per_show > opex_monthly).sum()
 network_annual_profit = (cp["l3m_ntb"] * rev_per_show - opex_monthly).clip(lower=0).sum() * 12
@@ -616,19 +635,23 @@ electricity = 0.05e5
 um1, um2, um3, um4, um5, um6 = st.columns(6)
 um1.metric("Monthly OpEx/Clinic", fmt_inr(opex_monthly), "Rent + Dr×2 + Staff")
 um2.metric("Capex (Construction)", fmt_inr(capex))
-um3.metric("Breakeven NTB Shows", f"{breakeven_shows}/month", f"@ {conversion_rate:.0%} conv × {fmt_inr(rev_per_ntb)}/patient")
+um3.metric("Breakeven Visits", f"{breakeven_visits}/month", f"@ {show_to_conv}% conv × {fmt_inr(rev_per_ntb)}/patient")
 um4.metric("Profitable Clinics", f"{profitable_clinics} of {len(cp)}", f"↑ {len(cp)-profitable_clinics} below breakeven")
-um5.metric("Avg Margin", f"{avg_profit/avg_revenue*100:.0f}%" if avg_revenue > 0 else "N/A")
-um6.metric("Network Annual Profit", fmt_inr(network_annual_profit), f"After {fmt_inr(opex_monthly)}/mo OpEx")
+um5.metric("Rev per Visit", fmt_inr(rev_per_show), f"{show_to_conv}% × {fmt_inr(rev_per_ntb)}")
+um6.metric("Network Annual Profit", fmt_inr(network_annual_profit), f"{profitable_clinics} clinics contributing")
 
 col_pnl, col_sens = st.columns(2)
 
 with col_pnl:
-    wf_labels = ["Revenue", "Rent", "Doctors (2)", "Clinic Mgr", "Housekeeping", "Receptionist", "Electricity", "Monthly Profit"]
-    wf_values = [avg_revenue, -rent, -doctors, -clinic_mgr, -housekeeping, -receptionist, -electricity, avg_profit]
+    gross_rev = avg_visits * rev_per_ntb  # before conversion
+    conv_loss = gross_rev - avg_revenue  # lost to non-conversion
+    wf_labels = ["Gross Rev (all visits)", f"Conv Loss ({100-show_to_conv}%)", "Net Revenue", "Rent", "Doctors (2)", "Clinic Mgr", "Housekeeping", "Receptionist", "Electricity", "Monthly Profit"]
+    wf_measures = ["relative", "relative", "total", "relative", "relative", "relative", "relative", "relative", "relative", "total"]
+    wf_values = [avg_visits * rev_per_ntb, -conv_loss, avg_revenue, -rent, -doctors, -clinic_mgr, -housekeeping, -receptionist, -electricity, avg_profit]
 
     fig_wf = go.Figure(go.Waterfall(
         x=wf_labels, y=wf_values,
+        measure=wf_measures,
         connector={"line": {"color": "#ccc"}},
         increasing={"marker": {"color": "#4CAF50"}},
         decreasing={"marker": {"color": "#dc3545"}},
@@ -637,8 +660,8 @@ with col_pnl:
         textposition="outside",
     ))
     fig_wf.update_layout(
-        title=f"Average Clinic P&L ({int(avg_shows)} NTB shows/mo)",
-        height=380, margin=dict(l=40, r=20, t=40, b=80), yaxis_title="₹",
+        title=f"Avg Clinic P&L ({int(avg_visits)} visits/mo × {show_to_conv}% conv = {int(avg_purchases)} NTB)",
+        height=400, margin=dict(l=40, r=20, t=40, b=100), yaxis_title="₹",
     )
     st.plotly_chart(fig_wf, use_container_width=True)
 
@@ -650,16 +673,18 @@ with col_sens:
     fig_sens.add_trace(go.Scatter(
         x=shows_range, y=profits, mode="lines",
         line=dict(color="#1a73e8", width=3), name="Monthly Profit",
+        hovertemplate="<b>%{x} visits/mo</b><br>NTB Purchases: %{customdata:.0f}<br>Profit: ₹%{y:.1f}L<extra></extra>",
+        customdata=shows_range * conversion_rate,
     ))
     fig_sens.add_hline(y=0, line_dash="dash", line_color="red", annotation_text="Breakeven")
-    fig_sens.add_vline(x=breakeven_shows, line_dash="dash", line_color="red",
-                       annotation_text=f"BE: {breakeven_shows} shows")
-    fig_sens.add_vline(x=avg_shows, line_dash="dash", line_color="green",
-                       annotation_text=f"Network avg: {int(avg_shows)}")
+    fig_sens.add_vline(x=breakeven_visits, line_dash="dash", line_color="red",
+                       annotation_text=f"BE: {breakeven_visits} visits")
+    fig_sens.add_vline(x=avg_visits, line_dash="dash", line_color="green",
+                       annotation_text=f"Network avg: {int(avg_visits)}")
     fig_sens.update_layout(
-        title="Monthly Profit vs NTB Shows (Sensitivity)",
-        height=380, margin=dict(l=40, r=40, t=40, b=40),
-        xaxis_title="NTB Shows/Month", yaxis_title="Monthly Profit (₹ Lakhs)",
+        title=f"Monthly Profit vs Clinic Visits ({show_to_conv}% conv → {fmt_inr(rev_per_show)}/visit)",
+        height=400, margin=dict(l=40, r=40, t=40, b=40),
+        xaxis_title="Clinic Visits/Month", yaxis_title="Monthly Profit (₹ Lakhs)",
     )
     st.plotly_chart(fig_sens, use_container_width=True)
 
@@ -670,11 +695,12 @@ with col_sens:
 st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
 st.markdown(
     f'<div class="slide-header">📈 SLIDE 6 — FY27 REVENUE PROJECTION: Ratio-Adjusted, Scenario-Tested'
-    f'<div class="slide-sub">Per-Clinic Revenue Projection ({fmt_inr(rev_per_ntb)}/NTB Patient) | Scenario: {scenario}</div></div>',
+    f'<div class="slide-sub">Visits × {show_to_conv}% Conversion × {fmt_inr(rev_per_ntb)}/NTB Patient | Scenario: {scenario}</div></div>',
     unsafe_allow_html=True,
 )
 
-cp["monthly_revenue"] = cp["l3m_ntb"] * rev_per_show * scenario_mult
+cp["monthly_purchases"] = (cp["l3m_ntb"] * conversion_rate).astype(int)
+cp["monthly_revenue"] = cp["monthly_purchases"] * rev_per_ntb * scenario_mult
 cp["annual_revenue"] = cp["monthly_revenue"] * 12
 cp["monthly_profit"] = cp["monthly_revenue"] - opex_monthly
 cp["annual_profit"] = cp["monthly_profit"] * 12
@@ -699,7 +725,7 @@ with col_rev1:
         orientation="h",
         marker_color=["#4CAF50" if p > 0 else "#dc3545" for p in clinic_rev["annual_profit"]],
         text=clinic_rev.apply(
-            lambda r: f"{fmt_inr(r['annual_revenue'])} | NTB:{int(r['l3m_ntb'])}/mo", axis=1
+            lambda r: f"{fmt_inr(r['annual_revenue'])} | {int(r['l3m_ntb'])} vis→{int(r['monthly_purchases'])} NTB/mo", axis=1
         ),
         textposition="inside", textfont=dict(color="white", size=10),
     ))
@@ -712,7 +738,8 @@ with col_rev1:
 
 with col_rev2:
     scenarios_dict = {"Conservative": 0.85, "Base Case": 1.0, "Optimistic": 1.15}
-    sc_data = [{"Scenario": k, "Revenue": cp["l3m_ntb"].sum() * rev_per_show * v * 12}
+    total_monthly_purchases = cp["l3m_ntb"].sum() * conversion_rate
+    sc_data = [{"Scenario": k, "Revenue": total_monthly_purchases * rev_per_ntb * v * 12}
                for k, v in scenarios_dict.items()]
     df_sc = pd.DataFrame(sc_data)
 
@@ -741,18 +768,19 @@ with col_rev2:
 
 with st.expander("📋 Full Per-Clinic Revenue Breakdown"):
     rev_table = cp[[
-        "clinic_name", "region", "cabins", "l3m_ntb", "l3m_show",
-        "monthly_revenue", "annual_revenue", "monthly_profit", "payback_months"
+        "clinic_name", "region", "cabins", "l3m_appt", "l3m_show", "l3m_ntb",
+        "monthly_purchases", "monthly_revenue", "annual_revenue", "monthly_profit", "payback_months"
     ]].copy()
     rev_table.columns = [
-        "Clinic", "Region", "Cabins", "NTB/mo", "Show%",
-        "Rev/mo (₹)", "Rev/yr (₹)", "Profit/mo (₹)", "Payback (mo)"
+        "Clinic", "Region", "Cabins", "Appt/mo", "Show%", "Visits/mo",
+        "NTB/mo", "Rev/mo (₹)", "Rev/yr (₹)", "Profit/mo (₹)", "Payback (mo)"
     ]
     rev_table["Show%"] = (rev_table["Show%"] * 100).round(1)
+    rev_table["Appt/mo"] = rev_table["Appt/mo"].astype(int)
     for c in ["Rev/mo (₹)", "Rev/yr (₹)", "Profit/mo (₹)"]:
         rev_table[c] = rev_table[c].apply(lambda x: fmt_inr(x))
     rev_table["Payback (mo)"] = rev_table["Payback (mo)"].apply(lambda x: f"{x:.0f}" if x < 100 else "∞")
-    rev_table = rev_table.sort_values("NTB/mo", ascending=False)
+    rev_table = rev_table.sort_values("Visits/mo", ascending=False)
     st.dataframe(rev_table, hide_index=True, use_container_width=True, height=400)
 
 
@@ -781,8 +809,8 @@ risks = [
     },
     {
         "Risk": "New clinic ramp-up slower than projected",
-        "Current": f"{new_clinic_avg} NTB/mo (new clinics)",
-        "Trigger": "<50 NTB shows/month at Month 3",
+        "Current": f"{new_clinic_avg} visits/mo (new clinics)",
+        "Trigger": f"<{breakeven_visits} visits/month at Month 3 (breakeven)",
         "Impact": "High",
         "Revenue Impact": f"{fmt_inr(capex)} capex at risk per clinic",
         "Mitigation": "Phase gate model — no new lease until Month 3 validation",
@@ -793,14 +821,14 @@ risks = [
         "Current": f"{fmt_inr(rent)} avg rent",
         "Trigger": ">7% annual escalation",
         "Impact": "Medium",
-        "Revenue Impact": f"Breakeven shifts from {breakeven_shows} to {int(breakeven_shows*1.15)} shows at 7% escalation over 3 yrs",
+        "Revenue Impact": f"Breakeven shifts from {breakeven_visits} to {int(breakeven_visits*1.15)} visits at 7% escalation over 3 yrs",
         "Mitigation": "Negotiate 5% cap clauses, avoid >2yr lock-in for new cities",
         "Status": "🟢",
     },
     {
         "Risk": "Cannibalization from same-city expansion",
         "Current": f"{len(saturated)} clinics above threshold",
-        "Trigger": ">15% NTB decline in parent clinic after opening nearby",
+        "Trigger": ">15% appt decline in parent clinic after opening nearby",
         "Impact": "Medium",
         "Revenue Impact": "Net revenue neutral if new clinic doesn't add incremental demand",
         "Mitigation": "5km minimum separation, overlapping pincode analysis before approval",
@@ -816,9 +844,18 @@ risks = [
         "Status": "🟡",
     },
     {
+        "Risk": "Conversion% drops below 70%",
+        "Current": f"{show_to_conv}% (verified Jul-25 to Jan-26)",
+        "Trigger": f"<70% for 2 months (breakeven shifts from {breakeven_visits} to {int(np.ceil(opex_monthly / (0.70 * rev_per_ntb)))} visits)",
+        "Impact": "High",
+        "Revenue Impact": f"Each 5ppt drop = {fmt_inr(cp['l3m_ntb'].sum() * 0.05 * rev_per_ntb * 12)}/yr network loss",
+        "Mitigation": "Doctor consultation quality audit, product mix optimization, patient satisfaction tracking",
+        "Status": "🟢",
+    },
+    {
         "Risk": "Tier-2 city demand overestimated",
         "Current": "Online demand ratio used for projection",
-        "Trigger": "<60% of projected NTB at Month 6",
+        "Trigger": f"<60% of projected visits at Month 6",
         "Impact": "Medium",
         "Revenue Impact": f"{fmt_inr(capex)} capex write-off if clinic closes",
         "Mitigation": "Lean 1-cabin format for tier-2, convert to full only after validation",
@@ -855,16 +892,16 @@ for rate in [0.05, 0.07, 0.10]:
         new_opex = opex_monthly * (1 + rate) ** (yr - 1)
         stress_data.append({
             "Year": f"Year {yr}", "Escalation": f"{int(rate*100)}%",
-            "Breakeven Shows": int(np.ceil(new_opex / rev_per_show)),
+            "Breakeven Visits": int(np.ceil(new_opex / rev_per_show)),
         })
 df_stress = pd.DataFrame(stress_data)
 
 fig_stress = px.bar(
-    df_stress, x="Year", y="Breakeven Shows", color="Escalation",
+    df_stress, x="Year", y="Breakeven Visits", color="Escalation",
     barmode="group", color_discrete_sequence=["#28a745", "#ffc107", "#dc3545"],
-    text="Breakeven Shows",
+    text="Breakeven Visits",
 )
-fig_stress.update_layout(height=300, margin=dict(l=40, r=20, t=20, b=40), yaxis_title="NTB Shows to Breakeven")
+fig_stress.update_layout(height=300, margin=dict(l=40, r=20, t=20, b=40), yaxis_title="Clinic Visits to Breakeven")
 st.plotly_chart(fig_stress, use_container_width=True)
 
 yr3_opex = monthly_opex * (1.07 ** 3)
@@ -875,10 +912,10 @@ st.markdown(f"""
 </div>
 <div class="insight-card">
 💡 <b>Rent Stress Test:</b> At 7% annual escalation, OpEx rises from {fmt_inr(opex_monthly)} → {fmt_inr(yr3_opex * 1e5)}
-over 3 years. Breakeven shifts from {breakeven_shows} → {yr3_be} shows/month.<br>
+over 3 years. Breakeven shifts from {breakeven_visits} → {yr3_be} visits/month.<br>
 <b>Action:</b> Negotiate 5% cap clauses. Avoid lock-in >2 years for new cities.
 </div>
 """, unsafe_allow_html=True)
 
 st.markdown("---")
-st.caption(f"Gynoveda FY27 Expansion Intelligence | Data through Jan 2026 | {len(cp)} clinics | Benchmark: Internal P75 ({_p75}% Show%) | Generated {pd.Timestamp.now().strftime('%d-%b-%Y')}")
+st.caption(f"Gynoveda FY27 Expansion Intelligence | Data through Jan 2026 | {len(cp)} clinics | Funnel: Appt → {_p75}% Show → {show_to_conv}% Conv → ₹{rev_per_ntb:,}/NTB | Generated {pd.Timestamp.now().strftime('%d-%b-%Y')}")
