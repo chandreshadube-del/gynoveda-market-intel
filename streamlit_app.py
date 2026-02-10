@@ -167,44 +167,124 @@ cp["state"] = cp["clinic_name"].map(clinic_state_map)
 
 # ── SIDEBAR ─────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("### ⚙️ FY27 Controls")
-    scenario = st.radio("Scenario", ["Conservative", "Base Case", "Optimistic"], index=1)
+    sidebar_mode = st.radio("", ["📊 FY27 Plan", "📤 Upload Data"], horizontal=True, label_visibility="collapsed")
+
+if sidebar_mode == "📤 Upload Data":
+    with st.sidebar:
+        st.markdown("### 📤 Upload / Update Data")
+        st.markdown(
+            '<div style="font-size:0.8rem;color:#555;margin-bottom:12px;">'
+            'Upload updated Excel or CSV files to refresh the dashboard. '
+            'Files are saved to the <code>data/</code> folder and override existing CSVs.'
+            '</div>', unsafe_allow_html=True,
+        )
+        upload_target = st.selectbox("Target Dataset", [
+            "clinic_performance", "expansion_same_city", "expansion_new_city",
+            "existing_clinics_61", "master_state", "clinic_zip_summary",
+            "web_order_demand", "pincode_clinic", "Other (custom name)",
+        ])
+        if upload_target == "Other (custom name)":
+            upload_target = st.text_input("Custom filename (without extension)")
+
+        uploaded_file = st.file_uploader("Choose Excel (.xlsx) or CSV (.csv)", type=["xlsx", "xls", "csv"])
+        if uploaded_file and upload_target:
+            try:
+                if uploaded_file.name.endswith(".csv"):
+                    df_up = pd.read_csv(uploaded_file)
+                else:
+                    df_up = pd.read_excel(uploaded_file)
+                st.success(f"✅ Parsed: {len(df_up)} rows × {len(df_up.columns)} cols")
+                st.dataframe(df_up.head(5), use_container_width=True, height=180)
+                if st.button("💾 Save & Refresh", type="primary"):
+                    save_path = f"{DATA_DIR}/{upload_target}.csv"
+                    df_up.to_csv(save_path, index=False)
+                    st.success(f"Saved to `{save_path}` — press **R** or refresh the page to reload.")
+                    st.cache_data.clear()
+            except Exception as e:
+                st.error(f"❌ Error parsing file: {e}")
+
+        st.markdown("---")
+        st.markdown("**📁 Current Data Files**")
+        if os.path.exists(DATA_DIR):
+            for f in sorted(os.listdir(DATA_DIR)):
+                if f.endswith(".csv") or f.endswith(".json"):
+                    fsize = os.path.getsize(f"{DATA_DIR}/{f}")
+                    st.caption(f"📄 {f} — {fsize/1024:.0f} KB")
+
+    # Show the upload page content in main area too
+    st.markdown("# 📤 Data Upload & Management")
+    st.info("Use the sidebar to upload updated Excel or CSV files. After uploading, press **R** to refresh the dashboard with new data.")
+    if os.path.exists(DATA_DIR):
+        st.markdown("### Current Data Inventory")
+        inv = []
+        for f in sorted(os.listdir(DATA_DIR)):
+            if f.endswith(".csv"):
+                try:
+                    df_inv = pd.read_csv(f"{DATA_DIR}/{f}", nrows=0)
+                    row_count = sum(1 for _ in open(f"{DATA_DIR}/{f}")) - 1
+                    inv.append({"File": f, "Columns": len(df_inv.columns), "Rows": row_count,
+                                "Size": f"{os.path.getsize(f'{DATA_DIR}/{f}')/1024:.0f} KB"})
+                except:
+                    pass
+        if inv:
+            st.dataframe(pd.DataFrame(inv), hide_index=True, use_container_width=True)
+    st.stop()  # Stop here — don't render the dashboard when in upload mode
+
+with st.sidebar:
+    st.markdown("### 📊 FY27 Plan Controls")
+
+    # ── Revenue Assumptions (affects Slides 5, 6) ─────────
+    st.markdown('<div style="font-size:0.8rem;font-weight:600;color:#1a73e8;margin:8px 0 4px;">📈 Revenue Assumptions</div>', unsafe_allow_html=True)
+    scenario = st.radio("Scenario", ["Conservative", "Base Case", "Optimistic"], index=1,
+                        help="Applies ±15% multiplier to all revenue projections")
     scenario_mult = {"Conservative": 0.85, "Base Case": 1.0, "Optimistic": 1.15}[scenario]
+    rev_per_ntb = st.number_input("₹ Revenue per NTB Patient", value=22000, step=1000)
+    show_to_conv = st.slider("Show → Purchase Conversion%", 50, 100, 75, 5,
+                              help="Verified ~75-80% from clinic order data (Jul-25 to Jan-26). Affects Slides 4-6.")
 
+    # ── Expansion Parameters (affects Slides 3, 5) ────────
     st.markdown("---")
-    show_threshold = st.slider("Same-City NTB Show Threshold", 100, 500, 150, 10)
-
+    st.markdown('<div style="font-size:0.8rem;font-weight:600;color:#1a73e8;margin:8px 0 4px;">🗺️ Expansion Parameters</div>', unsafe_allow_html=True)
+    show_threshold = st.slider("Same-City Saturation Threshold", 100, 500, 150, 10,
+                               help="Clinics above this monthly visit count are considered saturated. Affects Slide 3.")
     ntb_pop_ratio = st.radio(
         "NTB:Pop Ratio for New Cities",
         ["Median (3.8/lakh)", "Conservative (P25: 2.6/lakh)"],
         index=0,
-        help="Ratio used to estimate monthly NTB potential for new cities based on population.",
+        help="Ratio used to project monthly patient potential for new cities. Affects Slides 3, 5.",
     )
     ntb_ratio_val = 3.8 if "Median" in ntb_pop_ratio else 2.6
-    rev_per_ntb = st.number_input("₹ Revenue per NTB Patient", value=22000, step=1000)
-    show_to_conv = st.slider("Show → Purchase Conversion%", 50, 100, 75, 5,
-                              help="Of patients who show up, what % convert to NTB purchase. Verified ~75-80% from clinic order data (Jul-25 to Jan-26).")
+
+    # ── Cost Parameters (affects Slides 5, 6, 7) ──────────
+    st.markdown("---")
+    st.markdown('<div style="font-size:0.8rem;font-weight:600;color:#1a73e8;margin:8px 0 4px;">💰 Cost Parameters</div>', unsafe_allow_html=True)
     monthly_opex = st.number_input("Monthly OpEx per Clinic (₹L)", value=3.1, step=0.1, format="%.1f")
     capex_per_clinic = st.number_input("Capex per Clinic (₹L)", value=28.0, step=1.0, format="%.1f")
-    # Internal benchmark: P75 of active clinics (≥30 appt/mo)
+
+    # ── Fix Parameters (affects Slide 4) ───────────────────
+    st.markdown("---")
+    st.markdown('<div style="font-size:0.8rem;font-weight:600;color:#1a73e8;margin:8px 0 4px;">🔧 Fix Parameters</div>', unsafe_allow_html=True)
     _active = cp[cp["l3m_appt"] >= 30]
     _p75 = int(round(_active["l3m_show"].quantile(0.75) * 100))
-    industry_show = st.slider("Gynoveda Benchmark Show%", 10, 50, _p75, 1)
+    industry_show = st.slider("Gynoveda Benchmark Show%", 10, 50, _p75, 1,
+                              help="Target Show% for underperforming clinics. Default = P75 of active clinics. Affects Slide 4.")
     _above_bench = (_active["l3m_show"] >= industry_show / 100).sum()
-    st.caption(f"_Default {_p75}% = Gynoveda P75 (top-quartile of {len(_active)} active clinics). {_above_bench} clinics already achieve this._")
+    st.caption(f"_Default {_p75}% = P75 of {len(_active)} active clinics. {_above_bench} already achieve it._")
 
-    st.markdown("---")
-    st.caption(f"Data: Jan-25 to Jan-26 · {len(cp)} Clinics")
+    # ── Glossary ───────────────────────────────────────────
     st.markdown("---")
     st.markdown(
         '<div style="background:#f0f4ff;border-radius:6px;padding:10px;font-size:0.72rem;color:#444;">'
-        '<b>📚 Data Model & Benchmark</b><br>'
-        '<b>Funnel:</b> Appt Booked → Show% (~20%) → Clinic Visit → Conversion (75%) → NTB Purchase<br>'
-        '<b>Show% Benchmark:</b> Gynoveda P75 of active clinics. Proven & achievable.<br>'
-        '<b>Conversion:</b> Verified 75-80% from ZipData clinic orders (Jul-25 to Jan-26).'
+        '<b>📚 Glossary</b><br>'
+        '<b>NTB</b> = New-to-Brand (first-time patient purchase)<br>'
+        '<b>Show%</b> = % of booked appointments that actually visit the clinic<br>'
+        '<b>Conversion</b> = % of clinic visitors who make a purchase<br>'
+        '<b>Visits</b> = Appointments × Show% (patients who show up)<br>'
+        '<b>Funnel:</b> Appt → Show% → Clinic Visit → Conversion → NTB Purchase'
         '</div>',
         unsafe_allow_html=True,
     )
+    st.caption(f"Data: Jan-25 to Jan-26 · {len(cp)} Clinics")
 
 # ── EARLY COMPUTATION (needed across slides) ──────────────────────────────
 conversion_rate = show_to_conv / 100
@@ -228,6 +308,53 @@ c2.metric("Clinic Visits (Jan-26)", fmt_num(latest_ntb), f"{ntb_decline:+.0%} fr
 c3.metric("Network Show%", f"{network_show:.0%}", f"{'↑' if network_show > 0.18 else '↓'} vs 18% floor")
 c4.metric("Active Clinics", f"{len(cp)}")
 c5.metric("Visits/Clinic (Jan-26)", f"{ntb_per_clinic:.0f}", f"Peak was {peak_per_clinic:.0f}")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# EXECUTIVE SUMMARY — FY27 Expansion at a Glance
+# ═══════════════════════════════════════════════════════════════════════════
+# Pre-compute summary numbers (quick estimates before full model runs later)
+_conv_rate = show_to_conv / 100
+_rev_show = _conv_rate * rev_per_ntb
+_opex_mo = monthly_opex * 1e5
+_current_annual = cp["l3m_ntb"].sum() * _rev_show * 12
+_target_show = industry_show / 100
+_show_gap = (_target_show - cp["l3m_show"]).clip(lower=0)
+_fix_unlock = (cp["l3m_appt"] * _show_gap * _conv_rate * rev_per_ntb * 12).sum()
+_total_capex_est = 115 * capex_per_clinic * 1e5  # ~100 same-city + 15 new city
+_profitable = (cp["l3m_ntb"] * _rev_show > _opex_mo).sum()
+
+st.markdown(f"""
+<div style="background:linear-gradient(135deg,#f8f9fa,#e8f5e9);border-radius:12px;padding:20px 24px;margin:12px 0 4px;">
+<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+<div style="flex:1;min-width:200px;text-align:center;">
+<div style="font-size:0.75rem;color:#888;text-transform:uppercase;">Current Run-Rate</div>
+<div style="font-size:1.6rem;font-weight:700;color:#333;">{fmt_inr(_current_annual)}</div>
+<div style="font-size:0.7rem;color:#888;">{len(cp)} clinics · {_profitable} profitable</div>
+</div>
+<div style="flex:0 0 40px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:#aaa;">→</div>
+<div style="flex:1;min-width:200px;text-align:center;">
+<div style="font-size:0.75rem;color:#888;text-transform:uppercase;">Show% Fix (₹0 CAC)</div>
+<div style="font-size:1.6rem;font-weight:700;color:#28a745;">+ {fmt_inr(_fix_unlock)}</div>
+<div style="font-size:0.7rem;color:#888;">Zero new leases needed</div>
+</div>
+<div style="flex:0 0 40px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:#aaa;">→</div>
+<div style="flex:1;min-width:200px;text-align:center;">
+<div style="font-size:0.75rem;color:#888;text-transform:uppercase;">Expansion Investment</div>
+<div style="font-size:1.6rem;font-weight:700;color:#1a73e8;">{fmt_inr(_total_capex_est)}</div>
+<div style="font-size:0.7rem;color:#888;">~115 new locations scouted</div>
+</div>
+<div style="flex:0 0 40px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:#aaa;">→</div>
+<div style="flex:1;min-width:200px;text-align:center;background:#1a1a2e;border-radius:8px;padding:10px;">
+<div style="font-size:0.75rem;color:#a0a0b0;text-transform:uppercase;">FY27 Revenue Target</div>
+<div style="font-size:1.6rem;font-weight:700;color:#fff;">Details in Slide 6</div>
+<div style="font-size:0.7rem;color:#a0a0b0;">Scroll down for full build-up</div>
+</div>
+</div>
+<div style="text-align:center;margin-top:12px;font-size:0.78rem;color:#666;">
+<b>Story Arc:</b> Slide 1 (Reach Gap) → Slide 2 (Revenue Leak) → Slide 3 (Where to Expand) → Slide 4 (Fix First) → Slide 5-6 (Revenue Projections) → Slide 7 (Risk Guardrails)
+</div>
+</div>
+""", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -324,8 +451,8 @@ st.dataframe(top12, hide_index=True, use_container_width=True)
 # ═══════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="slide-header">⚠️ SLIDE 2 — THE CASE FOR CAUTION: Why We Must Be Smart, Not Just Fast'
-    '<div class="slide-sub">STATE-WISE SHOW% — Gynoveda vs Internal P75 Benchmark (Top-Quartile of Active Clinics)</div></div>',
+    '<div class="slide-header">⚠️ SLIDE 2 — THE HIDDEN REVENUE LEAK: Show% Is the #1 Problem to Fix'
+    '<div class="slide-sub">We book thousands of appointments but most patients never show up — this is the single biggest revenue leak in the network</div></div>',
     unsafe_allow_html=True,
 )
 
@@ -522,13 +649,16 @@ with exp_tab1:
             top_cities = clinic_zips.sort_values("total_qty", ascending=False).head(3)
             top_areas = ", ".join(top_cities["City"].dropna().unique()[:3])
             city_label = clinic_state_map.get(row["clinic_name"], row.get("city_code", ""))
+            # Dynamic trend: compare last month to L3M average
+            _trend_up = row["latest_ntb"] >= row["l3m_ntb"]
             trend_emoji = "🟢" if row["l3m_show"] >= 0.25 else "🟡" if row["l3m_show"] >= 0.18 else "🔴"
+            trend_label = "Stable/Rising" if _trend_up else "Declining L3M"
             st.markdown(f"""
             <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin:8px 0;border-left:4px solid #FF6B35;">
             <b>{row['clinic_name']}</b> ({city_label}) — {int(row['cabins'])} cabins<br>
             Shows: <b>{row['l3m_ntb']}/mo</b> | Util: <b>{row['util_pct']:.0%}</b> |
             Show%: <b>{row['l3m_show']:.1%}</b> | {trend_emoji}
-            <span style="color:#888;">Declining L3M</span><br>
+            <span style="color:#888;">{trend_label}</span><br>
             </div>
             """, unsafe_allow_html=True)
 
@@ -590,16 +720,13 @@ with exp_tab1:
             </div>
             """, unsafe_allow_html=True)
 
-    # City-level micro-market expanders
-    unique_cities_same = exp_same["City"].unique()
-    for city_name in unique_cities_same[:6]:
-        city_rows = exp_same[exp_same["City"] == city_name]
-        with st.expander(f"📍 {city_name} — {len(city_rows)} Micro-Markets"):
-            st.dataframe(
-                city_rows[["S.No", "Micro-Market Pincode", "Micro-Market Area",
-                           "Expansion Rationale", "National IVFs Present", "Regional IVFs Present"]],
-                hide_index=True, use_container_width=True,
-            )
+    # Summary count (detailed micro-market data is in Slide 5)
+    st.markdown(f"""
+    <div class="insight-card insight-blue">
+    <b>📍 {len(exp_same)} satellite micro-markets</b> scouted across {exp_same['City'].nunique()} cities.
+    Detailed per-clinic revenue projections and IVF competitor mapping available in <b>Slide 5</b>.
+    </div>
+    """, unsafe_allow_html=True)
 
 # ── TAB 2: NEW CITY EXPANSION ────────────────────────────────────────────
 with exp_tab2:
@@ -693,40 +820,25 @@ with exp_tab2:
             </div>
             """, unsafe_allow_html=True)
 
-    # Revenue projection table
+    # Revenue projection table (condensed — full breakdown in Slide 5)
     st.markdown("---")
-    st.markdown("**Per-City Revenue Projection**")
-    proj_df = new_cities[["City", "State", "Tier", "web_orders", "population",
-                          "proj_ntb", "monthly_rev", "annual_rev", "profitable"]].copy()
-    proj_df.columns = ["City", "State", "Tier", "Web Orders", "Est. Population",
-                       "Proj. NTB/mo", "Monthly Rev (₹)", "Annual Rev (₹)", "Profitable"]
-    proj_df["Monthly Rev (₹)"] = proj_df["Monthly Rev (₹)"].apply(lambda x: f"₹{x/1e5:.1f}L")
-    proj_df["Annual Rev (₹)"] = proj_df["Annual Rev (₹)"].apply(lambda x: f"₹{x/1e5:.0f}L")
-    proj_df["Profitable"] = proj_df["Profitable"].map({True: "✅", False: "❌"})
-    st.dataframe(proj_df, hide_index=True, use_container_width=True, height=400)
+    with st.expander("📋 Per-City Revenue Projection"):
+        proj_df = new_cities[["City", "State", "Tier", "web_orders", "population",
+                              "proj_ntb", "monthly_rev", "annual_rev", "profitable"]].copy()
+        proj_df.columns = ["City", "State", "Tier", "Web Orders", "Est. Population",
+                           "Proj. NTB/mo", "Monthly Rev (₹)", "Annual Rev (₹)", "Profitable"]
+        proj_df["Monthly Rev (₹)"] = proj_df["Monthly Rev (₹)"].apply(lambda x: f"₹{x/1e5:.1f}L")
+        proj_df["Annual Rev (₹)"] = proj_df["Annual Rev (₹)"].apply(lambda x: f"₹{x/1e5:.0f}L")
+        proj_df["Profitable"] = proj_df["Profitable"].map({True: "✅", False: "❌"})
+        st.dataframe(proj_df, hide_index=True, use_container_width=True, height=400)
 
-    # Expandable city-level micro-market details
-    st.markdown("---")
-    st.markdown("**Micro-Market Scouting — 5 Locations per City**")
-    for city_name in new_cities["City"]:
-        city_data = exp_new[exp_new["City"] == city_name]
-        city_info = new_cities[new_cities["City"] == city_name].iloc[0]
-        with st.expander(f"🌍 {city_name} ({city_info['State']}) — {city_info['Tier']} | "
-                         f"{city_info['web_orders']:,} orders | ₹{city_info['annual_rev']/1e5:.0f}L/yr"):
-            st.dataframe(
-                city_data[["Pincode", "Area Name", "Location Rationale",
-                           "National IVFs", "Regional IVFs"]],
-                hide_index=True, use_container_width=True,
-            )
-
-    # Summary callout
+    # Summary — point to Slide 5 for detailed projections and micro-markets
     st.markdown(f"""
-    <div style="background:#e8f5e9;border-radius:8px;padding:16px;margin-top:16px;border-left:4px solid #28a745;">
-    <b>💰 New City Portfolio Impact:</b><br>
-    {len(new_cities)} new cities × 5 micro-market options each = {new_cities['locations'].sum()} scouted locations<br>
+    <div class="insight-card insight-blue">
+    <b>💰 New City Portfolio:</b> {len(new_cities)} cities × 5 micro-market options each = {new_cities['locations'].sum()} scouted locations.
     Projected Annual Revenue: <b>{fmt_inr(total_new_annual)}</b> |
-    Profitable: <b>{profitable_count}/{len(new_cities)}</b> cities above ₹{opex_monthly/1e5:.1f}L OpEx breakeven<br>
-    Combined with Same-City expansion, this creates a comprehensive national footprint strategy.
+    Profitable: <b>{profitable_count}/{len(new_cities)}</b> cities.<br>
+    Detailed per-clinic revenue projections, monthly ramp, and IVF competitor mapping available in <b>Slide 5</b>.
     </div>
     """, unsafe_allow_html=True)
 
@@ -907,6 +1019,15 @@ fy27_total = total_annual_rev + show_fix_rev + total_same_y1 + total_new_y1
 # SLIDE 5: EXPANSION REVENUE — Per-Clinic Projections
 # ═══════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
+
+# Bridge text connecting Slide 4 → Slide 5
+st.markdown(f"""
+<div style="background:#f0f4ff;border-left:4px solid #1a73e8;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:4px;font-size:0.85rem;color:#444;">
+<b>↑ Slide 4</b> showed <b>{fmt_inr(total_unlock)}</b> unlockable from fixing Show% at existing clinics — zero cost.
+<b>↓ Below</b>, we layer on expansion revenue: same-city satellites and new city entries.
+</div>
+""", unsafe_allow_html=True)
+
 st.markdown(
     '<div class="slide-header">📊 SLIDE 5 — EXPANSION REVENUE PROJECTION (₹22K/NTB Patient)'
     f'<div class="slide-sub">Same-City Satellites + New City Clinics | Ramp: 3-month setup → 12-month steady state | Scenario: {scenario}</div></div>',
@@ -917,7 +1038,7 @@ st.markdown(
 col_wf, col_ramp = st.columns([1, 1])
 
 with col_wf:
-    wf_labels = ["Existing 61\nClinics", "Show% Fix\n(₹0 CAC)", "Same-City\nNew", "New City\n(Ratio)", "FY27 Total"]
+    wf_labels = ["Existing 61\nClinics", "Show% Fix\n(→ Slide 4)", "Same-City\nNew", "New City\n(Ratio)", "FY27 Total"]
     wf_values = [total_annual_rev, show_fix_rev, total_same_y1, total_new_y1, fy27_total]
     wf_measures = ["relative", "relative", "relative", "relative", "total"]
 
@@ -1006,6 +1127,18 @@ with rev_tab1:
     </div>
     """, unsafe_allow_html=True)
 
+    # Micro-market detail per city (moved from Slide 3 for consolidation)
+    _exp_same_data = data["expansion_same"]
+    for city_name in _exp_same_data["City"].unique():
+        city_rows = _exp_same_data[_exp_same_data["City"] == city_name]
+        city_rev = df_same[df_same["city"] == city_name]["y1_rev"].sum()
+        with st.expander(f"📍 {city_name} — {len(city_rows)} micro-markets | Year 1: ₹{city_rev/1e5:.0f}L"):
+            st.dataframe(
+                city_rows[["S.No", "Micro-Market Pincode", "Micro-Market Area",
+                           "Expansion Rationale", "National IVFs Present", "Regional IVFs Present"]],
+                hide_index=True, use_container_width=True,
+            )
+
 with rev_tab2:
     # Deduplicate to show one bar per city (first/best location)
     new_by_city = df_new.drop_duplicates("city").sort_values("y1_rev", ascending=True)
@@ -1037,6 +1170,20 @@ with rev_tab2:
     Phase 1: 1 clinic/city → expand after Month 6 validation
     </div>
     """, unsafe_allow_html=True)
+
+    # Micro-market scouting details per city (moved from Slide 3)
+    _exp_new_data = data["expansion_new"]
+    _new_cities_ref = _exp_new_data.groupby("City").first().reset_index()
+    for _, _nc_row in _new_cities_ref.iterrows():
+        city_name = _nc_row["City"]
+        city_locs = _exp_new_data[_exp_new_data["City"] == city_name]
+        city_rev = df_new[df_new["city"] == city_name]["y1_rev"].sum()
+        with st.expander(f"🌍 {city_name} ({_nc_row.get('State','')}) — {len(city_locs)} locations | Year 1: ₹{city_rev/1e5:.0f}L"):
+            st.dataframe(
+                city_locs[["Pincode", "Area Name", "Location Rationale",
+                           "National IVFs", "Regional IVFs"]],
+                hide_index=True, use_container_width=True,
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
