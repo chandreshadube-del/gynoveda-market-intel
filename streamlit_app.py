@@ -806,100 +806,15 @@ with col_fix2:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# SLIDE 5: UNIT ECONOMICS — Per Clinic P&L
+# COMPUTATION BLOCK — Existing clinic metrics needed by Risk Scorecard (Slide 7)
 # ═══════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="slide-header">💰 SLIDE 5 — UNIT ECONOMICS: Per Clinic P&L (Actual Costs)'
-    f'<div class="slide-sub">Funnel: Appt → {industry_show}% Show → Clinic Visit → {show_to_conv}% Conversion → NTB Purchase @ {fmt_inr(rev_per_ntb)}</div></div>',
-    unsafe_allow_html=True,
-)
-
 opex_monthly = monthly_opex * 1e5
 capex = capex_per_clinic * 1e5
+rev_per_show = conversion_rate * rev_per_ntb
 breakeven_visits = int(np.ceil(opex_monthly / rev_per_show))
-
 avg_visits = cp["l3m_ntb"].mean()
-avg_purchases = avg_visits * conversion_rate
-avg_revenue = avg_visits * rev_per_show
-avg_profit = avg_revenue - opex_monthly
 profitable_clinics = (cp["l3m_ntb"] * rev_per_show > opex_monthly).sum()
-network_annual_profit = (cp["l3m_ntb"] * rev_per_show - opex_monthly).clip(lower=0).sum() * 12
-
-# Cost components
 rent = 1.0e5
-doctors = 1.5e5
-clinic_mgr = 0.3e5
-housekeeping = 0.1e5
-receptionist = 0.15e5
-electricity = 0.05e5
-
-um1, um2, um3, um4, um5, um6 = st.columns(6)
-um1.metric("Monthly OpEx/Clinic", fmt_inr(opex_monthly), "Rent + Dr×2 + Staff")
-um2.metric("Capex (Construction)", fmt_inr(capex))
-um3.metric("Breakeven Visits", f"{breakeven_visits}/month", f"@ {show_to_conv}% conv × {fmt_inr(rev_per_ntb)}/patient")
-um4.metric("Profitable Clinics", f"{profitable_clinics} of {len(cp)}", f"↑ {len(cp)-profitable_clinics} below breakeven")
-um5.metric("Rev per Visit", fmt_inr(rev_per_show), f"{show_to_conv}% × {fmt_inr(rev_per_ntb)}")
-um6.metric("Network Annual Profit", fmt_inr(network_annual_profit), f"{profitable_clinics} clinics contributing")
-
-col_pnl, col_sens = st.columns(2)
-
-with col_pnl:
-    gross_rev = avg_visits * rev_per_ntb  # before conversion
-    conv_loss = gross_rev - avg_revenue  # lost to non-conversion
-    wf_labels = ["Gross Rev (all visits)", f"Conv Loss ({100-show_to_conv}%)", "Net Revenue", "Rent", "Doctors (2)", "Clinic Mgr", "Housekeeping", "Receptionist", "Electricity", "Monthly Profit"]
-    wf_measures = ["relative", "relative", "total", "relative", "relative", "relative", "relative", "relative", "relative", "total"]
-    wf_values = [avg_visits * rev_per_ntb, -conv_loss, avg_revenue, -rent, -doctors, -clinic_mgr, -housekeeping, -receptionist, -electricity, avg_profit]
-
-    fig_wf = go.Figure(go.Waterfall(
-        x=wf_labels, y=wf_values,
-        measure=wf_measures,
-        connector={"line": {"color": "#ccc"}},
-        increasing={"marker": {"color": "#4CAF50"}},
-        decreasing={"marker": {"color": "#dc3545"}},
-        totals={"marker": {"color": "#1a73e8"}},
-        text=[fmt_inr(abs(v)) for v in wf_values],
-        textposition="outside",
-    ))
-    fig_wf.update_layout(
-        title=f"Avg Clinic P&L ({int(avg_visits)} visits/mo × {show_to_conv}% conv = {int(avg_purchases)} NTB)",
-        height=400, margin=dict(l=40, r=20, t=40, b=100), yaxis_title="₹",
-    )
-    st.plotly_chart(fig_wf, use_container_width=True)
-
-with col_sens:
-    shows_range = np.arange(0, 250, 5)
-    profits = (shows_range * rev_per_show - opex_monthly) / 1e5
-
-    fig_sens = go.Figure()
-    fig_sens.add_trace(go.Scatter(
-        x=shows_range, y=profits, mode="lines",
-        line=dict(color="#1a73e8", width=3), name="Monthly Profit",
-        hovertemplate="<b>%{x} visits/mo</b><br>NTB Purchases: %{customdata:.0f}<br>Profit: ₹%{y:.1f}L<extra></extra>",
-        customdata=shows_range * conversion_rate,
-    ))
-    fig_sens.add_hline(y=0, line_dash="dash", line_color="red", annotation_text="Breakeven")
-    fig_sens.add_vline(x=breakeven_visits, line_dash="dash", line_color="red",
-                       annotation_text=f"BE: {breakeven_visits} visits")
-    fig_sens.add_vline(x=avg_visits, line_dash="dash", line_color="green",
-                       annotation_text=f"Network avg: {int(avg_visits)}")
-    fig_sens.update_layout(
-        title=f"Monthly Profit vs Clinic Visits ({show_to_conv}% conv → {fmt_inr(rev_per_show)}/visit)",
-        height=400, margin=dict(l=40, r=40, t=40, b=40),
-        xaxis_title="Clinic Visits/Month", yaxis_title="Monthly Profit (₹ Lakhs)",
-    )
-    st.plotly_chart(fig_sens, use_container_width=True)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# SLIDE 6: FY27 REVENUE PROJECTION
-# ═══════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
-st.markdown(
-    f'<div class="slide-header">📈 SLIDE 6 — FY27 REVENUE PROJECTION: Ratio-Adjusted, Scenario-Tested'
-    f'<div class="slide-sub">Visits × {show_to_conv}% Conversion × {fmt_inr(rev_per_ntb)}/NTB Patient | Scenario: {scenario}</div></div>',
-    unsafe_allow_html=True,
-)
 
 cp["monthly_purchases"] = (cp["l3m_ntb"] * conversion_rate).astype(int)
 cp["monthly_revenue"] = cp["monthly_purchases"] * rev_per_ntb * scenario_mult
@@ -909,81 +824,360 @@ cp["annual_profit"] = cp["monthly_profit"] * 12
 cp["payback_months"] = np.where(cp["monthly_profit"] > 0, capex / cp["monthly_profit"], np.inf)
 
 total_annual_rev = cp["annual_revenue"].sum()
-total_annual_profit = cp[cp["annual_profit"] > 0]["annual_profit"].sum()
-median_payback = cp[cp["payback_months"] < 100]["payback_months"].median()
 
-rm1, rm2, rm3, rm4 = st.columns(4)
-rm1.metric(f"FY27 Revenue ({scenario})", fmt_inr(total_annual_rev), f"{len(cp)} clinics")
-rm2.metric("FY27 Profit (Profitable)", fmt_inr(total_annual_profit), "After OpEx")
-rm3.metric("Avg Revenue/Clinic/Mo", fmt_inr(cp['monthly_revenue'].mean()))
-rm4.metric("Median Payback", f"{median_payback:.0f} months" if pd.notna(median_payback) else "N/A", "Profitable clinics")
+# ═══════════════════════════════════════════════════════════════════════════
+# EXPANSION MODEL — Same-City Satellites & New City Projections
+# ═══════════════════════════════════════════════════════════════════════════
+# Ramp schedule for new clinics (% of steady-state per month)
+ramp_schedule = [0.33, 0.55, 0.66, 0.77, 0.88, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+y1_factor = sum(ramp_schedule)  # ~10.19 months of SS equivalent
 
-col_rev1, col_rev2 = st.columns([1.5, 1])
+# Map city codes to expansion city names
+_code_exp_map = {
+    "MUM": "Mumbai", "THN": "Mumbai", "NVM": "Mumbai",
+    "NDL": "Delhi", "BLR": "Bengaluru", "HYD": "Hyderabad", "SEC": "Hyderabad",
+    "KOL": "Kolkata", "AHM": "Ahmedabad", "PUN": "Pune",
+    "LKO": "Lucknow", "SUR": "Surat", "PAT": "Patna",
+}
+cp["exp_city"] = cp["city_code"].map(_code_exp_map)
 
-with col_rev1:
-    clinic_rev = cp.sort_values("annual_revenue", ascending=True).tail(25)
-    fig_rev = go.Figure(go.Bar(
-        y=clinic_rev["clinic_name"], x=clinic_rev["annual_revenue"] / 1e5,
+# Max NTB shows per expansion city (from existing clinic performance)
+city_max_shows = cp.dropna(subset=["exp_city"]).groupby("exp_city")["l3m_ntb"].max().to_dict()
+
+# ── SAME-CITY SATELLITE MODEL ─────────────────────────────────────────────
+exp_same = data["expansion_same"]
+same_city_clinics = []
+for _, row in exp_same.iterrows():
+    city = row["City"]
+    parent_max = city_max_shows.get(city, 100)
+    sat_shows = int(parent_max / 2)  # each satellite = 50% of best parent
+    ss_monthly = sat_shows * conversion_rate * rev_per_ntb
+    y1_rev = ss_monthly * y1_factor
+    monthly_ramp = [int(ss_monthly * r) for r in ramp_schedule]
+    same_city_clinics.append({
+        "location": f"{city} - {row['Micro-Market Area']}",
+        "city": city,
+        "pincode": row["Micro-Market Pincode"],
+        "shows_mo": sat_shows,
+        "ss_monthly": ss_monthly,
+        "y1_rev": y1_rev,
+        **{f"M{i+1}": monthly_ramp[i] for i in range(12)},
+    })
+df_same = pd.DataFrame(same_city_clinics).sort_values("y1_rev", ascending=False)
+total_same_y1 = df_same["y1_rev"].sum()
+
+# ── NEW CITY MODEL ─────────────────────────────────────────────────────────
+exp_new = data["expansion_new"]
+new_city_summary = exp_new.groupby(["City", "State", "Tier"]).agg(
+    web_orders=("Web Order Qty", "first"),
+    proj_ntb=("Projected Monthly NTB", "first"),
+    n_locations=("Pincode", "count"),
+).reset_index()
+
+new_city_clinics = []
+for _, row in new_city_summary.iterrows():
+    # proj_ntb = total city demand; per-clinic = divide by locations
+    per_clinic_shows = int(row["proj_ntb"] / row["n_locations"])
+    ss_monthly = per_clinic_shows * conversion_rate * rev_per_ntb
+    y1_rev = ss_monthly * y1_factor
+    monthly_ramp = [int(ss_monthly * r) for r in ramp_schedule]
+    for _, loc_row in exp_new[exp_new["City"] == row["City"]].iterrows():
+        new_city_clinics.append({
+            "location": f"{row['City']} - {loc_row['Area Name']}",
+            "city": row["City"],
+            "state": row["State"],
+            "tier": row["Tier"],
+            "pincode": loc_row["Pincode"],
+            "shows_mo": per_clinic_shows,
+            "ss_monthly": ss_monthly,
+            "y1_rev": y1_rev,
+            **{f"M{i+1}": monthly_ramp[i] for i in range(12)},
+        })
+df_new = pd.DataFrame(new_city_clinics).sort_values("y1_rev", ascending=False)
+total_new_y1 = df_new["y1_rev"].sum()
+
+# Show% fix revenue (from Slide 4)
+show_fix_rev = total_unlock * scenario_mult
+
+# Combined
+fy27_total = total_annual_rev + show_fix_rev + total_same_y1 + total_new_y1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SLIDE 5: EXPANSION REVENUE — Per-Clinic Projections
+# ═══════════════════════════════════════════════════════════════════════════
+st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="slide-header">📊 SLIDE 5 — EXPANSION REVENUE PROJECTION (₹22K/NTB Patient)'
+    f'<div class="slide-sub">Same-City Satellites + New City Clinics | Ramp: 3-month setup → 12-month steady state | Scenario: {scenario}</div></div>',
+    unsafe_allow_html=True,
+)
+
+# ── Revenue Waterfall + Monthly Ramp (side by side) ────────────────────────
+col_wf, col_ramp = st.columns([1, 1])
+
+with col_wf:
+    wf_labels = ["Existing 61\nClinics", "Show% Fix\n(₹0 CAC)", "Same-City\nNew", "New City\n(Ratio)", "FY27 Total"]
+    wf_values = [total_annual_rev, show_fix_rev, total_same_y1, total_new_y1, fy27_total]
+    wf_measures = ["relative", "relative", "relative", "relative", "total"]
+
+    fig_wf = go.Figure(go.Waterfall(
+        x=wf_labels, y=[v / 1e7 for v in wf_values],
+        measure=wf_measures,
+        connector={"line": {"color": "#ccc"}},
+        increasing={"marker": {"color": "#4CAF50"}},
+        totals={"marker": {"color": "#1a73e8"}},
+        text=[fmt_inr(v) for v in wf_values],
+        textposition="outside",
+    ))
+    fig_wf.update_layout(
+        title="FY27 Revenue Build-Up", height=400,
+        margin=dict(l=40, r=20, t=40, b=60), yaxis_title="₹ Cr",
+    )
+    st.plotly_chart(fig_wf, use_container_width=True)
+
+with col_ramp:
+    # Monthly cumulative ramp chart (same-city + new city combined)
+    months = [f"{'Apr May Jun Jul Aug Sep Oct Nov Dec Jan Feb Mar'.split()[i]}-26" if i < 9
+              else f"{'Apr May Jun Jul Aug Sep Oct Nov Dec Jan Feb Mar'.split()[i]}-27"
+              for i in range(12)]
+    monthly_same = [sum(r) for r in zip(*[
+        [int(row[f"M{m+1}"]) for m in range(12)] for _, row in df_same.iterrows()
+    ])] if len(df_same) > 0 else [0]*12
+    monthly_new = [sum(r) for r in zip(*[
+        [int(row[f"M{m+1}"]) for m in range(12)] for _, row in df_new.iterrows()
+    ])] if len(df_new) > 0 else [0]*12
+    monthly_combined = [s + n for s, n in zip(monthly_same, monthly_new)]
+    cumulative = [sum(monthly_combined[:i+1]) for i in range(12)]
+
+    fig_ramp = go.Figure()
+    fig_ramp.add_trace(go.Bar(
+        x=months, y=[v / 1e7 for v in monthly_combined],
+        name="Monthly Revenue", marker_color="#4CAF50", opacity=0.7,
+    ))
+    fig_ramp.add_trace(go.Scatter(
+        x=months, y=[v / 1e7 for v in cumulative],
+        name="Cumulative", mode="lines+markers",
+        line=dict(color="#dc3545", width=3), yaxis="y2",
+    ))
+    fig_ramp.update_layout(
+        title="Expansion Revenue Ramp — Monthly + Cumulative",
+        height=400, margin=dict(l=40, r=60, t=40, b=60),
+        yaxis=dict(title="Monthly (₹ Cr)", side="left"),
+        yaxis2=dict(title="Cumulative (₹ Cr)", side="right", overlaying="y"),
+        legend=dict(x=0, y=1.1, orientation="h"),
+    )
+    st.plotly_chart(fig_ramp, use_container_width=True)
+
+
+# ── Per-Clinic Revenue Projection (tabs) ──────────────────────────────────
+st.markdown(f"### 📈 Per-Clinic Revenue Projection ({fmt_inr(rev_per_ntb)}/NTB Patient)")
+rev_tab1, rev_tab2 = st.tabs(["Same-City New Clinics", "New City Clinics"])
+
+with rev_tab1:
+    target_annual = 44 * 1e5 * 12  # ₹528L/yr = ₹44L/mo target
+    top25_same = df_same.head(25).sort_values("y1_rev", ascending=True)
+    fig_same_bar = go.Figure(go.Bar(
+        y=top25_same["location"],
+        x=top25_same["y1_rev"] / 1e5,
         orientation="h",
-        marker_color=["#4CAF50" if p > 0 else "#dc3545" for p in clinic_rev["annual_profit"]],
-        text=clinic_rev.apply(
-            lambda r: f"{fmt_inr(r['annual_revenue'])} | {int(r['l3m_ntb'])} vis→{int(r['monthly_purchases'])} NTB/mo", axis=1
+        marker_color="#4CAF50",
+        text=top25_same.apply(
+            lambda r: f"₹{r['y1_rev']/1e5:.0f}L/yr | {r['shows_mo']} shows/mo | ₹{r['ss_monthly']/1e5:.1f}L/mo SS",
+            axis=1,
         ),
         textposition="inside", textfont=dict(color="white", size=10),
     ))
-    fig_rev.update_layout(
-        title=f"Per-Clinic Annual Revenue (Top 25) — {scenario}",
-        height=550, margin=dict(l=110, r=20, t=40, b=40),
-        xaxis_title="Annual Revenue (₹ Lakhs)",
+    fig_same_bar.add_vline(x=target_annual / 1e5, line_dash="dash", line_color="red",
+                           annotation_text=f"Target: ₹{target_annual/1e5:.0f}L/yr")
+    fig_same_bar.update_layout(
+        title=f"Same-City: Top 25 New Clinics — Year 1 Revenue Projection",
+        height=650, margin=dict(l=200, r=20, t=40, b=40),
+        xaxis_title="Year 1 Revenue (₹ Lakhs)",
     )
-    st.plotly_chart(fig_rev, use_container_width=True)
+    st.plotly_chart(fig_same_bar, use_container_width=True)
 
-with col_rev2:
-    scenarios_dict = {"Conservative": 0.85, "Base Case": 1.0, "Optimistic": 1.15}
-    total_monthly_purchases = cp["l3m_ntb"].sum() * conversion_rate
-    sc_data = [{"Scenario": k, "Revenue": total_monthly_purchases * rev_per_ntb * v * 12}
-               for k, v in scenarios_dict.items()]
-    df_sc = pd.DataFrame(sc_data)
-
-    fig_sc = go.Figure(go.Bar(
-        x=df_sc["Scenario"], y=df_sc["Revenue"] / 1e7,
-        marker_color=["#ffc107", "#FF6B35", "#4CAF50"],
-        text=df_sc["Revenue"].apply(lambda x: fmt_inr(x)), textposition="outside",
-    ))
-    fig_sc.update_layout(
-        title="Scenario Comparison", height=300,
-        margin=dict(l=40, r=20, t=40, b=40), yaxis_title="Annual Revenue (₹ Cr)",
-    )
-    st.plotly_chart(fig_sc, use_container_width=True)
-
-    show_fix_rev = total_unlock * scenario_mult
     st.markdown(f"""
-    <div class="insight-card insight-green">
-    <strong>Combined FY27 Outlook:</strong><br>
-    Current run-rate: <b>{fmt_inr(total_annual_rev)}</b><br>
-    + Show% fix unlock: <b>{fmt_inr(show_fix_rev)}</b>
-    <div style="background:#1a1a2e;color:white;padding:10px 14px;border-radius:6px;margin-top:8px;font-size:1.05rem;font-weight:700;letter-spacing:0.3px;">
-    Total FY27 Potential - <b>{fmt_inr(total_annual_rev + show_fix_rev)}</b>
-    </div>
+    <div class="insight-card">
+    <b>Same-City Portfolio:</b> {len(df_same)} satellite locations across {df_same['city'].nunique()} cities |
+    Year 1 Revenue: <b>{fmt_inr(total_same_y1)}</b> |
+    Avg per clinic: <b>₹{df_same['y1_rev'].mean()/1e5:.0f}L/yr</b> |
+    Ramp: 3-month setup → 12-month steady state
     </div>
     """, unsafe_allow_html=True)
 
-with st.expander("📋 Full Per-Clinic Revenue Breakdown"):
-    rev_table = cp[[
-        "clinic_name", "region", "cabins", "l3m_appt", "l3m_show", "l3m_ntb",
-        "monthly_purchases", "monthly_revenue", "annual_revenue", "monthly_profit", "payback_months"
-    ]].copy()
-    rev_table.columns = [
-        "Clinic", "Region", "Cabins", "Appt/mo", "Show%", "Visits/mo",
-        "NTB/mo", "Rev/mo (₹)", "Rev/yr (₹)", "Profit/mo (₹)", "Payback (mo)"
-    ]
-    rev_table["Show%"] = (rev_table["Show%"] * 100).round(1)
-    rev_table["Appt/mo"] = rev_table["Appt/mo"].astype(int)
-    for c in ["Rev/mo (₹)", "Rev/yr (₹)", "Profit/mo (₹)"]:
-        rev_table[c] = rev_table[c].apply(lambda x: fmt_inr(x))
-    rev_table["Payback (mo)"] = rev_table["Payback (mo)"].apply(lambda x: f"{x:.0f}" if x < 100 else "∞")
-    rev_table = rev_table.sort_values("Visits/mo", ascending=False)
-    st.dataframe(rev_table, hide_index=True, use_container_width=True, height=400)
+with rev_tab2:
+    # Deduplicate to show one bar per city (first/best location)
+    new_by_city = df_new.drop_duplicates("city").sort_values("y1_rev", ascending=True)
+    fig_new_bar = go.Figure(go.Bar(
+        y=new_by_city["city"],
+        x=new_by_city["y1_rev"] / 1e5,
+        orientation="h",
+        marker_color=["#1a73e8" if t == "Tier-2" else "#34a853" for t in new_by_city["tier"]],
+        text=new_by_city.apply(
+            lambda r: f"₹{r['y1_rev']/1e5:.0f}L/yr | {r['shows_mo']} shows/mo | {r['tier']} | ₹{r['ss_monthly']/1e5:.1f}L/mo SS",
+            axis=1,
+        ),
+        textposition="inside", textfont=dict(color="white", size=11),
+    ))
+    fig_new_bar.add_vline(x=target_annual / 1e5, line_dash="dash", line_color="red",
+                          annotation_text=f"Target: ₹{target_annual/1e5:.0f}L/yr")
+    fig_new_bar.update_layout(
+        title="New City: Per-City Year 1 Revenue (1 clinic per city initially)",
+        height=500, margin=dict(l=130, r=20, t=40, b=40),
+        xaxis_title="Year 1 Revenue (₹ Lakhs)",
+    )
+    st.plotly_chart(fig_new_bar, use_container_width=True)
+
+    st.markdown(f"""
+    <div class="insight-card">
+    <b>New City Portfolio:</b> {new_by_city['city'].nunique()} cities ({(new_by_city['tier']=='Tier-2').sum()} Tier-2,
+    {(new_by_city['tier']=='Tier-3').sum()} Tier-3) |
+    Year 1 Revenue: <b>{fmt_inr(total_new_y1)}</b> |
+    Phase 1: 1 clinic/city → expand after Month 6 validation
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SLIDE 6: EXPANSION FINANCIAL SUMMARY — Combined FY27 Outlook
+# ═══════════════════════════════════════════════════════════════════════════
+st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="slide-header">💰 SLIDE 6 — COMBINED FY27 OUTLOOK: Revenue Streams + Investment Summary'
+    f'<div class="slide-sub">Existing Network + Show% Fix + Same-City Satellites + New City Expansion | {scenario}</div></div>',
+    unsafe_allow_html=True,
+)
+
+# ── Header metrics ─────────────────────────────────────────────────────────
+om1, om2, om3, om4, om5 = st.columns(5)
+om1.metric("Existing 61 Clinics", fmt_inr(total_annual_rev), "Current run-rate")
+om2.metric("Show% Fix (₹0 CAC)", fmt_inr(show_fix_rev), f"{len(underperforming)} clinics")
+om3.metric("Same-City Satellites", fmt_inr(total_same_y1), f"{len(df_same)} locations")
+om4.metric("New City Clinics", fmt_inr(total_new_y1), f"{new_by_city['city'].nunique()} cities")
+om5.metric("FY27 Total Potential", fmt_inr(fy27_total), "All streams combined")
+
+# ── Monthly Revenue Ramp — Top 10 Same-City (heatmap) ─────────────────────
+st.markdown("---")
+st.markdown("**Monthly Revenue Ramp — Top 10 Same-City Clinics (₹ Lakhs)**")
+
+top10_same = df_same.head(10)
+ramp_data = []
+for _, row in top10_same.iterrows():
+    ramp_row = {"Location": row["location"]}
+    for m in range(12):
+        month_label = f"M{m+1}"
+        ramp_row[month_label] = f"₹{row[month_label]/1e5:.0f}L"
+    ramp_row["Year 1"] = f"₹{row['y1_rev']/1e5:.0f}L"
+    ramp_data.append(ramp_row)
+df_ramp_display = pd.DataFrame(ramp_data)
+st.dataframe(df_ramp_display, hide_index=True, use_container_width=True)
+
+# ── Investment Analysis ────────────────────────────────────────────────────
+st.markdown("---")
+col_inv, col_combined = st.columns([1, 1])
+
+with col_inv:
+    total_new_clinics = len(df_same.drop_duplicates("location")) + new_by_city["city"].nunique()
+    total_capex = total_new_clinics * capex
+    total_annual_opex = total_new_clinics * opex_monthly * 12
+    total_exp_rev_y1 = total_same_y1 + total_new_y1
+    total_exp_profit_y1 = total_exp_rev_y1 - total_annual_opex
+    avg_payback = capex / ((total_exp_rev_y1 / total_new_clinics / 12) - opex_monthly) if total_exp_rev_y1 > total_annual_opex else float('inf')
+
+    st.markdown("**🏗️ Investment Summary**")
+    inv_data = {
+        "Metric": [
+            "New Clinics (Same-City + New City)",
+            "Total Capex Investment",
+            "Annual OpEx (all new clinics)",
+            "Year 1 Expansion Revenue",
+            "Year 1 Expansion Profit",
+            "Avg Capex Payback Period",
+            "Breakeven Visits / Clinic",
+        ],
+        "Value": [
+            f"{total_new_clinics} clinics",
+            fmt_inr(total_capex),
+            fmt_inr(total_annual_opex),
+            fmt_inr(total_exp_rev_y1),
+            fmt_inr(total_exp_profit_y1),
+            f"{avg_payback:.0f} months" if avg_payback < 100 else "N/A",
+            f"{breakeven_visits} visits/month",
+        ],
+    }
+    st.dataframe(pd.DataFrame(inv_data), hide_index=True, use_container_width=True)
+
+with col_combined:
+    st.markdown("**📊 Combined FY27 Outlook**")
+    streams = pd.DataFrame({
+        "Revenue Stream": ["Existing 61 Clinics", "Show% Fix (₹0 CAC)", "Same-City Satellites", "New City Expansion"],
+        "Annual Revenue": [total_annual_rev, show_fix_rev, total_same_y1, total_new_y1],
+    })
+    streams["₹ Crore"] = streams["Annual Revenue"].apply(lambda x: f"₹{x/1e7:.1f} Cr")
+    streams["% of Total"] = (streams["Annual Revenue"] / fy27_total * 100).apply(lambda x: f"{x:.0f}%")
+    st.dataframe(streams[["Revenue Stream", "₹ Crore", "% of Total"]], hide_index=True, use_container_width=True)
+
+    st.markdown(f"""
+    <div style="background:#1a1a2e;color:white;padding:16px;border-radius:8px;margin-top:12px;text-align:center;">
+    <span style="font-size:0.9rem;">Total FY27 Revenue Potential</span><br>
+    <span style="font-size:1.8rem;font-weight:700;letter-spacing:0.5px;">{fmt_inr(fy27_total)}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ── Scenario Comparison for Expansion ──────────────────────────────────────
+st.markdown("---")
+col_sc, col_note = st.columns([1.2, 1])
+
+with col_sc:
+    sc_mults = {"Conservative": 0.85, "Base Case": 1.0, "Optimistic": 1.15}
+    sc_data = []
+    for label, mult in sc_mults.items():
+        sc_exist = total_annual_rev * mult / scenario_mult  # adjust for current mult
+        sc_fix = show_fix_rev * mult / scenario_mult
+        sc_same = total_same_y1 * mult
+        sc_new = total_new_y1 * mult
+        sc_data.append({"Scenario": label, "Total": (sc_exist + sc_fix + sc_same + sc_new) / 1e7})
+
+    df_sc = pd.DataFrame(sc_data)
+    fig_sc = go.Figure(go.Bar(
+        x=df_sc["Scenario"], y=df_sc["Total"],
+        marker_color=["#ffc107", "#FF6B35", "#4CAF50"],
+        text=df_sc["Total"].apply(lambda x: f"₹{x:.1f} Cr"), textposition="outside",
+    ))
+    fig_sc.update_layout(
+        title="FY27 Scenario Comparison (All Streams)",
+        height=350, margin=dict(l=40, r=20, t=40, b=40),
+        yaxis_title="Annual Revenue (₹ Cr)",
+    )
+    st.plotly_chart(fig_sc, use_container_width=True)
+
+with col_note:
+    st.markdown(f"""
+    <div style="background:#f8f9fa;border-radius:8px;padding:16px;border-left:4px solid #1a73e8;">
+    <b>📋 Key Assumptions:</b><br><br>
+    <b>Existing Clinics:</b> {len(cp)} clinics at L3M run-rate × {show_to_conv}% conversion × ₹{rev_per_ntb:,}/NTB<br><br>
+    <b>Show% Fix:</b> Underperforming clinics raised to {industry_show}% benchmark — ₹0 CAC, zero new leases<br><br>
+    <b>Same-City Satellites:</b> Each satellite captures 50% of city's best-performing parent clinic's NTB volume<br><br>
+    <b>New City:</b> NTB projected from population × {ntb_pop_ratio.split('(')[0].strip()} NTB:Pop ratio, divided across {exp_new['Pincode'].nunique()} scouted locations<br><br>
+    <b>Ramp:</b> 3-month setup → linear ramp to 100% by Month 6 → full steady-state M6-M12<br><br>
+    <b>Unit Economics:</b> OpEx ₹{monthly_opex}L/mo | Capex ₹{capex_per_clinic}L | Breakeven: {breakeven_visits} visits/mo
+    </div>
+    """, unsafe_allow_html=True)
+
+with st.expander("📋 Full Same-City Expansion Revenue Breakdown"):
+    same_display = df_same[["location", "city", "shows_mo", "ss_monthly", "y1_rev"]].copy()
+    same_display.columns = ["Location", "City", "Shows/mo", "SS Monthly (₹)", "Year 1 Rev (₹)"]
+    same_display["SS Monthly (₹)"] = same_display["SS Monthly (₹)"].apply(lambda x: f"₹{x/1e5:.1f}L")
+    same_display["Year 1 Rev (₹)"] = same_display["Year 1 Rev (₹)"].apply(lambda x: f"₹{x/1e5:.0f}L")
+    st.dataframe(same_display, hide_index=True, use_container_width=True, height=400)
+
+with st.expander("📋 Full New City Expansion Revenue Breakdown"):
+    new_display = df_new.drop_duplicates("city")[["city", "state", "tier", "shows_mo", "ss_monthly", "y1_rev"]].copy()
+    new_display.columns = ["City", "State", "Tier", "Shows/mo", "SS Monthly (₹)", "Year 1 Rev (₹)"]
+    new_display["SS Monthly (₹)"] = new_display["SS Monthly (₹)"].apply(lambda x: f"₹{x/1e5:.1f}L")
+    new_display["Year 1 Rev (₹)"] = new_display["Year 1 Rev (₹)"].apply(lambda x: f"₹{x/1e5:.0f}L")
+    st.dataframe(new_display, hide_index=True, use_container_width=True, height=400)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
