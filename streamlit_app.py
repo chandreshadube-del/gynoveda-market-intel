@@ -14,6 +14,39 @@ import json, os
 
 st.set_page_config(page_title="Gynoveda FY27 Plan", layout="wide", page_icon="🏥")
 
+
+# ── Indian Number Formatter ─────────────────────────────────────────────────
+def fmt_inr(value, prefix="₹", decimals=1):
+    """Format number in Indian notation: Cr / L / K / plain."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return f"{prefix}0"
+    v = abs(value)
+    sign = "-" if value < 0 else ""
+    if v >= 1e7:
+        return f"{sign}{prefix}{v/1e7:.{decimals}f} Cr"
+    elif v >= 1e5:
+        return f"{sign}{prefix}{v/1e5:.{decimals}f}L"
+    elif v >= 1e3:
+        return f"{sign}{prefix}{v/1e3:.{decimals}f}K"
+    else:
+        return f"{sign}{prefix}{v:.0f}"
+
+
+def fmt_num(value, decimals=1):
+    """Format plain number (no ₹): Cr / L / K / plain."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "0"
+    v = abs(value)
+    sign = "-" if value < 0 else ""
+    if v >= 1e7:
+        return f"{sign}{v/1e7:.{decimals}f} Cr"
+    elif v >= 1e5:
+        return f"{sign}{v/1e5:.{decimals}f}L"
+    elif v >= 1e3:
+        return f"{sign}{v/1e3:.{decimals}f}K"
+    else:
+        return f"{sign}{v:.0f}"
+
 # ── Custom CSS ──────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -159,7 +192,7 @@ ntb_per_clinic = latest_ntb / len(cp) if len(cp) > 0 else 0
 peak_per_clinic = peak_ntb / len(cp) if len(cp) > 0 else 0
 
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Network NTB (Jan-26)", f"{latest_ntb:,}", f"{ntb_decline:+.0%} from peak")
+c1.metric("Network NTB (Jan-26)", fmt_num(latest_ntb), f"{ntb_decline:+.0%} from peak")
 c2.metric("Network Show%", f"{network_show:.0%}", f"{'↑' if network_show > 0.18 else '↓'} vs 18% floor")
 c3.metric("Active Clinics", f"{len(cp)}")
 c4.metric("NTB/Clinic (Jan-26)", f"{ntb_per_clinic:.0f}", f"Peak was {peak_per_clinic:.0f}")
@@ -213,9 +246,11 @@ with col_map1:
     fig_web = px.scatter_mapbox(
         ms_clean.head(20), lat="lat", lon="lon", size="web_orders",
         color="web_orders", hover_name="state_geo",
-        hover_data={"web_orders": ":,", "unique_customers_pincodes": True, "lat": False, "lon": False},
         color_continuous_scale="Blues", size_max=40,
         mapbox_style="carto-positron", zoom=3.5, center={"lat": 22, "lon": 80},
+    )
+    fig_web.update_traces(
+        hovertemplate="<b>%{hovertext}</b><br>Orders: %{marker.size:,}<extra></extra>"
     )
     fig_web.update_layout(height=420, margin=dict(l=0, r=0, t=0, b=0), coloraxis_showscale=False)
     st.plotly_chart(fig_web, use_container_width=True)
@@ -225,9 +260,11 @@ with col_map2:
     fig_cli = px.scatter_mapbox(
         ms_clean.head(20), lat="lat", lon="lon", size="clinic_orders",
         color="clinic_orders", hover_name="state_geo",
-        hover_data={"clinic_orders": ":,", "clinic_pincodes": True, "lat": False, "lon": False},
         color_continuous_scale="Oranges", size_max=40,
         mapbox_style="carto-positron", zoom=3.5, center={"lat": 22, "lon": 80},
+    )
+    fig_cli.update_traces(
+        hovertemplate="<b>%{hovertext}</b><br>Clinic Orders: %{marker.size:,}<extra></extra>"
     )
     fig_cli.update_layout(height=420, margin=dict(l=0, r=0, t=0, b=0), coloraxis_showscale=False)
     st.plotly_chart(fig_cli, use_container_width=True)
@@ -235,17 +272,17 @@ with col_map2:
 sm1, sm2, sm3, sm4 = st.columns(4)
 total_web_pins = int(ms_clean["unique_customers_pincodes"].sum())
 total_cli_pins = int(ms_clean["clinic_pincodes"].sum())
-sm1.metric("Website Pincodes", f"{total_web_pins:,}")
-sm2.metric("Clinic Pincodes", f"{total_cli_pins:,}")
-sm3.metric("Website Orders", f"{int(ms_clean['web_orders'].sum()):,}")
-sm4.metric("Clinic Orders (FirstTime)", f"{int(ms_clean['clinic_orders'].sum()):,}")
+sm1.metric("Website Pincodes", fmt_num(total_web_pins))
+sm2.metric("Clinic Pincodes", fmt_num(total_cli_pins))
+sm3.metric("Website Orders", fmt_num(int(ms_clean['web_orders'].sum())))
+sm4.metric("Clinic Orders (FirstTime)", fmt_num(int(ms_clean['clinic_orders'].sum())))
 
 st.markdown("**State-Level Reach Comparison (Top 12)**")
 top12 = ms_clean.head(12)[["state_geo", "web_orders", "unique_customers_pincodes", "clinic_orders", "clinic_pincodes", "clinic_share"]].copy()
 top12.columns = ["State", "Website Orders", "Website Pincodes", "Clinic Orders", "Clinic Pincodes", "Clinic Share %"]
 top12["Clinic Share %"] = (top12["Clinic Share %"] * 100).round(1)
 for c in ["Website Orders", "Clinic Orders"]:
-    top12[c] = top12[c].astype(int).apply(lambda x: f"{x:,}")
+    top12[c] = top12[c].astype(int).apply(lambda x: fmt_num(x))
 for c in ["Website Pincodes", "Clinic Pincodes"]:
     top12[c] = top12[c].astype(int)
 st.dataframe(top12, hide_index=True, use_container_width=True)
@@ -263,29 +300,34 @@ st.markdown(
 
 col_trend, col_insight = st.columns([2, 1])
 with col_trend:
+    st.markdown("**Network NTB Trend — The Plateau Problem**")
     fig_trend = make_subplots(specs=[[{"secondary_y": True}]])
     fig_trend.add_trace(
         go.Bar(
             x=df_network["month"], y=df_network["ntb"],
-            name="Total NTB", marker_color="#FF6B35", opacity=0.85,
-            text=df_network["ntb"].apply(lambda x: f"{x/1000:.1f}K"),
+            name="NTB Shows", marker_color="#FF6B35", opacity=0.85,
+            text=df_network["ntb"].apply(lambda x: fmt_num(x)),
             textposition="outside",
+            hovertemplate="<b>%{x|%b %Y}</b><br>NTB Shows: %{y:,}<extra></extra>",
         ), secondary_y=False,
     )
     fig_trend.add_trace(
         go.Scatter(
             x=df_network["month"], y=df_network["show_pct"] * 100,
-            name="Show%", line=dict(color="#1a73e8", width=3),
+            name="Show %", line=dict(color="#1a73e8", width=3),
             mode="lines+markers",
+            hovertemplate="<b>%{x|%b %Y}</b><br>Show%: %{y:.1f}%<extra></extra>",
         ), secondary_y=True,
     )
     fig_trend.update_layout(
-        title="Network NTB — The Plateau Problem",
-        height=350, margin=dict(l=40, r=40, t=40, b=40),
-        legend=dict(orientation="h", y=1.12),
-        yaxis_title="Total NTB", yaxis2_title="Show%",
+        height=350, margin=dict(l=40, r=40, t=10, b=40),
+        legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center",
+                    font=dict(size=12)),
+        yaxis_title="Total NTB", yaxis2_title="Show %",
+        plot_bgcolor="white",
     )
     fig_trend.update_yaxes(range=[0, 35], secondary_y=True)
+    fig_trend.update_xaxes(tickformat="%b %y")
     st.plotly_chart(fig_trend, use_container_width=True)
 
 with col_insight:
@@ -294,7 +336,7 @@ with col_insight:
     st.markdown(f"""
     <div class="insight-card insight-red">
     <strong>📊 The Data Says:</strong><br>
-    • NTB peaked at <b>{peak_ntb:,}</b> ({peak_m}), now <b>{latest_ntb:,}</b> ({ntb_decline:+.0%})<br>
+    • NTB peaked at <b>{fmt_num(peak_ntb)}</b> ({peak_m}), now <b>{fmt_num(latest_ntb)}</b> ({ntb_decline:+.0%})<br>
     • NTB/clinic fell from <b>{peak_per_clinic:.0f}</b> to <b>{ntb_per_clinic:.0f}</b><br>
     • <b>{below_15}</b> clinics have Show% below 15%<br>
     • Adding clinics without fixing Show% grows cost faster than revenue
@@ -318,27 +360,41 @@ state_show["label"] = state_show.apply(
     lambda r: f"{r['avg_show']:.0%} ({int(r['clinic_count'])} cl)", axis=1
 )
 
+st.markdown("**Gynoveda Show% vs Industry Standard — State-Wise**")
+
 fig_show = go.Figure()
 fig_show.add_trace(go.Bar(
-    y=state_show["state"], x=[benchmark * 100] * len(state_show),
-    name=f"Industry Standard ({industry_show}%)",
-    orientation="h", marker_color="#4CAF50", opacity=0.4,
-))
-fig_show.add_trace(go.Bar(
     y=state_show["state"], x=state_show["avg_show"] * 100,
-    name="Gynoveda Actual",
     orientation="h",
-    marker_color=[("#FF6B35" if g >= 0 else "#dc3545") for g in state_show["gap"]],
+    marker_color=[("#4CAF50" if g >= 0 else "#FF6B35" if g >= -0.05 else "#dc3545") for g in state_show["gap"]],
     text=state_show["label"], textposition="outside",
+    name="Gynoveda Actual",
+    showlegend=False,
+    hovertemplate=(
+        "<b>%{y}</b><br>"
+        "Show%: %{x:.1f}%<br>"
+        "Gap vs Benchmark: %{customdata[0]:+.1f}ppt<br>"
+        "Clinics: %{customdata[1]}<br>"
+        "Monthly NTB: %{customdata[2]:,}"
+        "<extra></extra>"
+    ),
+    customdata=np.column_stack([
+        state_show["gap"] * 100,
+        state_show["clinic_count"],
+        state_show["total_ntb"],
+    ]),
 ))
-fig_show.update_layout(
-    title="Gynoveda Show% vs Industry Standard — State-Wise",
-    barmode="overlay", height=max(350, len(state_show) * 35),
-    margin=dict(l=130, r=80, t=40, b=40),
-    legend=dict(orientation="h", y=1.08), xaxis_title="Show %",
+fig_show.add_vline(x=industry_show, line_dash="dash", line_color="#1a73e8", line_width=2)
+fig_show.add_annotation(
+    x=industry_show, y=1.02, yref="paper",
+    text=f"◆ {industry_show}% Benchmark", showarrow=False,
+    font=dict(color="#1a73e8", size=12, family="Arial Black"),
 )
-fig_show.add_vline(x=industry_show, line_dash="dash", line_color="green",
-                   annotation_text=f"{industry_show}% benchmark")
+fig_show.update_layout(
+    height=max(380, len(state_show) * 35),
+    margin=dict(l=130, r=100, t=30, b=40),
+    xaxis_title="Show %", plot_bgcolor="white",
+)
 st.plotly_chart(fig_show, use_container_width=True)
 
 above = (state_show["gap"] >= 0.02).sum()
@@ -453,7 +509,7 @@ total_unlock = underperforming["additional_rev_annual"].sum()
 
 fm1, fm2, fm3 = st.columns(3)
 fm1.metric("Underperforming Clinics", f"{len(underperforming)} of {len(cp)}", f"Show% < {industry_show}%")
-fm2.metric("Annual Revenue Unlock", f"₹{total_unlock/1e7:.1f} Cr", "₹0 CAC — no new leases")
+fm2.metric("Annual Revenue Unlock", fmt_inr(total_unlock), "₹0 CAC — no new leases")
 fm3.metric("Avg Show% Gap", f"{underperforming['show_gap'].mean():.1%}", f"vs {industry_show}% target")
 
 col_fix1, col_fix2 = st.columns([1.2, 1])
@@ -464,8 +520,16 @@ with col_fix1:
         size=cp["additional_rev_annual"].clip(lower=1),
         color="l3m_show", color_continuous_scale="RdYlGn",
         hover_name="clinic_name",
-        hover_data={"l3m_appt": ":.0f", "l3m_show": ":.1%", "additional_rev_annual": ":,.0f"},
         labels={"l3m_appt": "Avg Monthly Appointments", "l3m_show": "Show%"},
+    )
+    fig_scatter.update_traces(
+        hovertemplate=(
+            "<b>%{hovertext}</b><br>"
+            "Appointments: %{x:.0f}/mo<br>"
+            "Show%: %{y:.1%}<br>"
+            "Unlock: ₹%{marker.size:,.0f}/yr"
+            "<extra></extra>"
+        )
     )
     fig_scatter.add_hline(y=target_show, line_dash="dash", line_color="green",
                           annotation_text=f"{industry_show}% benchmark")
@@ -478,7 +542,7 @@ with col_fix1:
 with col_fix2:
     st.markdown(f"""
     <div class="insight-card insight-green">
-    <strong>💰 ₹{total_unlock/1e7:.1f} Cr unlock</strong> from Show% fixes across
+    <strong>💰 {fmt_inr(total_unlock)} unlock</strong> from Show% fixes across
     <b>{len(underperforming)}</b> clinics — zero new leases, zero CAC.
     This is FY27's highest-ROI initiative.
     </div>
@@ -489,7 +553,7 @@ with col_fix2:
     top_unlock.columns = ["Clinic", "Current Show%", "Gap", "Extra NTB/mo", "Annual Unlock ₹"]
     top_unlock["Current Show%"] = (top_unlock["Current Show%"] * 100).round(1)
     top_unlock["Gap"] = (top_unlock["Gap"] * 100).round(1)
-    top_unlock["Annual Unlock ₹"] = top_unlock["Annual Unlock ₹"].apply(lambda x: f"₹{x/1e5:.1f}L")
+    top_unlock["Annual Unlock ₹"] = top_unlock["Annual Unlock ₹"].apply(lambda x: fmt_inr(x))
     st.dataframe(top_unlock, hide_index=True, use_container_width=True)
 
 
@@ -522,12 +586,12 @@ receptionist = 0.15e5
 electricity = 0.05e5
 
 um1, um2, um3, um4, um5, um6 = st.columns(6)
-um1.metric("Monthly OpEx/Clinic", f"₹{monthly_opex}L", "Rent + Dr×2 + Staff")
-um2.metric("Capex (Construction)", f"₹{capex_per_clinic:.0f}L")
-um3.metric("Breakeven NTB Shows", f"{breakeven_shows}/month", f"@ {conversion_rate:.0%} conv × ₹{rev_per_ntb//1000}K")
+um1.metric("Monthly OpEx/Clinic", fmt_inr(opex_monthly), "Rent + Dr×2 + Staff")
+um2.metric("Capex (Construction)", fmt_inr(capex))
+um3.metric("Breakeven NTB Shows", f"{breakeven_shows}/month", f"@ {conversion_rate:.0%} conv × {fmt_inr(rev_per_ntb)}")
 um4.metric("Profitable Clinics", f"{profitable_clinics} of {len(cp)}", f"↑ {len(cp)-profitable_clinics} below breakeven")
 um5.metric("Avg Margin", f"{avg_profit/avg_revenue*100:.0f}%" if avg_revenue > 0 else "N/A")
-um6.metric("Network Annual Profit", f"₹{network_annual_profit/1e7:.1f} Cr", f"After ₹{monthly_opex}L/mo OpEx")
+um6.metric("Network Annual Profit", fmt_inr(network_annual_profit), f"After {fmt_inr(opex_monthly)}/mo OpEx")
 
 col_pnl, col_sens = st.columns(2)
 
@@ -541,7 +605,7 @@ with col_pnl:
         increasing={"marker": {"color": "#4CAF50"}},
         decreasing={"marker": {"color": "#dc3545"}},
         totals={"marker": {"color": "#1a73e8"}},
-        text=[f"₹{abs(v)/1e3:.0f}K" for v in wf_values],
+        text=[fmt_inr(abs(v)) for v in wf_values],
         textposition="outside",
     ))
     fig_wf.update_layout(
@@ -578,7 +642,7 @@ with col_sens:
 st.markdown('<div class="slide-sep"></div>', unsafe_allow_html=True)
 st.markdown(
     f'<div class="slide-header">📈 SLIDE 6 — FY27 REVENUE PROJECTION: Ratio-Adjusted, Scenario-Tested'
-    f'<div class="slide-sub">Per-Clinic Revenue Projection (₹{rev_per_ntb//1000}K/NTB Patient) | Scenario: {scenario}</div></div>',
+    f'<div class="slide-sub">Per-Clinic Revenue Projection ({fmt_inr(rev_per_ntb)}/NTB Patient) | Scenario: {scenario}</div></div>',
     unsafe_allow_html=True,
 )
 
@@ -593,9 +657,9 @@ total_annual_profit = cp[cp["annual_profit"] > 0]["annual_profit"].sum()
 median_payback = cp[cp["payback_months"] < 100]["payback_months"].median()
 
 rm1, rm2, rm3, rm4 = st.columns(4)
-rm1.metric(f"FY27 Revenue ({scenario})", f"₹{total_annual_rev/1e7:.1f} Cr", f"{len(cp)} clinics")
-rm2.metric("FY27 Profit (Profitable)", f"₹{total_annual_profit/1e7:.1f} Cr", "After OpEx")
-rm3.metric("Avg Revenue/Clinic/Mo", f"₹{cp['monthly_revenue'].mean()/1e5:.1f}L")
+rm1.metric(f"FY27 Revenue ({scenario})", fmt_inr(total_annual_rev), f"{len(cp)} clinics")
+rm2.metric("FY27 Profit (Profitable)", fmt_inr(total_annual_profit), "After OpEx")
+rm3.metric("Avg Revenue/Clinic/Mo", fmt_inr(cp['monthly_revenue'].mean()))
 rm4.metric("Median Payback", f"{median_payback:.0f} months" if pd.notna(median_payback) else "N/A", "Profitable clinics")
 
 col_rev1, col_rev2 = st.columns([1.5, 1])
@@ -607,7 +671,7 @@ with col_rev1:
         orientation="h",
         marker_color=["#4CAF50" if p > 0 else "#dc3545" for p in clinic_rev["annual_profit"]],
         text=clinic_rev.apply(
-            lambda r: f"₹{r['annual_revenue']/1e5:.0f}L | NTB:{int(r['l3m_ntb'])}/mo", axis=1
+            lambda r: f"{fmt_inr(r['annual_revenue'])} | NTB:{int(r['l3m_ntb'])}/mo", axis=1
         ),
         textposition="inside", textfont=dict(color="white", size=10),
     ))
@@ -627,7 +691,7 @@ with col_rev2:
     fig_sc = go.Figure(go.Bar(
         x=df_sc["Scenario"], y=df_sc["Revenue"] / 1e7,
         marker_color=["#ffc107", "#FF6B35", "#4CAF50"],
-        text=df_sc["Revenue"].apply(lambda x: f"₹{x/1e7:.1f} Cr"), textposition="outside",
+        text=df_sc["Revenue"].apply(lambda x: fmt_inr(x)), textposition="outside",
     ))
     fig_sc.update_layout(
         title="Scenario Comparison", height=300,
@@ -639,9 +703,11 @@ with col_rev2:
     st.markdown(f"""
     <div class="insight-card insight-green">
     <strong>Combined FY27 Outlook:</strong><br>
-    Current run-rate: <b>₹{total_annual_rev/1e7:.1f} Cr</b><br>
-    + Show% fix unlock: <b>₹{show_fix_rev/1e7:.1f} Cr</b><br>
-    = Total potential: <b>₹{(total_annual_rev + show_fix_rev)/1e7:.1f} Cr</b>
+    Current run-rate: <b>{fmt_inr(total_annual_rev)}</b><br>
+    + Show% fix unlock: <b>{fmt_inr(show_fix_rev)}</b>
+    <div style="background:#1a1a2e;color:white;padding:10px 14px;border-radius:6px;margin-top:8px;font-size:1.05rem;font-weight:700;letter-spacing:0.3px;">
+    Total FY27 Potential - <b>{fmt_inr(total_annual_rev + show_fix_rev)}</b>
+    </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -656,7 +722,7 @@ with st.expander("📋 Full Per-Clinic Revenue Breakdown"):
     ]
     rev_table["Show%"] = (rev_table["Show%"] * 100).round(1)
     for c in ["Rev/mo (₹)", "Rev/yr (₹)", "Profit/mo (₹)"]:
-        rev_table[c] = rev_table[c].apply(lambda x: f"₹{x/1e5:.1f}L")
+        rev_table[c] = rev_table[c].apply(lambda x: fmt_inr(x))
     rev_table["Payback (mo)"] = rev_table["Payback (mo)"].apply(lambda x: f"{x:.0f}" if x < 100 else "∞")
     rev_table = rev_table.sort_values("NTB/mo", ascending=False)
     st.dataframe(rev_table, hide_index=True, use_container_width=True, height=400)
@@ -681,7 +747,7 @@ risks = [
         "Current": f"{cp['latest_show'].mean():.0%}",
         "Trigger": "<18% network avg for 2 consecutive months",
         "Impact": "High",
-        "Revenue Impact": f"₹{(cp['l3m_appt'].sum() * 0.03 * rev_per_show * 12)/1e7:.1f} Cr/yr per 3ppt drop",
+        "Revenue Impact": f"{fmt_inr(cp['l3m_appt'].sum() * 0.03 * rev_per_show * 12)}/yr per 3ppt drop",
         "Mitigation": "Doctor quality audit, follow-up protocol, patient experience overhaul",
         "Status": "🟡" if cp["latest_show"].mean() < 0.22 else "🟢",
     },
@@ -690,16 +756,16 @@ risks = [
         "Current": f"{new_clinic_avg} NTB/mo (new clinics)",
         "Trigger": "<50 NTB shows/month at Month 3",
         "Impact": "High",
-        "Revenue Impact": f"₹{capex_per_clinic:.0f}L capex at risk per clinic",
+        "Revenue Impact": f"{fmt_inr(capex)} capex at risk per clinic",
         "Mitigation": "Phase gate model — no new lease until Month 3 validation",
         "Status": "🟡",
     },
     {
         "Risk": "Rent escalation erodes margins",
-        "Current": f"₹{rent/1e5:.1f}L avg rent",
+        "Current": f"{fmt_inr(rent)} avg rent",
         "Trigger": ">7% annual escalation",
         "Impact": "Medium",
-        "Revenue Impact": f"Breakeven shifts from {breakeven_shows} to {int(breakeven_shows*1.15)} shows at 7% escalation",
+        "Revenue Impact": f"Breakeven shifts from {breakeven_shows} to {int(breakeven_shows*1.15)} shows at 7% escalation over 3 yrs",
         "Mitigation": "Negotiate 5% cap clauses, avoid >2yr lock-in for new cities",
         "Status": "🟢",
     },
@@ -726,7 +792,7 @@ risks = [
         "Current": "Online demand ratio used for projection",
         "Trigger": "<60% of projected NTB at Month 6",
         "Impact": "Medium",
-        "Revenue Impact": f"₹{capex_per_clinic:.0f}L capex write-off if clinic closes",
+        "Revenue Impact": f"{fmt_inr(capex)} capex write-off if clinic closes",
         "Mitigation": "Lean 1-cabin format for tier-2, convert to full only after validation",
         "Status": "🟡",
     },
@@ -780,7 +846,7 @@ st.markdown(f"""
 ✅ <b>{profitable_clinics}</b> currently profitable clinics survive Year 3 rent escalation at 7%.
 </div>
 <div class="insight-card">
-💡 <b>Rent Stress Test:</b> At 7% annual escalation, OpEx rises from ₹{monthly_opex}L → ₹{yr3_opex:.1f}L
+💡 <b>Rent Stress Test:</b> At 7% annual escalation, OpEx rises from {fmt_inr(opex_monthly)} → {fmt_inr(yr3_opex * 1e5)}
 over 3 years. Breakeven shifts from {breakeven_shows} → {yr3_be} shows/month.<br>
 <b>Action:</b> Negotiate 5% cap clauses. Avoid lock-in >2 years for new cities.
 </div>
