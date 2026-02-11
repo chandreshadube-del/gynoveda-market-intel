@@ -192,6 +192,7 @@ st.markdown("""
     .score-high {background: #A8E6CF; color: #1a1a1a;}
     .score-med  {background: #B8E6CF; color: #1a1a1a;}
     .score-low  {background: #C8E6CF; color: #1a1a1a;}
+    .score-negative {background: #FF6B6B; color: #ffffff;}
     .score-card h2 {margin: 0; font-size: 2.2rem; font-weight: 800;}
     .score-card p {margin: 4px 0 0 0; font-size: 0.82rem; opacity: 0.85;}
     .insight-box {background: #EDE7F6; border-left: 4px solid #5E35B1; padding: 12px 16px;
@@ -1026,7 +1027,7 @@ with tab1:
         </div>""", unsafe_allow_html=True)
     
     with sc3:
-        mom_class = "score-high" if momentum > 0.05 else "score-med" if momentum > -0.05 else "score-low"
+        mom_class = "score-high" if momentum > 0.05 else "score-med" if momentum > -0.05 else "score-negative"
         st.markdown(f"""<div class="score-card {mom_class}">
             <h2>{momentum*100:+.0f}%</h2>
             <p>Revenue Momentum (L3M vs Prior)</p>
