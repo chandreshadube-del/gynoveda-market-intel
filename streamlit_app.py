@@ -1327,12 +1327,14 @@ with tab4:
     st.markdown("### Revenue Ramp Forecaster")
     st.markdown("*Project revenue for new clinics using actual ramp curves from your 61-clinic network.*")
     
-    # ── Actual Ramp Curves ──
+    # ── Actual Ramp Curves (M0→M12) ──
+    ramp_s12 = ramp_s[ramp_s['month_num'] <= 12]
+    ramp_c12 = ramp_c[ramp_c['month_num'] <= 12]
     rc1, rc2 = st.columns(2)
     
     with rc1:
         fig_ramp = go.Figure()
-        fig_ramp.add_trace(go.Scatter(x=ramp_s['month_num'], y=ramp_s['avg_sales_l'],
+        fig_ramp.add_trace(go.Scatter(x=ramp_s12['month_num'], y=ramp_s12['avg_sales_l'],
                                        mode='lines+markers', name='Avg Sales (₹L/mo)',
                                        line=dict(color='#FF6B35', width=3), marker=dict(size=5)))
         # Add envelope: use clinics count as confidence
@@ -1341,17 +1343,17 @@ with tab4:
         total_monthly = monthly_opex + (capex_per_clinic / 24)  # 24-month amortization
         fig_ramp.add_hline(y=total_monthly, line_dash="dot", line_color="#FFA000",
                           annotation_text=f"Full Breakeven (₹{total_monthly:.1f}L)")
-        fig_ramp.update_layout(title="Average Clinic Sales Ramp (M0→M30)", height=380,
+        fig_ramp.update_layout(title="Average Clinic Sales Ramp (M0→M12)", height=380,
                               margin=dict(l=20, r=20, t=40, b=20),
                               xaxis_title="Month Since Launch", yaxis_title="₹ Lakhs/month")
         st.plotly_chart(fig_ramp, use_container_width=True)
     
     with rc2:
         fig_ramp2 = go.Figure()
-        fig_ramp2.add_trace(go.Scatter(x=ramp_c['month_num'], y=ramp_c['avg_1cx'],
+        fig_ramp2.add_trace(go.Scatter(x=ramp_c12['month_num'], y=ramp_c12['avg_1cx'],
                                         mode='lines+markers', name='Avg New Patients',
                                         line=dict(color='#4ECDC4', width=3), marker=dict(size=5)))
-        fig_ramp2.update_layout(title="Average New Patient Ramp (M0→M30)", height=380,
+        fig_ramp2.update_layout(title="Average New Patient Ramp (M0→M12)", height=380,
                                margin=dict(l=20, r=20, t=40, b=20),
                                xaxis_title="Month Since Launch", yaxis_title="New Patients/month")
         st.plotly_chart(fig_ramp2, use_container_width=True)
