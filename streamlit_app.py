@@ -1730,14 +1730,16 @@ with tab4:
     fig_proj.add_trace(go.Bar(
         x=df_proj['month'], y=df_proj['monthly_rev_l'],
         name='Revenue', marker_color='#4ECDC4', opacity=0.75,
-        text=[f"₹{v:.0f}L<br>({int(a)} clinics)" if i % 3 == 0 else "" 
+        text=[f"<b>₹{v:.0f}L</b><br>({int(a)} clinics)" if i % 3 == 0 else "" 
               for i, (v, a) in enumerate(zip(df_proj['monthly_rev_l'], df_proj['active_clinics']))],
-        textposition='outside', textfont_size=8
+        textposition='outside', textfont=dict(size=9, color='#1a1a1a'),
+        hovertemplate='Month %{x}<br>Revenue: <b>₹%{y:.0f}L</b><extra></extra>'
     ), row=1, col=1)
     
     fig_proj.add_trace(go.Bar(
         x=df_proj['month'], y=df_proj['monthly_opex_l'],
-        name='OpEx', marker_color='#FF6B35', opacity=0.55
+        name='OpEx', marker_color='#FF6B35', opacity=0.55,
+        hovertemplate='Month %{x}<br>OpEx: <b>₹%{y:.1f}L</b><extra></extra>'
     ), row=1, col=1)
     
     # EBITDA line on top chart
@@ -1746,7 +1748,8 @@ with tab4:
         x=df_proj['month'], y=df_proj['monthly_ebitda_l'],
         name='EBITDA', mode='lines+markers',
         line=dict(color='#1B5E20', width=2.5, dash='dot'),
-        marker=dict(size=6, color=ebitda_colors)
+        marker=dict(size=6, color=ebitda_colors),
+        hovertemplate='Month %{x}<br>EBITDA: <b>₹%{y:.1f}L</b><extra></extra>'
     ), row=1, col=1)
     
     # ── BOTTOM CHART: Cumulative EBITDA vs Capex ──
@@ -1754,7 +1757,8 @@ with tab4:
         x=df_proj['month'], y=df_proj['cum_ebitda_l'],
         name='Cum. EBITDA', mode='lines',
         line=dict(color='#28a745', width=3),
-        fill='tozeroy', fillcolor='rgba(40, 167, 69, 0.12)'
+        fill='tozeroy', fillcolor='rgba(40, 167, 69, 0.12)',
+        hovertemplate='Month %{x}<br>Cum. EBITDA: <b>₹%{y:,.0f}L</b><extra></extra>'
     ), row=2, col=1)
     
     # Capex recovery line
