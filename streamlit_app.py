@@ -469,12 +469,31 @@ ramp_s = data['ramp_sales']
 ramp_c = data['ramp_1cx']
 pin_demand = data['pin_demand']
 
-# Load pin geocode outside cache — always check fresh
-_geo_path = f'{DATA}/pin_geocode.csv'
-if os.path.exists(_geo_path):
-    pin_geo = pd.read_csv(_geo_path)
+# Load pin geocode outside cache — try multiple paths
+pin_geo = pd.DataFrame(columns=['pincode','lat','lon'])
+_geo_candidates = [
+    f'{DATA}/pin_geocode.csv',
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), DATA, 'pin_geocode.csv'),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pin_geocode.csv'),
+    'pin_geocode.csv',
+]
+_geo_found = False
+for _gp in _geo_candidates:
+    if os.path.exists(_gp):
+        pin_geo = pd.read_csv(_gp)
+        _geo_found = True
+        break
+
+if not _geo_found:
+    # Debug: list what's actually in mis_data
+    _mis_files = os.listdir(DATA) if os.path.isdir(DATA) else []
+    _cwd = os.getcwd()
+    _script_dir = os.path.dirname(os.path.abspath(__file__))
+    _debug_msg = f"CWD={_cwd}, ScriptDir={_script_dir}, mis_data contents={_mis_files[:10]}"
+    # Store for display in Tab 3
+    _geo_debug = _debug_msg
 else:
-    pin_geo = pd.DataFrame(columns=['pincode','lat','lon'])
+    _geo_debug = None
 pin_ft = data['pin_ft']
 web_city = data['web_city']
 web_pin = data['web_pin']
@@ -1431,6 +1450,8 @@ with tab3:
     else:
         st.warning("⚠️ Pin geocode data not found. Upload `pin_geocode.csv` to the `mis_data/` folder to enable dual-signal whitespace analysis.")
         st.markdown("*This file maps Indian pincodes to lat/lon coordinates for distance computation.*")
+        if _geo_debug:
+            st.caption(f"Debug: {_geo_debug}")
     
     st.markdown("---")
     
