@@ -1075,7 +1075,7 @@ with tab1:
     active_clinics = (sales[latest_month] > 0).sum() if latest_month in sales.columns else 61
     
     # Hero KPIs — L12M Total
-    st.markdown(f"### Network Health — Last {l12m_months} Months")
+    st.markdown("### Network Health")
     st.markdown("**L12M Total**")
     h1, h2, h3, h4, h5 = st.columns(5)
     
@@ -1245,6 +1245,36 @@ with tab2:
     st.markdown("### Same-City Expansion Analysis")
     st.markdown("*Where should we add clinics in cities we already operate in?*")
     
+    # ── CEO Summary Row ──
+    _sc = same_city_scores
+    _sc_total_cities = len(_sc)
+    _sc_total_clinics = int(_sc['clinics'].sum())
+    _sc_total_cabins = int(_sc['total_cabins'].sum())
+    _sc_top = _sc.iloc[0]
+    _sc_growing = (_sc['growth_pct'] > 0).sum()
+    _sc_avg_rpc = _sc['sales_per_cabin_l'].mean()
+    _sc_total_web = _sc['web_orders'].sum()
+    _sc_total_pins = int(_sc['pincodes_served'].fillna(0).sum())
+    
+    sc_k1, sc_k2, sc_k3, sc_k4, sc_k5 = st.columns(5)
+    with sc_k1:
+        st.metric("Cities with Clinics", str(_sc_total_cities))
+        st.caption(f"{_sc_total_clinics} clinics · {_sc_total_cabins} cabins")
+    with sc_k2:
+        st.metric("Top Expansion Pick", f"{_sc_top['city_name']}")
+        st.caption(f"CEI Score: {_sc_top['cei_same']:.0f}")
+    with sc_k3:
+        st.metric("Avg Rev / Cabin", fmt_inr(_sc_avg_rpc * 1e5))
+        st.caption("Across all cities")
+    with sc_k4:
+        st.metric("Cities Growing", f"{_sc_growing} of {_sc_total_cities}")
+        st.caption("Positive L3M growth")
+    with sc_k5:
+        st.metric("Total Web Orders", fmt_num(_sc_total_web))
+        st.caption(f"{_sc_total_pins:,} unique pincodes")
+    
+    st.markdown("---")
+    
     # ── CEI Ranking Table ──
     st.markdown("#### Composite Expansion Index — Existing Cities")
     
@@ -1326,6 +1356,36 @@ with tab2:
     
     # ── Cannibalization Risk with Radius Safeguard ──
     st.markdown("#### 🛡️ Cannibalization & Radius Safeguard")
+    
+    with st.expander("📖 How to Read This Chart", expanded=False):
+        st.markdown("""
+**What it shows:** Each bubble is a pair of clinics. The chart reveals which clinic pairs 
+are competing for the same patients (cannibalization risk).
+
+**Reading the axes:**
+- **X-axis (Distance):** How far apart the two clinics are in kilometers
+- **Y-axis (Volume Overlap):** What % of patient pincodes are shared between the pair
+- **Bubble size:** Number of shared core pincodes (bigger = more top-10 pincodes overlap)
+- **Red dashed line:** Your minimum safe radius — pairs left of this line are dangerously close
+
+**Color guide:**
+- 🔴 **Critical** — Core catchment collision (3+ shared top-10 pincodes) → active revenue cannibalization
+- 🟠 **High** — Close distance or shared core pins → high risk
+- 🟡 **Medium** — Moderate volume overlap → monitor closely
+- 🟢 **Low / Minimal** — Healthy separation → distinct catchments
+
+**What happens when you change the radius (sidebar):**
+
+| Radius | Effect | Best for |
+|--------|--------|----------|
+| **Smaller (3-4 km)** | More locations qualify, but higher cannibalization risk | Dense metros (Mumbai, Delhi) where 4 km = different demographics |
+| **Standard (5 km)** | Balanced protection — current default | Most metro cities |
+| **Larger (8-10 km)** | Maximum protection per clinic, but may leave demand gaps | Tier 2/3 cities with lower population density |
+
+**Action items:** If you see a 🔴 Critical pair, investigate whether one clinic should be 
+relocated, or whether the pair should be treated as a single market with shared marketing budget.
+The **CEI Penalty** slider (sidebar) automatically reduces expansion scores for cities with high cannibalization.
+        """)
     
     if len(cannibal_matrix) > 0:
         city_code = same_city_scores[same_city_scores['city_name'] == selected_city]['city_code'].values[0]
@@ -1474,20 +1534,39 @@ with tab2:
 # ═══════════════════════════════════════════════════════════════════════
 with tab3:
     st.markdown("### New-City Whitespace Discovery")
-    st.markdown("*Combining historic website orders + clinic NTB visits from pincodes beyond your clinic network to identify proven, underserved markets.*")
+    st.markdown("*Cities where Gynoveda has zero clinics but proven patient demand — customers already buying online or traveling 20+ km to visit existing clinics.*")
     
     # Build dual-signal analysis
     ws_dual, ws_new_cities, ws_existing_underserved = build_whitespace_dual_signal(dist_threshold_km=whitespace_dist_km)
     
     if len(ws_dual) > 0:
-        # ── Summary KPIs ──
-        st.markdown(f"#### Demand Beyond {whitespace_dist_km:.0f} km — Network Summary")
+        # ── CEO Summary Row ──
+        _ws_pins = len(ws_dual)
+        _ws_ntb = ws_dual['ntb_qty'].sum()
+        _ws_web = ws_dual['web_orders'].sum()
+        _ws_rev = ws_dual['ntb_rev'].sum()
+        _ws_cities = len(ws_new_cities)
+        _ws_top = ws_new_cities.iloc[0] if len(ws_new_cities) > 0 else None
+        
         wk1, wk2, wk3, wk4, wk5 = st.columns(5)
-        wk1.metric("Dual-Signal Pincodes", fmt_num(len(ws_dual)))
-        wk2.metric("NTB Visits (20+km)", fmt_num(ws_dual['ntb_qty'].sum()))
-        wk3.metric("Web Orders (20+km)", fmt_num(ws_dual['web_orders'].sum()))
-        wk4.metric("NTB Revenue", fmt_inr(ws_dual['ntb_rev'].sum()))
-        wk5.metric("New Cities Identified", fmt_num(len(ws_new_cities)))
+        with wk1:
+            st.metric("Proven Demand Pincodes", fmt_num(_ws_pins))
+            st.caption("Both web orders + clinic visits")
+        with wk2:
+            st.metric("Patients Traveling 20+ km", fmt_num(_ws_ntb))
+            st.caption("Underserved by current network")
+        with wk3:
+            st.metric("Unserved Web Orders", fmt_num(_ws_web))
+            st.caption("From areas with no clinic")
+        with wk4:
+            st.metric("Revenue from Unserved Areas", fmt_inr(_ws_rev))
+            st.caption("NTB revenue at 20+ km")
+        with wk5:
+            st.metric("New Cities Ready to Enter", str(_ws_cities))
+            if _ws_top is not None:
+                st.caption(f"Top: {_ws_top['city']} ({fmt_num(_ws_top['total_web'])} orders)")
+            else:
+                st.caption("Dual-signal demand confirmed")
         
         st.markdown("---")
         
