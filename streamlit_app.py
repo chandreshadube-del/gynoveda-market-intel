@@ -189,11 +189,11 @@ st.markdown("""
     [data-testid="stMetric"] label {font-size: 0.72rem !important; color: #666;}
     [data-testid="stMetric"] [data-testid="stMetricValue"] {font-size: 1.3rem !important; font-weight: 700;}
     .score-card {border-radius: 12px; padding: 18px 22px; margin-bottom: 0.6rem; text-align: center;}
-    .score-high {background: linear-gradient(135deg, #1B5E20 0%, #2E7D32 100%); color: white;}
-    .score-med  {background: linear-gradient(135deg, #E65100 0%, #F57C00 100%); color: white;}
-    .score-low  {background: linear-gradient(135deg, #B71C1C 0%, #D32F2F 100%); color: white;}
+    .score-high {background: #A8E6CF; color: #1a1a1a;}
+    .score-med  {background: #B8E6CF; color: #1a1a1a;}
+    .score-low  {background: #C8E6CF; color: #1a1a1a;}
     .score-card h2 {margin: 0; font-size: 2.2rem; font-weight: 800;}
-    .score-card p {margin: 4px 0 0 0; font-size: 0.82rem; opacity: 0.9;}
+    .score-card p {margin: 4px 0 0 0; font-size: 0.82rem; opacity: 0.85;}
     .insight-box {background: #EDE7F6; border-left: 4px solid #5E35B1; padding: 12px 16px;
         border-radius: 8px; margin: 8px 0; font-size: 0.88rem; line-height: 1.5;}
     .risk-high {background: #FFEBEE; border-left: 4px solid #C62828; padding: 10px 14px;
@@ -1045,9 +1045,9 @@ with tab1:
         if 'video_cr' in net_df.columns:
             fig.add_trace(go.Bar(x=net_df['month'], y=net_df['video_cr'],
                                  name='Video Revenue (₹Cr)', marker_color='#4ECDC4', opacity=0.85))
-        fig.update_layout(title="Monthly Revenue Trend", height=350, barmode='stack',
-                         margin=dict(l=20, r=20, t=40, b=20),
-                         legend=dict(orientation='h', y=1.12), yaxis_title="₹ Crores")
+        fig.update_layout(title="Monthly Revenue Trend", height=380, barmode='stack',
+                         margin=dict(l=40, r=20, t=70, b=30),
+                         legend=dict(orientation='h', y=1.02, x=0.5, xanchor='center'), yaxis_title="₹ Crores")
         st.plotly_chart(fig, use_container_width=True)
     
     with col_trend2:
@@ -1056,9 +1056,9 @@ with tab1:
                                    mode='lines+markers', line=dict(color='#FF6B35', width=2.5)))
         fig2.add_trace(go.Scatter(x=net_df['month'], y=net_df['clinics_rcx'], name='Repeat (rCx)',
                                    mode='lines+markers', line=dict(color='#4ECDC4', width=2.5)))
-        fig2.update_layout(title="Patient Acquisition Trend", height=350,
-                          margin=dict(l=20, r=20, t=40, b=20),
-                          legend=dict(orientation='h', y=1.12), yaxis_title="Patients")
+        fig2.update_layout(title="Patient Acquisition Trend", height=380,
+                          margin=dict(l=40, r=20, t=70, b=30),
+                          legend=dict(orientation='h', y=1.02, x=0.5, xanchor='center'), yaxis_title="Patients")
         st.plotly_chart(fig2, use_container_width=True)
     
     # ── Top Expansion Picks ──
@@ -1721,8 +1721,8 @@ with tab4:
     
     fig_proj.update_layout(
         title=f"24-Month Projection — {n_clinics} Clinics ({scenario})",
-        height=450, margin=dict(l=20, r=20, t=50, b=20),
-        legend=dict(orientation='h', y=1.15), barmode='relative'
+        height=480, margin=dict(l=40, r=40, t=80, b=30),
+        legend=dict(orientation='h', y=1.02, x=0.5, xanchor='center'), barmode='relative'
     )
     fig_proj.update_yaxes(title_text="₹ Lakhs/month", secondary_y=False)
     fig_proj.update_yaxes(title_text="Cumulative ₹ Lakhs", secondary_y=True)
