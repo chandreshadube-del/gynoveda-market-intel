@@ -457,6 +457,12 @@ def load_all():
     d['pin_demand'] = pd.read_csv(f'{DATA}/clinic_pincode_demand.csv')
     d['web_city'] = pd.read_csv(f'{DATA}/web_city_demand.csv')
     d['web_pin'] = pd.read_csv(f'{DATA}/web_pincode_yearly.csv')
+    # Pin geocode for distance analysis (optional — generated separately)
+    geo_path = f'{DATA}/pin_geocode.csv'
+    if os.path.exists(geo_path):
+        d['pin_geo'] = pd.read_csv(geo_path)
+    else:
+        d['pin_geo'] = pd.DataFrame(columns=['pincode','lat','lon'])
     return d
 
 data = load_all()
@@ -468,6 +474,7 @@ net = data['network'].copy()
 ramp_s = data['ramp_sales']
 ramp_c = data['ramp_1cx']
 pin_demand = data['pin_demand']
+pin_geo = data['pin_geo']
 pin_ft = data['pin_ft']
 web_city = data['web_city']
 web_pin = data['web_pin']
@@ -745,6 +752,117 @@ def build_cannibalization_matrix():
 same_city_scores, new_city_scores = build_city_scores()
 cannibal_matrix = build_cannibalization_matrix()
 
+
+def build_whitespace_dual_signal(dist_threshold_km=20):
+    """
+    Identify pincodes > dist_threshold_km from nearest clinic that have BOTH:
+    1. Historic clinic NTB visits (patients traveling far)
+    2. Historic website orders (proven online demand)
+    Returns city-level aggregation for new-city and existing-city underserved zones.
+    """
+    if len(pin_geo) == 0:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    
+    # Build pincode → (lat, lon) lookup
+    geo_lookup = dict(zip(pin_geo['pincode'].astype(int), zip(pin_geo['lat'], pin_geo['lon'])))
+    
+    # For each geocoded pincode, compute distance to nearest clinic
+    clinic_list = list(CLINIC_COORDS.items())
+    pin_dist = {}
+    pin_nearest = {}
+    for pin, (plat, plon) in geo_lookup.items():
+        min_d = float('inf')
+        nearest = None
+        for clinic, (clat, clon) in clinic_list:
+            d = _haversine_km(plat, plon, clat, clon)
+            if d < min_d:
+                min_d = d
+                nearest = clinic
+        pin_dist[pin] = round(min_d, 1)
+        pin_nearest[pin] = nearest
+    
+    # Pincodes beyond threshold
+    far_pins = {p for p, d in pin_dist.items() if d > dist_threshold_km}
+    
+    # Clean pincode helper
+    def _clean_pin(p):
+        try:
+            v = int(float(p))
+            return v if 100000 <= v <= 999999 else None
+        except Exception:
+            return None
+    
+    # --- NTB visits from far pincodes ---
+    pd_copy = pin_demand.copy()
+    pd_copy['pin_int'] = pd_copy['Zip'].apply(_clean_pin)
+    ntb_far = pd_copy[pd_copy['pin_int'].isin(far_pins)]
+    
+    ntb_agg = ntb_far.groupby('pin_int').agg(
+        ntb_qty=('qty', 'sum'),
+        ntb_rev=('revenue', 'sum'),
+        clinics_visited=('Clinic Loc', 'nunique'),
+        primary_clinic=('Clinic Loc', lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else '?'),
+        city=('City', lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else '?'),
+        state=('State', lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else '?'),
+    ).reset_index()
+    
+    # --- Web orders from far pincodes ---
+    wp = data.get('web_pin', pd.DataFrame())
+    if len(wp) > 0 and 'pincode' in wp.columns:
+        wp['pin_int'] = wp['pincode'].apply(_clean_pin)
+        web_far = wp[wp['pin_int'].isin(far_pins)]
+        web_agg = web_far.groupby('pin_int').agg(
+            web_orders=('orders', 'sum'),
+            web_rev=('revenue', 'sum') if 'revenue' in web_far.columns else ('orders', 'sum'),
+        ).reset_index()
+    else:
+        web_agg = pd.DataFrame(columns=['pin_int', 'web_orders', 'web_rev'])
+    
+    # --- Merge: dual-signal pincodes ---
+    combined = ntb_agg.merge(web_agg, on='pin_int', how='outer', indicator=True)
+    dual = combined[combined['_merge'] == 'both'].copy()
+    dual['dist_km'] = dual['pin_int'].map(pin_dist)
+    dual['nearest_clinic'] = dual['pin_int'].map(pin_nearest)
+    dual['combined_score'] = (
+        dual['ntb_qty'].fillna(0) * 0.5 +
+        dual['web_orders'].fillna(0) * 0.5
+    )
+    
+    # --- City-level aggregation ---
+    city_agg = dual.groupby(['city', 'state']).agg(
+        pincodes=('pin_int', 'nunique'),
+        total_ntb=('ntb_qty', 'sum'),
+        total_web=('web_orders', 'sum'),
+        ntb_rev=('ntb_rev', 'sum'),
+        web_rev=('web_rev', 'sum'),
+        avg_dist=('dist_km', 'mean'),
+        score=('combined_score', 'sum'),
+    ).reset_index().sort_values('score', ascending=False)
+    
+    # Classify: existing vs new city
+    existing_areas = set(master['area'].tolist())
+    existing_city_codes = set(master['city'].tolist())
+    city_names_reverse = {}
+    for code, name in CITY_NAMES.items():
+        city_names_reverse[name] = code
+    
+    def _has_clinic(city_name):
+        if city_name in city_names_reverse:
+            return city_names_reverse[city_name] in existing_city_codes
+        # Fuzzy: check if any clinic city name matches
+        for code, aliases in SERVED_CITY_ALIASES.items():
+            if any(a.lower() == city_name.lower() for a in aliases):
+                if code in existing_city_codes:
+                    return True
+        return False
+    
+    city_agg['has_clinic'] = city_agg['city'].apply(_has_clinic)
+    
+    new_cities = city_agg[~city_agg['has_clinic'] & (city_agg['city'] != '-')].copy()
+    existing_underserved = city_agg[city_agg['has_clinic']].copy()
+    
+    return dual, new_cities, existing_underserved
+
 # ── SIDEBAR ─────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### ⚙️ Expansion Parameters")
@@ -769,6 +887,8 @@ with st.sidebar:
                                     help="Pune, Surat, Ahmedabad, Lucknow etc.")
     core_penalty_pct = st.slider("CEI Penalty / Shared Core Pin (%)", 1, 15, 5,
                                   help="CEI score reduced by this % for each shared top-10 pincode")
+    whitespace_dist_km = st.number_input("Whitespace Distance (km)", value=20.0, step=5.0, format="%.0f",
+                                          help="Pincodes beyond this distance from nearest clinic = underserved")
     
     st.markdown("---")
     st.caption(f"Data: {active_months[0]} to {active_months[-1]} · {len(master)} clinics")
@@ -1208,116 +1328,224 @@ with tab2:
 # ═══════════════════════════════════════════════════════════════════════
 with tab3:
     st.markdown("### New-City Whitespace Discovery")
-    st.markdown("*Cities with proven online demand but no Gynoveda clinic — your expansion frontier.*")
+    st.markdown("*Combining historic website orders + clinic NTB visits from pincodes beyond your clinic network to identify proven, underserved markets.*")
     
-    # ── Whitespace Scoring Table ──
-    display_new = new_city_scores.head(30).copy()
-    display_new['CEI'] = display_new['cei_new'].fillna(0).round(0).astype(int)
-    display_new['Orders'] = display_new['total_orders'].apply(lambda x: fmt_num(x))
-    display_new['Revenue'] = display_new['total_revenue'].apply(lambda x: fmt_inr(x))
-    display_new['Growth'] = display_new['trend_growth'].apply(lambda x: f"{x*100:+.0f}%")
+    # Build dual-signal analysis
+    ws_dual, ws_new_cities, ws_existing_underserved = build_whitespace_dual_signal(dist_threshold_km=whitespace_dist_km)
     
-    # O2O projected patients
-    display_new['Projected Monthly NTB'] = (display_new['total_orders'] * (o2o_conversion / 100) / 12).fillna(0).astype(int)
-    display_new['Projected Monthly Rev'] = display_new['Projected Monthly NTB'] * rev_per_ntb * 1000
-    display_new['Proj. Rev (₹L/mo)'] = (display_new['Projected Monthly Rev'] / 1e5).round(1)
-    
-    # Breakeven check — safe division, replace Inf/NaN before int cast
-    _be_raw = np.where(
-        display_new['Proj. Rev (₹L/mo)'] > 0,
-        np.ceil(monthly_opex / display_new['Proj. Rev (₹L/mo)'].replace(0, np.nan) * 3),
-        99
-    )
-    display_new['Months to OpEx BE'] = pd.Series(_be_raw).fillna(99).clip(upper=99).astype(int).values
-    
-    st.dataframe(
-        display_new[['City','CEI','Orders','Revenue','Growth','Projected Monthly NTB',
-                      'Proj. Rev (₹L/mo)','Months to OpEx BE']].rename(columns={'City':'City'}),
-        use_container_width=True, height=500,
-        column_config={
-            'CEI': st.column_config.ProgressColumn("CEI Score", min_value=0, max_value=100, format="%d"),
-        }
-    )
-    
-    st.markdown("---")
-    
-    # ── Demand Heatmap ──
-    st.markdown("#### Online Demand Heatmap")
-    
-    fig_bar = go.Figure(go.Bar(
-        y=display_new.head(20)['City'],
-        x=display_new.head(20)['total_orders'],
-        orientation='h',
-        marker=dict(color=display_new.head(20)['cei_new'],
-                    colorscale='YlOrRd', showscale=True,
-                    colorbar=dict(title="CEI")),
-        text=display_new.head(20)['Orders'],
-        textposition='outside'
-    ))
-    fig_bar.update_layout(title="Top 20 Unserved Cities by Web Demand", height=550,
-                         margin=dict(l=120, r=60, t=40, b=20),
-                         xaxis_title="Total Web Orders", yaxis=dict(autorange='reversed'))
-    st.plotly_chart(fig_bar, use_container_width=True)
-    
-    st.markdown("---")
-    
-    # ── O2O Conversion Projection ──
-    st.markdown("#### Online-to-Offline Conversion Projections")
-    st.markdown(f"*Based on **{o2o_conversion}%** conversion rate from web orders to clinic NTB patients (adjustable in sidebar)*")
-    
-    # Use actual O2O ratios from existing cities as benchmarks
-    existing_o2o = same_city_scores[same_city_scores['web_orders'] > 100].copy()
-    existing_o2o['actual_o2o'] = existing_o2o['clinic_demand'] / existing_o2o['web_orders']
-    
-    if len(existing_o2o) > 0:
-        avg_o2o = existing_o2o['actual_o2o'].median()
+    if len(ws_dual) > 0:
+        # ── Summary KPIs ──
+        st.markdown(f"#### Demand Beyond {whitespace_dist_km:.0f} km — Network Summary")
+        wk1, wk2, wk3, wk4, wk5 = st.columns(5)
+        wk1.metric("Dual-Signal Pincodes", fmt_num(len(ws_dual)))
+        wk2.metric("NTB Visits (20+km)", fmt_num(ws_dual['ntb_qty'].sum()))
+        wk3.metric("Web Orders (20+km)", fmt_num(ws_dual['web_orders'].sum()))
+        wk4.metric("NTB Revenue", fmt_inr(ws_dual['ntb_rev'].sum()))
+        wk5.metric("New Cities Identified", fmt_num(len(ws_new_cities)))
         
-        col_o2o1, col_o2o2 = st.columns(2)
+        st.markdown("---")
         
-        with col_o2o1:
-            fig_o2o = go.Figure(go.Bar(
-                y=existing_o2o.sort_values('actual_o2o', ascending=True)['city_name'],
-                x=existing_o2o.sort_values('actual_o2o', ascending=True)['actual_o2o'],
-                orientation='h', marker_color='#4ECDC4',
-                text=[f"{x:.1f}x" for x in existing_o2o.sort_values('actual_o2o', ascending=True)['actual_o2o']],
-                textposition='outside'
-            ))
-            fig_o2o.update_layout(title="Actual O2O Multiplier (Clinic Demand / Web Orders)",
-                                 height=400, margin=dict(l=100, r=40, t=40, b=20),
-                                 xaxis_title="O2O Ratio")
-            st.plotly_chart(fig_o2o, use_container_width=True)
+        # ═══════════════════════════════════════════════════════════════
+        # SECTION A: NEW CITY WHITESPACE (no clinic exists)
+        # ═══════════════════════════════════════════════════════════════
+        st.markdown("#### 🆕 New-City Whitespace — No Clinic, Dual-Signal Demand")
+        st.markdown(f"*Cities where patients already travel {whitespace_dist_km:.0f}+ km to reach a Gynoveda clinic AND order online — strongest expansion signal.*")
         
-        with col_o2o2:
-            st.markdown(f"""<div class="insight-box">
-                <b>Benchmark:</b> Existing cities show a median O2O multiplier of <b>{avg_o2o:.1f}x</b> — 
-                meaning for every 1 web order, clinics generate {avg_o2o:.1f} patient transactions on average. 
-                This validates the online-to-offline flywheel. New-city projections use a conservative 
-                <b>{o2o_conversion}%</b> first-year conversion rate, ramping up as the clinic matures.
-            </div>""", unsafe_allow_html=True)
+        if len(ws_new_cities) > 0:
+            display_ws = ws_new_cities.head(30).copy()
+            display_ws['NTB Visits'] = display_ws['total_ntb'].apply(lambda x: fmt_num(x))
+            display_ws['Web Orders'] = display_ws['total_web'].apply(lambda x: fmt_num(x))
+            display_ws['NTB Rev'] = display_ws['ntb_rev'].apply(lambda x: fmt_inr(x))
+            display_ws['Avg Dist'] = display_ws['avg_dist'].apply(lambda x: f"{x:.0f} km")
             
-            # Top 5 new city projections
-            st.markdown("**Top 5 New-City Revenue Projections (Year 1)**")
-            for _, row in display_new.head(5).iterrows():
-                y1_rev = row['Proj. Rev (₹L/mo)'] * 12
-                y1_profit = y1_rev * (target_ebitda / 100) - monthly_opex * 12
-                color = "🟢" if y1_profit > 0 else "🔴"
-                st.markdown(f"{color} **{row['City']}**: {row['Projected Monthly NTB']} NTB/mo → "
-                           f"₹{row['Proj. Rev (₹L/mo)']:.1f}L/mo → Year 1: {fmt_inr(y1_rev * 1e5)} revenue, "
-                           f"{fmt_inr(y1_profit * 1e5)} {'profit' if y1_profit > 0 else 'loss'}")
+            # O2O projected monthly NTB
+            display_ws['Proj Monthly NTB'] = ((display_ws['total_web'] * (o2o_conversion / 100)) / 12).astype(int)
+            display_ws['Proj Rev (₹L/mo)'] = (display_ws['Proj Monthly NTB'] * rev_per_ntb * 1000 / 1e5).round(1)
+            
+            st.dataframe(
+                display_ws[['city','state','pincodes','NTB Visits','Web Orders','NTB Rev',
+                            'Avg Dist','Proj Monthly NTB','Proj Rev (₹L/mo)']].rename(columns={
+                    'city':'City','state':'State','pincodes':'Pincodes'
+                }),
+                use_container_width=True, height=500,
+            )
+            
+            # Bar chart — dual signal
+            chart_ws = ws_new_cities.head(20).copy()
+            fig_ws = go.Figure()
+            fig_ws.add_trace(go.Bar(
+                y=chart_ws['city'], x=chart_ws['total_ntb'],
+                name='Clinic NTB (20+km)', orientation='h',
+                marker_color='#FF6B35', opacity=0.85
+            ))
+            fig_ws.add_trace(go.Bar(
+                y=chart_ws['city'], x=chart_ws['total_web'],
+                name='Website Orders', orientation='h',
+                marker_color='#4ECDC4', opacity=0.85
+            ))
+            fig_ws.update_layout(
+                title=f"Top 20 New Cities — Dual-Signal Demand (>{whitespace_dist_km:.0f} km from clinic)",
+                height=550, barmode='group',
+                margin=dict(l=140, r=40, t=50, b=20),
+                yaxis=dict(autorange='reversed'),
+                xaxis_title="Volume", legend=dict(orientation='h', y=-0.1)
+            )
+            st.plotly_chart(fig_ws, use_container_width=True)
+        else:
+            st.info("No new-city whitespace detected at this distance threshold.")
+        
+        st.markdown("---")
+        
+        # ═══════════════════════════════════════════════════════════════
+        # SECTION B: EXISTING CITY UNDERSERVED ZONES
+        # ═══════════════════════════════════════════════════════════════
+        st.markdown("#### 🏙️ Existing-City Underserved Zones")
+        st.markdown(f"*Cities where you already operate, but significant demand comes from {whitespace_dist_km:.0f}+ km away — opportunity for a second/third clinic.*")
+        
+        if len(ws_existing_underserved) > 0:
+            display_eu = ws_existing_underserved.head(20).copy()
+            display_eu['NTB Visits'] = display_eu['total_ntb'].apply(lambda x: fmt_num(x))
+            display_eu['Web Orders'] = display_eu['total_web'].apply(lambda x: fmt_num(x))
+            display_eu['NTB Rev'] = display_eu['ntb_rev'].apply(lambda x: fmt_inr(x))
+            display_eu['Avg Dist'] = display_eu['avg_dist'].apply(lambda x: f"{x:.0f} km")
+            
+            st.dataframe(
+                display_eu[['city','state','pincodes','NTB Visits','Web Orders','NTB Rev','Avg Dist']].rename(columns={
+                    'city':'City','state':'State','pincodes':'Pincodes'
+                }),
+                use_container_width=True, height=400,
+            )
+            
+            # Insight
+            top_eu = ws_existing_underserved.iloc[0] if len(ws_existing_underserved) > 0 else None
+            if top_eu is not None:
+                st.markdown(f"""<div class="insight-box">
+                    📍 <b>{top_eu['city']}</b> leads with <b>{fmt_num(top_eu['total_ntb'])}</b> NTB visits + 
+                    <b>{fmt_num(top_eu['total_web'])}</b> web orders from {int(top_eu['pincodes'])} pincodes averaging 
+                    <b>{top_eu['avg_dist']:.0f} km</b> from nearest clinic — strong signal for an additional location 
+                    in the periphery.
+                </div>""", unsafe_allow_html=True)
+        else:
+            st.info("No underserved zones detected at this distance threshold.")
     
-    # ── YoY Web Demand Trend ──
+    else:
+        st.warning("⚠️ Pin geocode data not found. Upload `pin_geocode.csv` to the `mis_data/` folder to enable dual-signal whitespace analysis.")
+        st.markdown("*This file maps Indian pincodes to lat/lon coordinates for distance computation.*")
+    
     st.markdown("---")
-    st.markdown("#### Web Demand Trend (All Cities)")
     
-    yoy = web_pin.groupby('year')['orders'].sum().reset_index()
-    yoy = yoy[yoy['year'] >= 2020]
-    fig_yoy = go.Figure(go.Bar(x=yoy['year'].astype(str), y=yoy['orders'],
-                                marker_color='#FF6B35',
-                                text=yoy['orders'].apply(lambda x: fmt_num(x)),
-                                textposition='outside'))
-    fig_yoy.update_layout(title="National Web Orders by Year", height=300,
-                         margin=dict(l=20, r=20, t=40, b=20), yaxis_title="Orders")
-    st.plotly_chart(fig_yoy, use_container_width=True)
+    # ═══════════════════════════════════════════════════════════════
+    # SECTION C: ORIGINAL CEI-BASED WHITESPACE (web-only signal)
+    # ═══════════════════════════════════════════════════════════════
+    with st.expander("📊 CEI-Based Whitespace Scoring (Web Orders Only)", expanded=False):
+        st.markdown("*Original scoring based purely on web order volume and growth trends.*")
+        
+        # ── Whitespace Scoring Table ──
+        display_new = new_city_scores.head(30).copy()
+        display_new['CEI'] = display_new['cei_new'].fillna(0).round(0).astype(int)
+        display_new['Orders'] = display_new['total_orders'].apply(lambda x: fmt_num(x))
+        display_new['Revenue'] = display_new['total_revenue'].apply(lambda x: fmt_inr(x))
+        display_new['Growth'] = display_new['trend_growth'].apply(lambda x: f"{x*100:+.0f}%")
+        
+        # O2O projected patients
+        display_new['Projected Monthly NTB'] = (display_new['total_orders'] * (o2o_conversion / 100) / 12).fillna(0).astype(int)
+        display_new['Projected Monthly Rev'] = display_new['Projected Monthly NTB'] * rev_per_ntb * 1000
+        display_new['Proj. Rev (₹L/mo)'] = (display_new['Projected Monthly Rev'] / 1e5).round(1)
+        
+        # Breakeven check
+        _be_raw = np.where(
+            display_new['Proj. Rev (₹L/mo)'] > 0,
+            np.ceil(monthly_opex / display_new['Proj. Rev (₹L/mo)'].replace(0, np.nan) * 3),
+            99
+        )
+        display_new['Months to OpEx BE'] = pd.Series(_be_raw).fillna(99).clip(upper=99).astype(int).values
+        
+        st.dataframe(
+            display_new[['City','CEI','Orders','Revenue','Growth','Projected Monthly NTB',
+                          'Proj. Rev (₹L/mo)','Months to OpEx BE']].rename(columns={'City':'City'}),
+            use_container_width=True, height=500,
+            column_config={
+                'CEI': st.column_config.ProgressColumn("CEI Score", min_value=0, max_value=100, format="%d"),
+            }
+        )
+        
+        st.markdown("---")
+        
+        # ── Demand Heatmap ──
+        st.markdown("#### Online Demand Heatmap")
+        
+        fig_bar = go.Figure(go.Bar(
+            y=display_new.head(20)['City'],
+            x=display_new.head(20)['total_orders'],
+            orientation='h',
+            marker=dict(color=display_new.head(20)['cei_new'],
+                        colorscale='YlOrRd', showscale=True,
+                        colorbar=dict(title="CEI")),
+            text=display_new.head(20)['Orders'],
+            textposition='outside'
+        ))
+        fig_bar.update_layout(title="Top 20 Unserved Cities by Web Demand", height=550,
+                             margin=dict(l=120, r=60, t=40, b=20),
+                             xaxis_title="Total Web Orders", yaxis=dict(autorange='reversed'))
+        st.plotly_chart(fig_bar, use_container_width=True)
+        
+        st.markdown("---")
+        
+        # ── O2O Conversion Projection ──
+        st.markdown("#### Online-to-Offline Conversion Projections")
+        st.markdown(f"*Based on **{o2o_conversion}%** conversion rate from web orders to clinic NTB patients (adjustable in sidebar)*")
+        
+        existing_o2o = same_city_scores[same_city_scores['web_orders'] > 100].copy()
+        existing_o2o['actual_o2o'] = existing_o2o['clinic_demand'] / existing_o2o['web_orders']
+        
+        if len(existing_o2o) > 0:
+            avg_o2o = existing_o2o['actual_o2o'].median()
+            
+            col_o2o1, col_o2o2 = st.columns(2)
+            
+            with col_o2o1:
+                fig_o2o = go.Figure(go.Bar(
+                    y=existing_o2o.sort_values('actual_o2o', ascending=True)['city_name'],
+                    x=existing_o2o.sort_values('actual_o2o', ascending=True)['actual_o2o'],
+                    orientation='h', marker_color='#4ECDC4',
+                    text=[f"{x:.1f}x" for x in existing_o2o.sort_values('actual_o2o', ascending=True)['actual_o2o']],
+                    textposition='outside'
+                ))
+                fig_o2o.update_layout(title="Actual O2O Multiplier (Clinic Demand / Web Orders)",
+                                     height=400, margin=dict(l=100, r=40, t=40, b=20),
+                                     xaxis_title="O2O Ratio")
+                st.plotly_chart(fig_o2o, use_container_width=True)
+            
+            with col_o2o2:
+                st.markdown(f"""<div class="insight-box">
+                    <b>Benchmark:</b> Existing cities show a median O2O multiplier of <b>{avg_o2o:.1f}x</b> — 
+                    meaning for every 1 web order, clinics generate {avg_o2o:.1f} patient transactions on average. 
+                    This validates the online-to-offline flywheel. New-city projections use a conservative 
+                    <b>{o2o_conversion}%</b> first-year conversion rate, ramping up as the clinic matures.
+                </div>""", unsafe_allow_html=True)
+                
+                st.markdown("**Top 5 New-City Revenue Projections (Year 1)**")
+                for _, row in display_new.head(5).iterrows():
+                    y1_rev = row['Proj. Rev (₹L/mo)'] * 12
+                    y1_profit = y1_rev * (target_ebitda / 100) - monthly_opex * 12
+                    color = "🟢" if y1_profit > 0 else "🔴"
+                    st.markdown(f"{color} **{row['City']}**: {row['Projected Monthly NTB']} NTB/mo → "
+                               f"₹{row['Proj. Rev (₹L/mo)']:.1f}L/mo → Year 1: {fmt_inr(y1_rev * 1e5)} revenue, "
+                               f"{fmt_inr(y1_profit * 1e5)} {'profit' if y1_profit > 0 else 'loss'}")
+        
+        # ── YoY Web Demand Trend ──
+        st.markdown("---")
+        st.markdown("#### Web Demand Trend (All Cities)")
+        
+        yoy = web_pin.groupby('year')['orders'].sum().reset_index()
+        yoy = yoy[yoy['year'] >= 2020]
+        fig_yoy = go.Figure(go.Bar(x=yoy['year'].astype(str), y=yoy['orders'],
+                                    marker_color='#FF6B35',
+                                    text=yoy['orders'].apply(lambda x: fmt_num(x)),
+                                    textposition='outside'))
+        fig_yoy.update_layout(title="National Web Orders by Year", height=300,
+                             margin=dict(l=20, r=20, t=40, b=20), yaxis_title="Orders")
+        st.plotly_chart(fig_yoy, use_container_width=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════
