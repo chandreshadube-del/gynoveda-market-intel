@@ -797,30 +797,55 @@ with tab1:
     latest_net = net_df.iloc[-1] if len(net_df) > 0 else {}
     prev_net = net_df.iloc[-2] if len(net_df) > 1 else {}
     
+    # Last 12 months aggregate
+    l12m = net_df.tail(12)
+    l12m_months = len(l12m)
+    l12m_total_rev = l12m['clinics_cr'].sum()
+    l12m_avg_rev = l12m['clinics_cr'].mean()
+    l12m_total_1cx = l12m['clinics_1cx'].sum() if 'clinics_1cx' in l12m.columns else 0
+    l12m_avg_1cx = l12m['clinics_1cx'].mean() if 'clinics_1cx' in l12m.columns else 0
+    
     # Clinic counts
     active_clinics = (sales[latest_month] > 0).sum() if latest_month in sales.columns else 61
     
-    # Hero KPIs
-    st.markdown("### Network Health")
+    # Hero KPIs — L12M Total
+    st.markdown(f"### Network Health — Last {l12m_months} Months")
+    st.markdown("**L12M Total**")
     h1, h2, h3, h4, h5 = st.columns(5)
     
     with h1:
-        val = latest_net.get('clinics_cr', 0)
-        prev_val = prev_net.get('clinics_cr', 0)
-        delta = f"{((val-prev_val)/prev_val*100):+.0f}% MoM" if prev_val > 0 else ""
-        st.metric("Monthly Revenue", fmt_inr(val * 1e7), delta)
+        st.metric("Total Revenue", fmt_inr(l12m_total_rev * 1e7))
     with h2:
         st.metric("Active Clinics", f"{int(active_clinics)}", f"of {len(master)} total")
     with h3:
-        avg_rev_per_clinic = val / active_clinics if active_clinics > 0 else 0
-        st.metric("Avg Revenue/Clinic", fmt_inr(avg_rev_per_clinic * 1e7))
+        avg_rev_per_clinic = l12m_total_rev / active_clinics if active_clinics > 0 else 0
+        st.metric("Total Rev/Clinic", fmt_inr(avg_rev_per_clinic * 1e7))
     with h4:
-        cx1_val = latest_net.get('clinics_1cx', 0)
-        st.metric("Monthly New Patients", fmt_num(cx1_val))
+        st.metric("Total New Patients", fmt_num(l12m_total_1cx))
     with h5:
         if 'fy26_ebitda_pct' in data['pl'].columns:
             avg_ebitda = data['pl']['fy26_ebitda_pct'].mean()
             st.metric("Avg EBITDA %", pct(avg_ebitda))
+    
+    # Avg Monthly row
+    st.markdown("**Avg Monthly**")
+    a1, a2, a3, a4, a5 = st.columns(5)
+    with a1:
+        val = l12m_avg_rev
+        prev_val = prev_net.get('clinics_cr', 0)
+        delta = f"{((latest_net.get('clinics_cr',0)-prev_val)/prev_val*100):+.0f}% last MoM" if prev_val > 0 else ""
+        st.metric("Avg Monthly Revenue", fmt_inr(val * 1e7), delta)
+    with a2:
+        avg_active = l12m_months  # placeholder — clinics count is a point-in-time metric
+        st.metric("Months Covered", f"{l12m_months}")
+    with a3:
+        st.metric("Avg Rev/Clinic/Mo", fmt_inr(l12m_avg_rev / active_clinics * 1e7) if active_clinics > 0 else "—")
+    with a4:
+        st.metric("Avg Monthly New Patients", fmt_num(l12m_avg_1cx))
+    with a5:
+        latest_rev = latest_net.get('clinics_cr', 0)
+        vs_avg = ((latest_rev - l12m_avg_rev) / l12m_avg_rev * 100) if l12m_avg_rev > 0 else 0
+        st.metric("Latest vs Avg", f"{vs_avg:+.0f}%")
     
     st.markdown("---")
     
