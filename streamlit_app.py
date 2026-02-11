@@ -1042,6 +1042,9 @@ with st.sidebar:
 # ── HEADER ──────────────────────────────────────────────────────────────
 st.markdown("<h2 style='margin-bottom:0.2rem;'>Gynoveda Expansion Intelligence</h2>", unsafe_allow_html=True)
 
+# ── PRE-COMPUTE: Dual-Signal Whitespace (needed by both Same-City & New-City tabs) ──
+ws_dual, ws_new_cities, ws_existing_underserved = build_whitespace_dual_signal(dist_threshold_km=whitespace_dist_km)
+
 # ── TABS ────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4 = st.tabs([
     "🎯 Executive Summary",
@@ -1357,8 +1360,14 @@ with tab2:
     # ── Cannibalization Risk with Radius Safeguard ──
     st.markdown("#### 🛡️ Cannibalization & Radius Safeguard")
     
-    with st.expander("📖 How to Read This Chart", expanded=False):
-        st.markdown("""
+    if len(cannibal_matrix) > 0:
+        city_code = same_city_scores[same_city_scores['city_name'] == selected_city]['city_code'].values[0]
+        city_cannibal = cannibal_matrix[cannibal_matrix['city_code'] == city_code].copy()
+        
+        if len(city_cannibal) > 0:
+            # Show guide only when there's actual data to display
+            with st.expander("📖 How to Read This Chart", expanded=False):
+                st.markdown("""
 **What it shows:** Each bubble is a pair of clinics. The chart reveals which clinic pairs 
 are competing for the same patients (cannibalization risk).
 
@@ -1385,13 +1394,8 @@ are competing for the same patients (cannibalization risk).
 **Action items:** If you see a 🔴 Critical pair, investigate whether one clinic should be 
 relocated, or whether the pair should be treated as a single market with shared marketing budget.
 The **CEI Penalty** slider (sidebar) automatically reduces expansion scores for cities with high cannibalization.
-        """)
-    
-    if len(cannibal_matrix) > 0:
-        city_code = same_city_scores[same_city_scores['city_name'] == selected_city]['city_code'].values[0]
-        city_cannibal = cannibal_matrix[cannibal_matrix['city_code'] == city_code].copy()
-        
-        if len(city_cannibal) > 0:
+            """)
+            
             # Determine tier-based radius threshold for this city
             city_tier = master[master['city'] == city_code]['tier'].values
             is_metro = any(t in ['Metro', 'Tier-1'] for t in city_tier) if len(city_tier) > 0 else False
@@ -1527,6 +1531,42 @@ The **CEI Penalty** slider (sidebar) automatically reduces expansion scores for 
         multi_served = top_pins[top_pins['clinics_serving'] > 1]
         if len(multi_served) > 0:
             st.markdown(f'<div class="insight-box">⚠️ <b>{len(multi_served)} pincodes</b> are served by multiple clinics in {selected_city} — review if adding another clinic would increase saturation or target an underserved zone.</div>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # ═══════════════════════════════════════════════════════════════
+    # EXISTING-CITY UNDERSERVED ZONES (patients traveling 20+ km)
+    # ═══════════════════════════════════════════════════════════════
+    st.markdown("#### 🏙️ Existing-City Underserved Zones")
+    st.markdown(f"*Cities where you already operate, but significant demand comes from {whitespace_dist_km:.0f}+ km away — opportunity for a second/third clinic.*")
+    
+    if len(ws_existing_underserved) > 0:
+        display_eu = ws_existing_underserved.head(20).copy()
+        display_eu['NTB Visits'] = display_eu['total_ntb'].apply(lambda x: fmt_num(x))
+        display_eu['Web Orders'] = display_eu['total_web'].apply(lambda x: fmt_num(x))
+        display_eu['NTB Rev'] = display_eu['ntb_rev'].apply(lambda x: fmt_inr(x))
+        display_eu['Avg Dist'] = display_eu['avg_dist'].apply(lambda x: f"{x:.0f} km")
+        
+        st.dataframe(
+            display_eu[['city','state','pincodes','NTB Visits','Web Orders','NTB Rev','Avg Dist']].rename(columns={
+                'city':'City','state':'State','pincodes':'Pincodes'
+            }),
+            use_container_width=True, height=400,
+        )
+        
+        # Insight
+        top_eu = ws_existing_underserved.iloc[0] if len(ws_existing_underserved) > 0 else None
+        if top_eu is not None:
+            st.markdown(f"""<div class="insight-box">
+                📍 <b>{top_eu['city']}</b> leads with <b>{fmt_num(top_eu['total_ntb'])}</b> NTB visits + 
+                <b>{fmt_num(top_eu['total_web'])}</b> web orders from {int(top_eu['pincodes'])} pincodes averaging 
+                <b>{top_eu['avg_dist']:.0f} km</b> from nearest clinic — strong signal for an additional location 
+                in the periphery.
+            </div>""", unsafe_allow_html=True)
+    elif len(pin_geo) == 0:
+        st.info(f"Upload `pin_geocode.csv` to enable underserved zone analysis (requires lat/lon for distance computation).")
+    else:
+        st.info("No underserved zones detected at this distance threshold.")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1536,8 +1576,7 @@ with tab3:
     st.markdown("### New-City Whitespace Discovery")
     st.markdown("*Cities where Gynoveda has zero clinics but proven patient demand — customers already buying online or traveling 20+ km to visit existing clinics.*")
     
-    # Build dual-signal analysis
-    ws_dual, ws_new_cities, ws_existing_underserved = build_whitespace_dual_signal(dist_threshold_km=whitespace_dist_km)
+    # ws_dual, ws_new_cities, ws_existing_underserved already computed before tabs
     
     if len(ws_dual) > 0:
         # ── CEO Summary Row ──
@@ -1620,38 +1659,6 @@ with tab3:
             st.info("No new-city whitespace detected at this distance threshold.")
         
         st.markdown("---")
-        
-        # ═══════════════════════════════════════════════════════════════
-        # SECTION B: EXISTING CITY UNDERSERVED ZONES
-        # ═══════════════════════════════════════════════════════════════
-        st.markdown("#### 🏙️ Existing-City Underserved Zones")
-        st.markdown(f"*Cities where you already operate, but significant demand comes from {whitespace_dist_km:.0f}+ km away — opportunity for a second/third clinic.*")
-        
-        if len(ws_existing_underserved) > 0:
-            display_eu = ws_existing_underserved.head(20).copy()
-            display_eu['NTB Visits'] = display_eu['total_ntb'].apply(lambda x: fmt_num(x))
-            display_eu['Web Orders'] = display_eu['total_web'].apply(lambda x: fmt_num(x))
-            display_eu['NTB Rev'] = display_eu['ntb_rev'].apply(lambda x: fmt_inr(x))
-            display_eu['Avg Dist'] = display_eu['avg_dist'].apply(lambda x: f"{x:.0f} km")
-            
-            st.dataframe(
-                display_eu[['city','state','pincodes','NTB Visits','Web Orders','NTB Rev','Avg Dist']].rename(columns={
-                    'city':'City','state':'State','pincodes':'Pincodes'
-                }),
-                use_container_width=True, height=400,
-            )
-            
-            # Insight
-            top_eu = ws_existing_underserved.iloc[0] if len(ws_existing_underserved) > 0 else None
-            if top_eu is not None:
-                st.markdown(f"""<div class="insight-box">
-                    📍 <b>{top_eu['city']}</b> leads with <b>{fmt_num(top_eu['total_ntb'])}</b> NTB visits + 
-                    <b>{fmt_num(top_eu['total_web'])}</b> web orders from {int(top_eu['pincodes'])} pincodes averaging 
-                    <b>{top_eu['avg_dist']:.0f} km</b> from nearest clinic — strong signal for an additional location 
-                    in the periphery.
-                </div>""", unsafe_allow_html=True)
-        else:
-            st.info("No underserved zones detected at this distance threshold.")
     
     else:
         if len(pin_geo) == 0:
