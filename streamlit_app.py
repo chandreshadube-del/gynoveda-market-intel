@@ -44,9 +44,9 @@ CITY_NAMES = {
     'AGR': 'Agra',
     'AHM': 'Ahmedabad',
     'AMR': 'Amritsar',
-    'ASN': 'Purba Bardhaman',       # ← FIXED (was 'Asansol')
+    'ASN': 'Asansol',
     'AUR': 'Aurangabad',
-    'BBS': 'Khorda',                 # ← FIXED (was 'Bhubaneswar')
+    'BBS': 'Bhubaneswar',
     'BLR': 'Bengaluru',
     'BPL': 'Bhopal',
     'CDG': 'Chandigarh',
@@ -55,37 +55,37 @@ CITY_NAMES = {
     'DMR': 'Dimapur',
     'FDB': 'Faridabad',
     'GHZ': 'Ghaziabad',
-    'GUR': 'Gurgaon',               # ← FIXED (was 'Gurugram')
-    'GUW': 'Kamrup',                 # ← FIXED (was 'Guwahati')
+    'GUR': 'Gurugram',
+    'GUW': 'Guwahati',
     'HYD': 'Hyderabad',
     'IND': 'Indore',
-    'ITR': 'Papum Pare',            # ← FIXED (was 'Itanagar')
+    'ITR': 'Itanagar',
     'JAI': 'Jaipur',
     'JAL': 'Jalandhar',
-    'KLN': 'Mumbai',                 # ← FIXED (was 'Kalyan')
+    'KLN': 'Kalyan',
     'KNP': 'Kanpur',
-    'KOL': 'North 24 Parganas',     # ← FIXED (was 'Kolkata')
+    'KOL': 'Kolkata',
     'LDH': 'Ludhiana',
     'LKO': 'Lucknow',
-    'MAR': 'Goa',                    # ← FIXED (was 'Margao')
+    'MAR': 'Goa',
     'MRT': 'Meerut',
     'MUM': 'Mumbai',
     'MYS': 'Mysuru',
     'NAG': 'Nagpur',
     'NDL': 'Delhi',
-    'NOI': 'Gautam Buddha Nagar',    # ← FIXED (was 'Noida')
+    'NOI': 'Noida',
     'NSK': 'Nashik',
-    'NVM': 'Raigarh(MH)',           # ← FIXED (was 'Navi Mumbai')
+    'NVM': 'Navi Mumbai',
     'PAT': 'Patna',
-    'PRY': 'Allahabad',             # ← FIXED (was 'Prayagraj')
+    'PRY': 'Prayagraj',
     'PUN': 'Pune',
     'RAI': 'Raipur',
     'RJK': 'Rajkot',
     'RNC': 'Ranchi',
-    'SEC': 'Hyderabad',             # ← FIXED (was 'Secunderabad')
-    'SGU': 'Darjiling',             # ← FIXED (was 'Siliguri')
+    'SEC': 'Secunderabad',
+    'SGU': 'Siliguri',
     'SUR': 'Surat',
-    'THN': 'Mumbai',                 # ← FIXED (was 'Thane')
+    'THN': 'Thane',
     'VAD': 'Vadodara',
     'VAR': 'Varanasi',
 }
