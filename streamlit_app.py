@@ -11,7 +11,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import os, json
+import os, json, math
 
 st.set_page_config(page_title="Gynoveda Expansion Intelligence", layout="wide", page_icon="🧭")
 
@@ -141,6 +141,44 @@ def _match_city_to_code(city_name):
         if any(a.lower() == city_l for a in aliases):
             return code
     return None
+
+# ── CLINIC COORDINATES (approximate) ───────────────────────────────────
+CLINIC_COORDS = {
+    'Malad': (19.187, 72.849), 'Dadar': (19.018, 72.848), 'Thane': (19.218, 72.978),
+    'Khadakpada': (19.244, 73.136), 'Virar': (19.456, 72.812), 'Mira Rd': (19.281, 72.872),
+    'Kharghar': (19.047, 73.070),
+    'JP Ng': (12.906, 77.586), 'Basaveshwar': (13.019, 77.535),
+    'Kalyan Ng': (13.027, 77.595), 'Whitefield': (12.970, 77.750),
+    'Lajpat': (28.567, 77.237), 'Rajouri': (28.636, 77.123),
+    'Viman': (18.568, 73.914), 'PCMC': (18.630, 73.813), 'Kondhwa': (18.479, 73.893),
+    'Madhapur': (17.448, 78.392), 'Kalasiguda': (17.440, 78.501),
+    'Badakdev': (23.040, 72.530), 'Nikol': (23.049, 72.661),
+    'Gomati': (26.857, 80.955), 'Alambagh': (26.815, 80.911),
+    'Adajan': (21.187, 72.799), 'Vesu': (21.155, 72.771),
+    'Ballygunge': (22.527, 88.358), 'New Town': (22.593, 88.480), 'Howrah': (22.596, 88.264),
+    'Sec-51': (28.576, 77.342), 'Raj Ng': (28.675, 77.437),
+    'Faridabad': (28.409, 77.318), 'Sec-46': (28.443, 77.065),
+    'Sec-35': (30.730, 76.769), 'AB Rd': (22.720, 75.858), 'Arera Cly': (23.234, 77.435),
+    'Dharam': (21.153, 79.087), 'Canada': (20.005, 73.790), 'Kailash Ng': (19.876, 75.343),
+    'Ring Rd': (22.296, 70.802), 'Anna Ng': (13.086, 80.215), 'Jayalakshmipuram': (12.311, 76.640),
+    'LalKothi': (26.883, 75.797), 'Civil Lines': (27.188, 78.008), 'Model Town': (26.468, 80.350),
+    'Mall Rd': (31.636, 74.873), 'Jalandhar': (31.326, 75.577), 'Gurudev Ng': (30.907, 75.857),
+    'Begambagh': (28.988, 77.705), 'Ballupur Rd': (30.340, 78.029),
+    'Janpath': (20.296, 85.824), 'Kanka': (23.368, 85.347), 'Kankarbagh': (25.596, 85.174),
+    'Elegin Rd': (25.432, 81.846), 'Mahmoorganj': (25.318, 82.997),
+    'Shankar Ng': (21.234, 81.660), 'Sevoke Rd': (26.713, 88.430),
+    'ABCPoint': (26.184, 91.746), 'Dimapur': (25.907, 93.727),
+    'Itanagar': (27.084, 93.610), 'Margao': (15.283, 73.957),
+    'Alkapuri': (22.315, 73.189),
+}
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    """Haversine distance in km between two coordinate pairs."""
+    R = 6371
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+    return R * 2 * math.asin(math.sqrt(a))
 
 # ── CSS ─────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -616,8 +654,11 @@ def build_city_scores():
 @st.cache_data
 def build_cannibalization_matrix():
     """
-    For each existing city with 2+ clinics, compute pincode overlap
-    between clinics to quantify cannibalization risk.
+    For each existing city with 2+ clinics, compute:
+    1. Pincode overlap (original)
+    2. Inter-clinic distance (haversine km)
+    3. Volume-weighted overlap (% of each clinic's revenue from shared pincodes)
+    4. Core catchment collision (shared top-10 pincodes)
     """
     multi_clinic_cities = master.groupby('city').filter(lambda x: len(x) >= 2)['city'].unique()
     
@@ -625,11 +666,13 @@ def build_cannibalization_matrix():
     for city in multi_clinic_cities:
         city_clinics = master[master['city'] == city]['area'].tolist()
         
-        # Get pincodes served by each clinic
+        # Get pincodes + volumes per clinic
         clinic_pins = {}
+        clinic_pin_vol = {}
         for clinic in city_clinics:
-            pins = set(pin_demand[pin_demand['Clinic Loc'] == clinic]['Zip'].unique())
-            clinic_pins[clinic] = pins
+            cdata = pin_demand[pin_demand['Clinic Loc'] == clinic]
+            clinic_pins[clinic] = set(cdata['Zip'].unique())
+            clinic_pin_vol[clinic] = cdata.groupby('Zip')['qty'].sum().sort_values(ascending=False)
         
         # Pairwise overlap
         for i, c1 in enumerate(city_clinics):
@@ -642,16 +685,58 @@ def build_cannibalization_matrix():
                 overlap_rev_c1 = pin_demand[(pin_demand['Clinic Loc'] == c1) & (pin_demand['Zip'].isin(overlap))]['revenue'].sum()
                 overlap_rev_c2 = pin_demand[(pin_demand['Clinic Loc'] == c2) & (pin_demand['Zip'].isin(overlap))]['revenue'].sum()
                 
+                # Distance
+                dist_km = None
+                if c1 in CLINIC_COORDS and c2 in CLINIC_COORDS:
+                    lat1, lon1 = CLINIC_COORDS[c1]
+                    lat2, lon2 = CLINIC_COORDS[c2]
+                    dist_km = round(_haversine_km(lat1, lon1, lat2, lon2), 1)
+                
+                # Volume-weighted overlap
+                vol1 = clinic_pin_vol.get(c1, pd.Series(dtype=float))
+                vol2 = clinic_pin_vol.get(c2, pd.Series(dtype=float))
+                vol1_total = vol1.sum()
+                vol2_total = vol2.sum()
+                vol1_shared = vol1.reindex(list(overlap)).sum() if overlap and vol1_total else 0
+                vol2_shared = vol2.reindex(list(overlap)).sum() if overlap and vol2_total else 0
+                vol_overlap_a = vol1_shared / vol1_total if vol1_total else 0
+                vol_overlap_b = vol2_shared / vol2_total if vol2_total else 0
+                avg_vol_overlap = (vol_overlap_a + vol_overlap_b) / 2
+                
+                # Core catchment collision (top-10 pincodes)
+                top10_c1 = set(vol1.head(10).index) if len(vol1) > 0 else set()
+                top10_c2 = set(vol2.head(10).index) if len(vol2) > 0 else set()
+                shared_core = top10_c1 & top10_c2
+                core_count = len(shared_core)
+                
+                # Composite risk level
+                if core_count >= 3:
+                    risk = 'Critical'
+                elif core_count >= 1 or (dist_km is not None and dist_km < 5):
+                    risk = 'High'
+                elif avg_vol_overlap > 0.7:
+                    risk = 'Medium'
+                elif avg_vol_overlap > 0.4:
+                    risk = 'Low'
+                else:
+                    risk = 'Minimal'
+                
                 results.append({
                     'city': CITY_NAMES.get(city, city),
                     'city_code': city,
                     'clinic_1': c1,
                     'clinic_2': c2,
+                    'distance_km': dist_km,
                     'shared_pincodes': len(overlap),
                     'total_pincodes': len(union),
                     'overlap_pct': overlap_pct,
                     'overlap_revenue': overlap_rev_c1 + overlap_rev_c2,
-                    'risk_level': 'High' if overlap_pct > 0.3 else 'Medium' if overlap_pct > 0.15 else 'Low'
+                    'vol_overlap_a': vol_overlap_a,
+                    'vol_overlap_b': vol_overlap_b,
+                    'avg_vol_overlap': avg_vol_overlap,
+                    'core_shared': core_count,
+                    'core_pins': ', '.join(str(int(p)) for p in shared_core) if shared_core else '—',
+                    'risk_level': risk,
                 })
     
     return pd.DataFrame(results)
@@ -675,6 +760,15 @@ with st.sidebar:
     w_revenue = st.slider("Revenue Weight", 0, 50, 20)
     w_growth = st.slider("Growth Weight", 0, 50, 15)
     w_capacity = st.slider("Capacity Weight", 0, 50, 15)
+    
+    st.markdown("---")
+    st.markdown("### 🛡️ Radius Safeguard")
+    metro_radius = st.number_input("Metro Min Distance (km)", value=5.0, step=1.0, format="%.0f",
+                                    help="MMR, BMR, NCR, HMR — minimum km between clinics")
+    tier2_radius = st.number_input("Tier-2 Min Distance (km)", value=8.0, step=1.0, format="%.0f",
+                                    help="Pune, Surat, Ahmedabad, Lucknow etc.")
+    core_penalty_pct = st.slider("CEI Penalty / Shared Core Pin (%)", 1, 15, 5,
+                                  help="CEI score reduced by this % for each shared top-10 pincode")
     
     st.markdown("---")
     st.caption(f"Data: {active_months[0]} to {active_months[-1]} · {len(master)} clinics")
@@ -832,14 +926,15 @@ with tab1:
     # Auto-generated insights
     high_growth_cities = same_city_scores[same_city_scores['growth_pct'] > 0.2]
     saturated_cities = same_city_scores[same_city_scores['sales_per_cabin_l'] > same_city_scores['sales_per_cabin_l'].quantile(0.75)]
-    high_cannibal = cannibal_matrix[cannibal_matrix['overlap_pct'] > 0.3] if len(cannibal_matrix) > 0 else pd.DataFrame()
+    high_cannibal = cannibal_matrix[cannibal_matrix['risk_level'].isin(['Critical', 'High'])] if len(cannibal_matrix) > 0 else pd.DataFrame()
     
     insights = []
     if len(saturated_cities) > 0:
         top_sat = saturated_cities.iloc[0]
         insights.append(f"🔥 **{top_sat['city_name']}** has the highest capacity utilization ({fmt_inr(top_sat['sales_per_cabin_l'] * 1e5)}/cabin) — strong candidate for an additional clinic.")
     if len(high_cannibal) > 0:
-        insights.append(f"⚠️ **{len(high_cannibal)} clinic pairs** show >30% pincode overlap — review catchment boundaries before adding clinics in those cities.")
+        core_total = high_cannibal['core_shared'].sum()
+        insights.append(f"⚠️ **{len(high_cannibal)} clinic pairs** flagged Critical/High risk — {core_total} shared core pincodes detected. Review radius safeguard in Same-City tab.")
     if len(high_growth_cities) > 0:
         growth_list = ', '.join(high_growth_cities.head(3)['city_name'].tolist())
         insights.append(f"📈 **{growth_list}** showing >20% revenue growth L3M — momentum cities for expansion.")
@@ -938,21 +1033,114 @@ with tab2:
     
     st.markdown("---")
     
-    # ── Cannibalization Risk ──
-    st.markdown("#### 🔴 Cannibalization Risk Matrix")
+    # ── Cannibalization Risk with Radius Safeguard ──
+    st.markdown("#### 🛡️ Cannibalization & Radius Safeguard")
     
     if len(cannibal_matrix) > 0:
         city_code = same_city_scores[same_city_scores['city_name'] == selected_city]['city_code'].values[0]
-        city_cannibal = cannibal_matrix[cannibal_matrix['city_code'] == city_code]
+        city_cannibal = cannibal_matrix[cannibal_matrix['city_code'] == city_code].copy()
         
         if len(city_cannibal) > 0:
-            for _, row in city_cannibal.iterrows():
-                risk_class = "risk-high" if row['risk_level'] == 'High' else "insight-box" if row['risk_level'] == 'Medium' else "risk-low"
-                st.markdown(f"""<div class="{risk_class}">
-                    <b>{row['clinic_1']}</b> ↔ <b>{row['clinic_2']}</b> · 
-                    Overlap: <b>{row['overlap_pct']*100:.0f}%</b> ({row['shared_pincodes']} shared pincodes / {row['total_pincodes']} total) · 
-                    Revenue at risk: <b>{fmt_inr(row['overlap_revenue'])}</b> · 
-                    Risk: <b>{row['risk_level']}</b>
+            # Determine tier-based radius threshold for this city
+            city_tier = master[master['city'] == city_code]['tier'].values
+            is_metro = any(t in ['Metro', 'Tier-1'] for t in city_tier) if len(city_tier) > 0 else False
+            radius_threshold = metro_radius if is_metro else tier2_radius
+            
+            # Distance & Core Overlap scatter
+            dist_pairs = city_cannibal[city_cannibal['distance_km'].notna()].copy()
+            if len(dist_pairs) > 0:
+                dist_pairs['label'] = dist_pairs['clinic_1'] + ' ↔ ' + dist_pairs['clinic_2']
+                dist_pairs['marker_size'] = dist_pairs['core_shared'].clip(lower=1) * 8
+                
+                risk_colors = {'Critical': '#C62828', 'High': '#E53935', 'Medium': '#FF8F00', 'Low': '#43A047', 'Minimal': '#66BB6A'}
+                dist_pairs['color'] = dist_pairs['risk_level'].map(risk_colors)
+                
+                fig_scatter = go.Figure()
+                for risk in ['Critical', 'High', 'Medium', 'Low', 'Minimal']:
+                    subset = dist_pairs[dist_pairs['risk_level'] == risk]
+                    if len(subset) > 0:
+                        fig_scatter.add_trace(go.Scatter(
+                            x=subset['distance_km'], y=subset['avg_vol_overlap'] * 100,
+                            mode='markers+text', name=risk,
+                            marker=dict(size=subset['marker_size'], color=risk_colors.get(risk, '#999'),
+                                        opacity=0.8, line=dict(width=1, color='white')),
+                            text=subset['label'], textposition='top center',
+                            textfont=dict(size=9),
+                            hovertemplate='<b>%{text}</b><br>Distance: %{x:.1f} km<br>Vol Overlap: %{y:.0f}%<br>Core Pins Shared: %{customdata}<extra></extra>',
+                            customdata=subset['core_shared']
+                        ))
+                
+                # Add radius threshold line
+                fig_scatter.add_vline(x=radius_threshold, line_dash="dash", line_color="#D32F2F", line_width=2,
+                                      annotation_text=f"Min Radius ({radius_threshold:.0f} km)",
+                                      annotation_position="top right",
+                                      annotation_font_color="#D32F2F")
+                
+                fig_scatter.update_layout(
+                    title=f"Distance vs Volume Overlap — {selected_city}",
+                    xaxis_title="Inter-Clinic Distance (km)", yaxis_title="Avg Volume Overlap (%)",
+                    height=420, margin=dict(l=20, r=20, t=50, b=20),
+                    legend=dict(orientation='h', y=-0.15),
+                    xaxis=dict(range=[0, max(dist_pairs['distance_km'].max() * 1.1, radius_threshold * 1.5)]),
+                    yaxis=dict(range=[0, 105])
+                )
+                st.plotly_chart(fig_scatter, use_container_width=True)
+            
+            # Risk cards for each pair
+            city_cannibal_sorted = city_cannibal.sort_values('risk_level',
+                key=lambda x: x.map({'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Minimal': 4}))
+            
+            for _, row in city_cannibal_sorted.iterrows():
+                risk = row['risk_level']
+                if risk == 'Critical':
+                    css_class = "risk-high"
+                    icon = "🔴"
+                elif risk == 'High':
+                    css_class = "risk-high"
+                    icon = "🟠"
+                elif risk == 'Medium':
+                    css_class = "insight-box"
+                    icon = "🟡"
+                else:
+                    css_class = "risk-low"
+                    icon = "🟢"
+                
+                dist_str = f"{row['distance_km']:.0f} km" if pd.notna(row.get('distance_km')) else "N/A"
+                core_str = f"{row['core_shared']} shared" if row['core_shared'] > 0 else "None"
+                vol_str = f"{row['avg_vol_overlap']*100:.0f}%"
+                
+                # Radius violation flag
+                radius_flag = ""
+                if pd.notna(row.get('distance_km')) and row['distance_km'] < radius_threshold:
+                    radius_flag = f" · ⚠️ <b>Below {radius_threshold:.0f} km threshold</b>"
+                
+                st.markdown(f"""<div class="{css_class}">
+                    {icon} <b>{row['clinic_1']}</b> ↔ <b>{row['clinic_2']}</b> · 
+                    Distance: <b>{dist_str}</b> · 
+                    Vol Overlap: <b>{vol_str}</b> · 
+                    Core Pins: <b>{core_str}</b> ({row['core_pins']}) · 
+                    Pincode Overlap: {row['overlap_pct']*100:.0f}% ({row['shared_pincodes']}/{row['total_pincodes']}) · 
+                    Revenue at Risk: <b>{fmt_inr(row['overlap_revenue'])}</b> · 
+                    Risk: <b>{risk}</b>{radius_flag}
+                </div>""", unsafe_allow_html=True)
+            
+            # Summary insight
+            critical_high = city_cannibal[city_cannibal['risk_level'].isin(['Critical', 'High'])]
+            if len(critical_high) > 0:
+                total_core = critical_high['core_shared'].sum()
+                penalty = total_core * core_penalty_pct
+                st.markdown(f"""<div class="insight-box">
+                    📊 <b>Radius Safeguard Summary for {selected_city}:</b> 
+                    {len(critical_high)} pair(s) flagged Critical/High with {total_core} total shared core pincodes. 
+                    Recommended CEI penalty for new same-city clinic: <b>−{penalty}%</b> 
+                    (= {total_core} core pins × {core_penalty_pct}% per pin). 
+                    New clinic placement should maintain at least <b>{radius_threshold:.0f} km</b> from existing locations.
+                </div>""", unsafe_allow_html=True)
+            else:
+                st.markdown(f"""<div class="risk-low">
+                    ✅ <b>No Critical/High cannibalization risk detected in {selected_city}.</b> 
+                    All clinic pairs have distinct core catchments. New clinic placement should still maintain 
+                    <b>{radius_threshold:.0f} km</b> minimum distance from existing locations.
                 </div>""", unsafe_allow_html=True)
         else:
             st.info(f"Only 1 clinic in {selected_city} — no cannibalization pairs to analyze.")
@@ -1288,4 +1476,4 @@ with tab4:
 
 # ── Footer ──────────────────────────────────────────────────────────────
 st.markdown("---")
-st.caption(f"Gynoveda Expansion Intelligence · {active_months[0]} to {active_months[-1]} · {len(master)} clinics · CEI Engine v1.0")
+st.caption(f"Gynoveda Expansion Intelligence · {active_months[0]} to {active_months[-1]} · {len(master)} clinics · CEI Engine v1.1 (Radius Safeguard)")
