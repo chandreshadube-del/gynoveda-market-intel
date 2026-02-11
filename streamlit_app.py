@@ -14,43 +14,6 @@ from plotly.subplots import make_subplots
 import os, json
 
 st.set_page_config(page_title="Gynoveda Expansion Intelligence", layout="wide", page_icon="🧭")
-import streamlit.components.v1 as components
-
-# ── PLAUSIBLE ANALYTICS (privacy-friendly, cookie-free) ──────────────
-try:
-    PLAUSIBLE_DOMAIN = st.secrets["analytics"]["domain"]
-except Exception:
-    PLAUSIBLE_DOMAIN = ""
-
-if PLAUSIBLE_DOMAIN:
-    components.html(f"""
-    <script defer data-domain="{PLAUSIBLE_DOMAIN}" src="https://plausible.io/js/script.js"></script>
-    """, height=0)
-
-# ── AUTHENTICATION GATE ──────────────────────────────────────────────
-# Reads viewer identity from Streamlit Community Cloud (viewer auth must be ON)
-# Plus optional email allowlist as a second layer of access control
-_user_email = ""
-try:
-    _user_email = st.experimental_user.email or ""
-except Exception:
-    pass
-
-# Optional allowlist — if configured, only these emails can access
-try:
-    _allowed = [e.strip().lower() for e in st.secrets["auth"]["allowed_emails"] if e.strip()]
-except Exception:
-    _allowed = []
-
-if _allowed and _user_email and _user_email.lower() not in _allowed:
-    st.markdown("## ⛔ Access Denied")
-    st.error(f"**{_user_email}** is not authorized to view this dashboard. Contact your admin.")
-    st.stop()
-
-if _allowed and not _user_email:
-    st.markdown("## 🔐 Gynoveda Expansion Intelligence")
-    st.info("Please sign in via your Streamlit Cloud account to access this dashboard.")
-    st.stop()
 
 # ── Formatting helpers ──────────────────────────────────────────────────
 def fmt_inr(v, prefix="₹", d=1):
@@ -74,19 +37,110 @@ def pct(v, d=0):
     if v is None or (isinstance(v, float) and np.isnan(v)): return "0%"
     return f"{v*100:.{d}f}%" if abs(v) < 1 else f"{v:.{d}f}%"
 
-# City code → full name mapping
+# City code → primary e-commerce city name mapping
+# 14 corrections applied from forensic audit (11 Feb 2026)
+# Maps MIS clinic codes to the city names used in e-commerce order data
 CITY_NAMES = {
-    'MUM':'Mumbai','NDL':'Delhi','BLR':'Bengaluru','HYD':'Hyderabad','PUN':'Pune',
-    'KOL':'Kolkata','CHE':'Chennai','THN':'Thane','NOI':'Noida','AHM':'Ahmedabad',
-    'SUR':'Surat','JAI':'Jaipur','LKO':'Lucknow','NAG':'Nagpur','PAT':'Patna',
-    'GUR':'Gurugram','IND':'Indore','BPL':'Bhopal','LDH':'Ludhiana','CDG':'Chandigarh',
-    'NSK':'Nashik','VAD':'Vadodara','RJK':'Rajkot','DDN':'Dehradun','KNP':'Kanpur',
-    'AGR':'Agra','VAR':'Varanasi','PRY':'Prayagraj','MRT':'Meerut','FDB':'Faridabad',
-    'GHZ':'Ghaziabad','JAL':'Jalandhar','AMR':'Amritsar','RNC':'Ranchi','BBS':'Bhubaneswar',
-    'SGU':'Siliguri','ASN':'Asansol','GUW':'Guwahati','RAI':'Raipur','MYS':'Mysuru',
-    'NVM':'Navi Mumbai','KLN':'Kalyan','AUR':'Aurangabad','MAR':'Margao','SEC':'Secunderabad',
-    'DMR':'Dimapur','ITR':'Itanagar'
+    'AGR': 'Agra',
+    'AHM': 'Ahmedabad',
+    'AMR': 'Amritsar',
+    'ASN': 'Purba Bardhaman',       # ← FIXED (was 'Asansol')
+    'AUR': 'Aurangabad',
+    'BBS': 'Khorda',                 # ← FIXED (was 'Bhubaneswar')
+    'BLR': 'Bengaluru',
+    'BPL': 'Bhopal',
+    'CDG': 'Chandigarh',
+    'CHE': 'Chennai',
+    'DDN': 'Dehradun',
+    'DMR': 'Dimapur',
+    'FDB': 'Faridabad',
+    'GHZ': 'Ghaziabad',
+    'GUR': 'Gurgaon',               # ← FIXED (was 'Gurugram')
+    'GUW': 'Kamrup',                 # ← FIXED (was 'Guwahati')
+    'HYD': 'Hyderabad',
+    'IND': 'Indore',
+    'ITR': 'Papum Pare',            # ← FIXED (was 'Itanagar')
+    'JAI': 'Jaipur',
+    'JAL': 'Jalandhar',
+    'KLN': 'Mumbai',                 # ← FIXED (was 'Kalyan')
+    'KNP': 'Kanpur',
+    'KOL': 'North 24 Parganas',     # ← FIXED (was 'Kolkata')
+    'LDH': 'Ludhiana',
+    'LKO': 'Lucknow',
+    'MAR': 'Goa',                    # ← FIXED (was 'Margao')
+    'MRT': 'Meerut',
+    'MUM': 'Mumbai',
+    'MYS': 'Mysuru',
+    'NAG': 'Nagpur',
+    'NDL': 'Delhi',
+    'NOI': 'Gautam Buddha Nagar',    # ← FIXED (was 'Noida')
+    'NSK': 'Nashik',
+    'NVM': 'Raigarh(MH)',           # ← FIXED (was 'Navi Mumbai')
+    'PAT': 'Patna',
+    'PRY': 'Allahabad',             # ← FIXED (was 'Prayagraj')
+    'PUN': 'Pune',
+    'RAI': 'Raipur',
+    'RJK': 'Rajkot',
+    'RNC': 'Ranchi',
+    'SEC': 'Hyderabad',             # ← FIXED (was 'Secunderabad')
+    'SGU': 'Darjiling',             # ← FIXED (was 'Siliguri')
+    'SUR': 'Surat',
+    'THN': 'Mumbai',                 # ← FIXED (was 'Thane')
+    'VAD': 'Vadodara',
+    'VAR': 'Varanasi',
 }
+
+# Served City Aliases — maps each clinic code to ALL known e-commerce names
+# Used for whitespace detection (a city is "served" if ANY alias matches)
+SERVED_CITY_ALIASES = {
+    'AGR': {'Agra'}, 'AHM': {'Ahmedabad'}, 'AMR': {'Amritsar'},
+    'ASN': {'Purba Bardhaman', 'Asansol'},
+    'AUR': {'Aurangabad', 'Chhatrapati Sambhajinagar'},
+    'BBS': {'Khorda', 'Bhubaneswar'},
+    'BLR': {'Bengaluru', 'Bangalore'},
+    'BPL': {'Bhopal'}, 'CDG': {'Chandigarh'},
+    'CHE': {'Chennai', 'Madras'},
+    'DDN': {'Dehradun'}, 'DMR': {'Dimapur'},
+    'FDB': {'Faridabad'}, 'GHZ': {'Ghaziabad'},
+    'GUR': {'Gurgaon', 'Gurugram'},
+    'GUW': {'Kamrup', 'Guwahati'},
+    'HYD': {'Hyderabad', 'Secunderabad'},
+    'IND': {'Indore'},
+    'ITR': {'Papum Pare', 'Itanagar'},
+    'JAI': {'Jaipur'}, 'JAL': {'Jalandhar'},
+    'KLN': {'Mumbai', 'Kalyan', 'Thane'},
+    'KNP': {'Kanpur'},
+    'KOL': {'North 24 Parganas', 'Kolkata', 'Calcutta', 'Barasat'},
+    'LDH': {'Ludhiana'}, 'LKO': {'Lucknow'},
+    'MAR': {'Goa', 'Margao', 'South Goa', 'North Goa', 'Panaji'},
+    'MRT': {'Meerut'},
+    'MUM': {'Mumbai', 'Bombay', 'Thane', 'Kalyan', 'Navi Mumbai'},
+    'MYS': {'Mysuru', 'Mysore'},
+    'NAG': {'Nagpur'}, 'NDL': {'Delhi', 'New Delhi'},
+    'NOI': {'Gautam Buddha Nagar', 'Noida', 'Greater Noida'},
+    'NSK': {'Nashik'},
+    'NVM': {'Raigarh(MH)', 'Navi Mumbai', 'Panvel'},
+    'PAT': {'Patna'},
+    'PRY': {'Allahabad', 'Prayagraj'},
+    'PUN': {'Pune'}, 'RAI': {'Raipur'},
+    'RJK': {'Rajkot'}, 'RNC': {'Ranchi'},
+    'SEC': {'Hyderabad', 'Secunderabad'},
+    'SGU': {'Darjiling', 'Darjeeling', 'Siliguri'},
+    'SUR': {'Surat'},
+    'THN': {'Mumbai', 'Thane', 'Mira Road', 'Kalyan'},
+    'VAD': {'Vadodara'},
+    'VAR': {'Varanasi', 'Benaras', 'Kashi'},
+}
+
+def _match_city_to_code(city_name):
+    """Match an e-commerce city name to its MIS clinic code using aliases."""
+    if not city_name or not isinstance(city_name, str):
+        return None
+    city_l = city_name.lower().strip()
+    for code, aliases in SERVED_CITY_ALIASES.items():
+        if any(a.lower() == city_l for a in aliases):
+            return code
+    return None
 
 # ── CSS ─────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -293,12 +347,6 @@ def process_web_orders_excel(file_bytes):
 
 # ── Upload UI in Sidebar ──────────────────────────────────────────────
 with st.sidebar:
-    # Show logged-in user identity
-    if _user_email:
-        st.markdown(f"👤 **{_user_email}**")
-        st.caption("Authenticated via Streamlit Cloud")
-        st.divider()
-    
     with st.expander("📤 Upload Fresh Data", expanded=False):
         st.markdown("Upload updated Excel files to refresh all metrics instantly.")
         
@@ -471,7 +519,13 @@ def build_city_scores():
     df_city = pd.DataFrame(city_perf)
     
     # ── Match web demand to existing cities ──
-    name_to_code = {v.lower(): k for k, v in CITY_NAMES.items()}
+    name_to_code = {}
+    for code, primary in CITY_NAMES.items():
+        name_to_code[primary.lower()] = code
+    # Add all aliases for comprehensive matching
+    for code, aliases in SERVED_CITY_ALIASES.items():
+        for alias in aliases:
+            name_to_code[alias.lower()] = code
     web_demand['matched_code'] = web_demand['City_lower'].map(name_to_code)
     
     # Merge web demand into city perf
