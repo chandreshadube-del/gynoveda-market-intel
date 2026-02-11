@@ -457,12 +457,6 @@ def load_all():
     d['pin_demand'] = pd.read_csv(f'{DATA}/clinic_pincode_demand.csv')
     d['web_city'] = pd.read_csv(f'{DATA}/web_city_demand.csv')
     d['web_pin'] = pd.read_csv(f'{DATA}/web_pincode_yearly.csv')
-    # Pin geocode for distance analysis (optional — generated separately)
-    geo_path = f'{DATA}/pin_geocode.csv'
-    if os.path.exists(geo_path):
-        d['pin_geo'] = pd.read_csv(geo_path)
-    else:
-        d['pin_geo'] = pd.DataFrame(columns=['pincode','lat','lon'])
     return d
 
 data = load_all()
@@ -474,7 +468,13 @@ net = data['network'].copy()
 ramp_s = data['ramp_sales']
 ramp_c = data['ramp_1cx']
 pin_demand = data['pin_demand']
-pin_geo = data['pin_geo']
+
+# Load pin geocode outside cache — always check fresh
+_geo_path = f'{DATA}/pin_geocode.csv'
+if os.path.exists(_geo_path):
+    pin_geo = pd.read_csv(_geo_path)
+else:
+    pin_geo = pd.DataFrame(columns=['pincode','lat','lon'])
 pin_ft = data['pin_ft']
 web_city = data['web_city']
 web_pin = data['web_pin']
