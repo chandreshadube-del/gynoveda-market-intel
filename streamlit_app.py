@@ -1707,29 +1707,78 @@ with tab4:
     y2_ebitda = df_proj.iloc[-1]['cum_ebitda_l'] - total_capex
     r5.metric("Net 24M Return", fmt_inr(y2_ebitda * 1e5))
     
-    # Projection chart
-    fig_proj = make_subplots(specs=[[{"secondary_y": True}]])
+    # Projection chart — redesigned for clarity
+    fig_proj = make_subplots(
+        rows=2, cols=1, shared_xaxes=True,
+        row_heights=[0.55, 0.45], vertical_spacing=0.08,
+        subplot_titles=(
+            f"Monthly P&L — {n_clinics} New Clinics ({scenario})",
+            "Cumulative EBITDA vs Capex Recovery"
+        )
+    )
     
-    fig_proj.add_trace(go.Bar(x=df_proj['month'], y=df_proj['monthly_rev_l'],
-                              name='Monthly Revenue (₹L)', marker_color='#FF6B35', opacity=0.7),
-                      secondary_y=False)
-    fig_proj.add_trace(go.Bar(x=df_proj['month'], y=-df_proj['monthly_opex_l'],
-                              name='Monthly OpEx (₹L)', marker_color='#dc3545', opacity=0.4),
-                      secondary_y=False)
-    fig_proj.add_trace(go.Scatter(x=df_proj['month'], y=df_proj['cum_ebitda_l'],
-                                  name='Cum. EBITDA (₹L)', mode='lines',
-                                  line=dict(color='#28a745', width=3)),
-                      secondary_y=True)
-    fig_proj.add_hline(y=total_capex, line_dash="dash", line_color="#5E35B1",
-                      annotation_text=f"Total Capex (₹{total_capex:.0f}L)", secondary_y=True)
+    # ── TOP CHART: Monthly Revenue vs OpEx vs EBITDA ──
+    fig_proj.add_trace(go.Bar(
+        x=df_proj['month'], y=df_proj['monthly_rev_l'],
+        name='Revenue', marker_color='#4ECDC4', opacity=0.75,
+        text=[f"₹{v:.0f}L" if i % 3 == 0 else "" for i, v in enumerate(df_proj['monthly_rev_l'])],
+        textposition='outside', textfont_size=9
+    ), row=1, col=1)
+    
+    fig_proj.add_trace(go.Bar(
+        x=df_proj['month'], y=df_proj['monthly_opex_l'],
+        name='OpEx', marker_color='#FF6B35', opacity=0.55
+    ), row=1, col=1)
+    
+    # EBITDA line on top chart
+    ebitda_colors = ['#28a745' if v >= 0 else '#dc3545' for v in df_proj['monthly_ebitda_l']]
+    fig_proj.add_trace(go.Scatter(
+        x=df_proj['month'], y=df_proj['monthly_ebitda_l'],
+        name='EBITDA', mode='lines+markers',
+        line=dict(color='#1B5E20', width=2.5, dash='dot'),
+        marker=dict(size=6, color=ebitda_colors)
+    ), row=1, col=1)
+    
+    # ── BOTTOM CHART: Cumulative EBITDA vs Capex ──
+    fig_proj.add_trace(go.Scatter(
+        x=df_proj['month'], y=df_proj['cum_ebitda_l'],
+        name='Cum. EBITDA', mode='lines',
+        line=dict(color='#28a745', width=3),
+        fill='tozeroy', fillcolor='rgba(40, 167, 69, 0.12)'
+    ), row=2, col=1)
+    
+    # Capex recovery line
+    fig_proj.add_hline(
+        y=total_capex, line_dash="dash", line_color="#5E35B1", line_width=2,
+        annotation_text=f"Capex Recovery (₹{total_capex:.0f}L)",
+        annotation_position="top left", annotation_font_size=11,
+        row=2, col=1
+    )
+    
+    # Mark payback month with vertical line if within 24 months
+    if isinstance(payback, int) and payback <= 24:
+        fig_proj.add_vline(
+            x=payback, line_dash="dot", line_color="#5E35B1", line_width=1.5,
+            annotation_text=f"Payback M{payback}", annotation_position="top right",
+            annotation_font_size=10, row=2, col=1
+        )
+    
+    # Mark OpEx breakeven month on top chart
+    if isinstance(opex_be_month, int):
+        fig_proj.add_vline(
+            x=opex_be_month, line_dash="dot", line_color="#28a745", line_width=1.5,
+            annotation_text=f"OpEx BE M{opex_be_month}", annotation_position="top left",
+            annotation_font_size=10, row=1, col=1
+        )
     
     fig_proj.update_layout(
-        title=f"24-Month Projection — {n_clinics} Clinics ({scenario})",
-        height=480, margin=dict(l=40, r=40, t=80, b=30),
-        legend=dict(orientation='h', y=1.02, x=0.5, xanchor='center'), barmode='relative'
+        height=600, margin=dict(l=45, r=30, t=50, b=30),
+        legend=dict(orientation='h', y=1.02, x=0.5, xanchor='center'),
+        barmode='overlay', showlegend=True
     )
-    fig_proj.update_yaxes(title_text="₹ Lakhs/month", secondary_y=False)
-    fig_proj.update_yaxes(title_text="Cumulative ₹ Lakhs", secondary_y=True)
+    fig_proj.update_yaxes(title_text="₹ Lakhs/month", row=1, col=1)
+    fig_proj.update_yaxes(title_text="Cumulative ₹ Lakhs", row=2, col=1)
+    fig_proj.update_xaxes(title_text="Month", row=2, col=1)
     st.plotly_chart(fig_proj, use_container_width=True)
     
     # ── Tier-wise Breakdown ──
