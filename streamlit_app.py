@@ -1632,8 +1632,8 @@ with tab4:
                                         value=round(ramp_s['avg_sales_l'].iloc[-1], 1) if len(ramp_s) > 0 else 20.0,
                                         step=1.0, format="%.1f", key='ss_val')
     with sim3:
-        clinics_per_month = st.number_input("Clinics Launched per Month", value=2, step=1, min_value=1, max_value=20, key='cpm')
-        launch_gap = st.number_input("Gap Between Batches (months)", value=1, step=1, min_value=1, max_value=6, key='gap')
+        clinics_per_month = st.number_input("Clinics Launched per Month", value=2, step=1, min_value=1, max_value=20, key='cpm_v2')
+        launch_gap = st.number_input("Gap Between Batches (months)", value=1, step=1, min_value=1, max_value=6, key='gap_v2')
     
     scenario_mult = {'Conservative (0.85x)': 0.85, 'Base Case (1.0x)': 1.0, 'Optimistic (1.15x)': 1.15}[scenario]
     
