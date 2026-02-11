@@ -637,14 +637,18 @@ def build_city_scores(cache_version='v1.2'):
     Build Composite Expansion Index (CEI) for every city.
     Returns two DataFrames: same_city (existing) and new_city (whitespace).
     
-    Dimensions (weighted):
-    1. Online Demand Density (25%) — web orders per city
-    2. Revenue Performance (20%) — existing clinic L3M avg (same-city only)
-    3. Customer Growth Trajectory (15%) — 1Cx growth trend
-    4. Capacity Utilization (15%) — sales per cabin vs network benchmark
-    5. O2O Conversion Potential (10%) — clinic demand vs web demand ratio
-    6. Market Whitespace (10%) — pincodes with demand but no nearby clinic
-    7. Economic Viability (5%) — EBITDA % of existing clinics in region
+    CEI v2 Dimensions:
+    PRIMARY (recomputed post-function with underserved data):
+    1. Capacity Utilization (45%) — sales per cabin vs network benchmark
+    2. Patients Traveling 20+ km (35%) — NTB visits + web orders from underserved pincodes
+    SECONDARY (20% combined):
+    3. Web Orders, Revenue Growth, EBITDA, O2O Conversion
+    FUTURE (0% — activates when data uploaded):
+    4. Branded IVF Proximity (15%)
+    5. Non-Branded IVF Proximity (15%)
+    
+    Note: Legacy d1-d7 dimensions are retained for backward compatibility
+    but CEI scores are overwritten by the v2 recompute block.
     """
     
     # ── Dimension 1: Online Demand ──
@@ -1019,11 +1023,26 @@ with st.sidebar:
     o2o_conversion = st.slider("Online→Offline Conversion %", 1, 15, 5)
     
     st.markdown("---")
-    st.markdown("### 📊 Weights")
-    w_demand = st.slider("Demand Weight", 0, 50, 25)
-    w_revenue = st.slider("Revenue Weight", 0, 50, 20)
-    w_growth = st.slider("Growth Weight", 0, 50, 15)
-    w_capacity = st.slider("Capacity Weight", 0, 50, 15)
+    st.markdown("### 📊 CEI Weights (v2)")
+    st.caption("Primary Signals")
+    w_capacity = st.slider("Capacity Utilization", 0, 60, 45, help="Sales per cabin vs network benchmark")
+    w_underserved = st.slider("Patients Traveling 20+ km", 0, 60, 35, help="NTB visits + web orders from underserved pincodes")
+    st.caption("Secondary Signals")
+    w_secondary = st.slider("Web Orders + Growth + EBITDA + O2O", 0, 40, 20, help="Combined weight for legacy demand signals")
+    st.caption("🔒 IVF Competition (Coming Soon)")
+    st.markdown("""<div style="background:#f0f0f0; padding:8px 12px; border-radius:6px; font-size:0.78rem; color:#888;">
+        Branded IVF (15%) + Non-Branded IVF (15%) — activates when competition data is uploaded.
+        Current weights are redistributed proportionally.
+    </div>""", unsafe_allow_html=True)
+    
+    # Normalize weights to sum to 100
+    _w_total = w_capacity + w_underserved + w_secondary
+    if _w_total > 0:
+        w_cap_n = w_capacity / _w_total
+        w_und_n = w_underserved / _w_total
+        w_sec_n = w_secondary / _w_total
+    else:
+        w_cap_n, w_und_n, w_sec_n = 0.45, 0.35, 0.20
     
     st.markdown("---")
     st.markdown("### 🛡️ Radius Safeguard")
@@ -1044,6 +1063,69 @@ st.markdown("<h2 style='margin-bottom:0.2rem;'>Gynoveda Expansion Intelligence</
 
 # ── PRE-COMPUTE: Dual-Signal Whitespace (needed by both Same-City & New-City tabs) ──
 ws_dual, ws_new_cities, ws_existing_underserved = build_whitespace_dual_signal(dist_threshold_km=whitespace_dist_km)
+
+# ── CEI v2: Recompute Same-City scores with new dimensions ──────────────
+# Merge underserved demand (20+ km patients) into city-level scores
+if len(ws_existing_underserved) > 0:
+    _eu = ws_existing_underserved.copy()
+    _eu['city_code'] = _eu['city'].apply(_match_city_to_code)
+    _eu_valid = _eu[_eu['city_code'].notna()]
+    if len(_eu_valid) > 0:
+        _eu_agg = _eu_valid.groupby('city_code').agg(
+            underserved_ntb=('total_ntb', 'sum'),
+            underserved_web=('total_web', 'sum'),
+            underserved_rev=('ntb_rev', 'sum'),
+            underserved_pins=('pincodes', 'sum'),
+            underserved_avg_dist=('avg_dist', 'mean'),
+        ).reset_index()
+        same_city_scores = same_city_scores.merge(_eu_agg, on='city_code', how='left')
+    else:
+        for c in ['underserved_ntb','underserved_web','underserved_rev','underserved_pins','underserved_avg_dist']:
+            same_city_scores[c] = 0
+else:
+    for c in ['underserved_ntb','underserved_web','underserved_rev','underserved_pins','underserved_avg_dist']:
+        same_city_scores[c] = 0
+
+same_city_scores[['underserved_ntb','underserved_web','underserved_rev','underserved_pins']] = \
+    same_city_scores[['underserved_ntb','underserved_web','underserved_rev','underserved_pins']].fillna(0)
+same_city_scores['underserved_avg_dist'] = same_city_scores['underserved_avg_dist'].fillna(0)
+
+# Normalize helper
+def _norm_v2(s):
+    mn, mx = s.min(), s.max()
+    return ((s - mn) / (mx - mn) * 100).fillna(0) if mx > mn else pd.Series(50, index=s.index)
+
+# PRIMARY: Capacity Utilization (sales per cabin)
+same_city_scores['d_capacity'] = _norm_v2(same_city_scores['sales_per_cabin_l'])
+
+# PRIMARY: Underserved Demand (NTB + web from 20+ km pincodes)
+same_city_scores['d_underserved'] = _norm_v2(
+    same_city_scores['underserved_ntb'] + same_city_scores['underserved_web']
+)
+
+# SECONDARY: Combined legacy signals (web orders, growth, EBITDA, O2O)
+same_city_scores['d_sec_web'] = _norm_v2(same_city_scores['web_orders'])
+same_city_scores['d_sec_growth'] = _norm_v2(same_city_scores['growth_pct'].clip(-0.5, 2))
+same_city_scores['d_sec_ebitda'] = _norm_v2(same_city_scores['avg_ebitda_pct'].clip(-0.1, 0.5))
+same_city_scores['d_sec_o2o'] = _norm_v2(same_city_scores.get('o2o_ratio', pd.Series(0, index=same_city_scores.index)).clip(0, 20))
+same_city_scores['d_secondary'] = (
+    same_city_scores['d_sec_web'] * 0.35 +
+    same_city_scores['d_sec_growth'] * 0.25 +
+    same_city_scores['d_sec_ebitda'] * 0.20 +
+    same_city_scores['d_sec_o2o'] * 0.20
+)
+
+# PLACEHOLDER: IVF Competition (0% weight — activates when data is uploaded)
+same_city_scores['d_ivf_branded'] = 0
+same_city_scores['d_ivf_nonbranded'] = 0
+
+# ── Final CEI v2 Score ──
+same_city_scores['cei_same'] = (
+    same_city_scores['d_capacity'] * w_cap_n +
+    same_city_scores['d_underserved'] * w_und_n +
+    same_city_scores['d_secondary'] * w_sec_n
+)
+same_city_scores = same_city_scores.sort_values('cei_same', ascending=False)
 
 # ── TABS ────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4 = st.tabs([
@@ -1254,10 +1336,9 @@ with tab2:
     _sc_total_clinics = int(_sc['clinics'].sum())
     _sc_total_cabins = int(_sc['total_cabins'].sum())
     _sc_top = _sc.iloc[0]
-    _sc_growing = (_sc['growth_pct'] > 0).sum()
     _sc_avg_rpc = _sc['sales_per_cabin_l'].mean()
-    _sc_total_web = _sc['web_orders'].sum()
-    _sc_total_pins = int(_sc['pincodes_served'].fillna(0).sum())
+    _sc_total_underserved = _sc['underserved_ntb'].sum() + _sc['underserved_web'].sum()
+    _sc_underserved_rev = _sc['underserved_rev'].sum()
     
     sc_k1, sc_k2, sc_k3, sc_k4, sc_k5 = st.columns(5)
     with sc_k1:
@@ -1268,31 +1349,34 @@ with tab2:
         st.caption(f"CEI Score: {_sc_top['cei_same']:.0f}")
     with sc_k3:
         st.metric("Avg Rev / Cabin", fmt_inr(_sc_avg_rpc * 1e5))
-        st.caption("Across all cities")
+        st.caption("Primary CEI signal (45%)")
     with sc_k4:
-        st.metric("Cities Growing", f"{_sc_growing} of {_sc_total_cities}")
-        st.caption("Positive L3M growth")
+        st.metric("Underserved Demand", fmt_num(_sc_total_underserved))
+        st.caption(f"NTB + Web from 20+ km")
     with sc_k5:
-        st.metric("Total Web Orders", fmt_num(_sc_total_web))
-        st.caption(f"{_sc_total_pins:,} unique pincodes")
+        st.metric("Underserved Revenue", fmt_inr(_sc_underserved_rev))
+        st.caption("Revenue from 20+ km pincodes")
     
     st.markdown("---")
     
     # ── CEI Ranking Table ──
     st.markdown("#### Composite Expansion Index — Existing Cities")
+    st.caption("CEI v2: Capacity (45%) + Underserved Demand (35%) + Secondary Signals (20%) · IVF Competition coming soon")
     
     display_same = same_city_scores.copy()
     display_same['CEI'] = display_same['cei_same'].fillna(0).round(0).astype(int)
     display_same['L3M Rev'] = display_same['l3m_rev_cr'].apply(lambda x: fmt_inr(x * 1e7))
     display_same['Growth'] = display_same['growth_pct'].apply(lambda x: f"{x*100:+.0f}%")
     display_same['Rev/Cabin'] = display_same['sales_per_cabin_l'].apply(lambda x: fmt_inr(x * 1e5))
+    display_same['20km NTB'] = display_same['underserved_ntb'].apply(lambda x: fmt_num(x))
+    display_same['20km Web'] = display_same['underserved_web'].apply(lambda x: fmt_num(x))
+    display_same['20km Rev'] = display_same['underserved_rev'].apply(lambda x: fmt_inr(x))
     display_same['Web Orders'] = display_same['web_orders'].apply(lambda x: fmt_num(x))
     display_same['EBITDA'] = display_same['avg_ebitda_pct'].apply(lambda x: pct(x))
-    display_same['Pincodes'] = display_same['pincodes_served'].fillna(0).astype(int)
     
     st.dataframe(
-        display_same[['city_name','clinics','total_cabins','CEI','L3M Rev','Growth',
-                       'Rev/Cabin','Web Orders','EBITDA','Pincodes']].rename(columns={
+        display_same[['city_name','clinics','total_cabins','CEI','Rev/Cabin','20km NTB','20km Web',
+                       '20km Rev','L3M Rev','Growth','Web Orders','EBITDA']].rename(columns={
             'city_name':'City','clinics':'Clinics','total_cabins':'Cabins'
         }),
         use_container_width=True, height=400,
@@ -1313,9 +1397,10 @@ with tab2:
     col_radar, col_metrics = st.columns([1, 1])
     
     with col_radar:
-        categories = ['Demand', 'Revenue', 'Growth', 'Capacity', 'O2O Conv.', 'Whitespace', 'EBITDA']
-        values = [city_data['d1_demand'], city_data['d2_revenue'], city_data['d3_growth'],
-                  city_data['d4_capacity'], city_data['d5_o2o'], city_data['d6_whitespace'], city_data['d7_ebitda']]
+        categories = ['Capacity\n(45%)', 'Underserved\nDemand (35%)', 'Web Orders', 'Growth', 'EBITDA', 'O2O Conv.']
+        values = [city_data['d_capacity'], city_data['d_underserved'],
+                  city_data.get('d_sec_web', 0), city_data.get('d_sec_growth', 0),
+                  city_data.get('d_sec_ebitda', 0), city_data.get('d_sec_o2o', 0)]
         
         fig_radar = go.Figure(data=go.Scatterpolar(
             r=values + [values[0]], theta=categories + [categories[0]],
@@ -1325,7 +1410,7 @@ with tab2:
         ))
         fig_radar.update_layout(
             polar=dict(radialaxis=dict(visible=True, range=[0, 100], showticklabels=False)),
-            title=f"CEI Profile — {selected_city}", height=380,
+            title=f"CEI v2 Profile — {selected_city}", height=380,
             margin=dict(l=60, r=60, t=50, b=30)
         )
         st.plotly_chart(fig_radar, use_container_width=True, config=PLOTLY_CFG)
@@ -1341,17 +1426,25 @@ with tab2:
         m1.metric("Clinics", int(city_data['clinics']))
         m2.metric("Cabins", int(city_data['total_cabins']))
         m3, m4 = st.columns(2)
-        m3.metric("L3M Monthly Rev", fmt_inr(city_data['l3m_rev_cr'] * 1e7))
+        m3.metric("Sales/Cabin", fmt_inr(city_data['sales_per_cabin_l'] * 1e5))
         m4.metric("Revenue Growth", f"{city_data['growth_pct']*100:+.0f}%")
         m5, m6 = st.columns(2)
-        m5.metric("Sales/Cabin", fmt_inr(city_data['sales_per_cabin_l'] * 1e5))
-        m6.metric("Web Orders", fmt_num(city_data['web_orders']))
+        m5.metric("20+ km Patients", fmt_num(city_data.get('underserved_ntb', 0) + city_data.get('underserved_web', 0)))
+        m6.metric("20+ km Revenue", fmt_inr(city_data.get('underserved_rev', 0)))
+        m7, m8 = st.columns(2)
+        m7.metric("L3M Monthly Rev", fmt_inr(city_data['l3m_rev_cr'] * 1e7))
+        m8.metric("Web Orders", fmt_num(city_data['web_orders']))
         
         # Recommendation
+        _has_underserved = city_data.get('underserved_ntb', 0) + city_data.get('underserved_web', 0) > 100
         if city_data['cei_same'] > 55 and city_data['sales_per_cabin_l'] > same_city_scores['sales_per_cabin_l'].median():
-            st.markdown('<div class="risk-low">✅ <b>Expand</b> — high demand + capacity strain suggests a new clinic will capture incremental revenue without cannibalizing existing locations.</div>', unsafe_allow_html=True)
+            _reason = "high capacity strain + strong underserved demand" if _has_underserved else "high demand + capacity strain"
+            st.markdown(f'<div class="risk-low">✅ <b>Expand</b> — {_reason} suggests a new clinic will capture incremental revenue without cannibalizing existing locations.</div>', unsafe_allow_html=True)
         elif city_data['cei_same'] > 35:
-            st.markdown('<div class="insight-box">⚠️ <b>Selective</b> — expand only if cannibalization analysis shows low overlap and there are underserved pincodes.</div>', unsafe_allow_html=True)
+            if _has_underserved:
+                st.markdown('<div class="insight-box">⚠️ <b>Selective — underserved demand detected.</b> Patients are traveling 20+ km. A peripheral clinic could capture this demand with lower cannibalization risk.</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="insight-box">⚠️ <b>Selective</b> — expand only if cannibalization analysis shows low overlap and there are underserved pincodes.</div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="risk-high">❌ <b>Hold</b> — current clinics are underperforming. Fix operations before adding capacity.</div>', unsafe_allow_html=True)
     
