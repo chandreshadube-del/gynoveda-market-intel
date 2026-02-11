@@ -827,13 +827,15 @@ def build_whitespace_dual_signal(dist_threshold_km=20):
     
     # --- Web orders from far pincodes ---
     wp = data.get('web_pin', pd.DataFrame())
-    if len(wp) > 0 and 'pincode' in wp.columns:
-        wp['pin_int'] = wp['pincode'].apply(_clean_pin)
+    if len(wp) > 0 and 'Zip' in wp.columns:
+        wp['pin_int'] = wp['Zip'].apply(_clean_pin)
         web_far = wp[wp['pin_int'].isin(far_pins)]
-        web_agg = web_far.groupby('pin_int').agg(
-            web_orders=('orders', 'sum'),
-            web_rev=('revenue', 'sum') if 'revenue' in web_far.columns else ('orders', 'sum'),
-        ).reset_index()
+        _web_agg_dict = {'web_orders': ('orders', 'sum')}
+        if 'revenue' in web_far.columns:
+            _web_agg_dict['web_rev'] = ('revenue', 'sum')
+        else:
+            _web_agg_dict['web_rev'] = ('orders', 'sum')
+        web_agg = web_far.groupby('pin_int').agg(**_web_agg_dict).reset_index()
     else:
         web_agg = pd.DataFrame(columns=['pin_int', 'web_orders', 'web_rev'])
     
@@ -1448,10 +1450,13 @@ with tab3:
             st.info("No underserved zones detected at this distance threshold.")
     
     else:
-        st.warning("⚠️ Pin geocode data not found. Upload `pin_geocode.csv` to the `mis_data/` folder to enable dual-signal whitespace analysis.")
-        st.markdown("*This file maps Indian pincodes to lat/lon coordinates for distance computation.*")
-        if _geo_debug:
-            st.caption(f"Debug: {_geo_debug}")
+        if len(pin_geo) == 0:
+            st.warning("⚠️ Pin geocode data not found. Upload `pin_geocode.csv` to the `mis_data/` folder to enable dual-signal whitespace analysis.")
+            st.markdown("*This file maps Indian pincodes to lat/lon coordinates for distance computation.*")
+            if _geo_debug:
+                st.caption(f"Debug: {_geo_debug}")
+        else:
+            st.info(f"ℹ️ Pin geocode loaded ({len(pin_geo):,} pincodes) but dual-signal analysis returned no results. Check Streamlit logs for errors.")
     
     st.markdown("---")
     
