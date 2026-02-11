@@ -506,8 +506,8 @@ l3m = active_months[-3:] if len(active_months) >= 3 else active_months
 l6m = active_months[-6:] if len(active_months) >= 6 else active_months
 
 # ── SCORING ENGINE ──────────────────────────────────────────────────────
-@st.cache_data
-def build_city_scores():
+@st.cache_data(ttl=300)
+def build_city_scores(cache_version='v1.2'):
     """
     Build Composite Expansion Index (CEI) for every city.
     Returns two DataFrames: same_city (existing) and new_city (whitespace).
@@ -677,7 +677,7 @@ def build_city_scores():
     return df_city.sort_values('cei_same', ascending=False), new_cities.sort_values('cei_new', ascending=False)
 
 
-@st.cache_data
+@st.cache_data(ttl=300)
 def build_cannibalization_matrix():
     """
     For each existing city with 2+ clinics, compute:
