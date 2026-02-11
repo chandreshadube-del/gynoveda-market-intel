@@ -1632,39 +1632,47 @@ with tab4:
                                         value=round(ramp_s['avg_sales_l'].iloc[-1], 1) if len(ramp_s) > 0 else 20.0,
                                         step=1.0, format="%.1f", key='ss_val')
     with sim3:
-        wave_1_pct = st.slider("Wave 1 Launch (%)", 20, 100, 50)
-        wave_2_month = st.number_input("Wave 2 Start (Month)", value=6, step=1, min_value=1)
+        clinics_per_month = st.number_input("Clinics Launched per Month", value=2, step=1, min_value=1, max_value=20, key='cpm')
+        launch_gap = st.number_input("Gap Between Batches (months)", value=1, step=1, min_value=1, max_value=6, key='gap')
     
     scenario_mult = {'Conservative (0.85x)': 0.85, 'Base Case (1.0x)': 1.0, 'Optimistic (1.15x)': 1.15}[scenario]
     
-    # Build 24-month projection
-    wave_1_n = int(n_clinics * wave_1_pct / 100)
-    wave_2_n = n_clinics - wave_1_n
+    # Build launch schedule — staggered rollout
+    launch_schedule = []  # list of (launch_month, num_clinics)
+    remaining = n_clinics
+    launch_month = 0
+    while remaining > 0:
+        batch = min(clinics_per_month, remaining)
+        launch_schedule.append((launch_month, batch))
+        remaining -= batch
+        launch_month += launch_gap
     
+    # Show launch schedule summary
+    total_launch_months = launch_schedule[-1][0] if launch_schedule else 0
+    st.caption(f"📅 Launch plan: {len(launch_schedule)} batches over {total_launch_months} months · "
+               f"First clinic M0 → Last batch M{total_launch_months}")
+    
+    # Build 24-month projection with staggered launches
     proj_data = []
     cum_rev = 0
     cum_opex = 0
     cum_ebitda = 0
     
     for m in range(24):
-        # Wave 1 clinics (launch at M0)
-        w1_rev = 0
-        if m < len(ramp_s):
-            w1_rev = ramp_s.iloc[m]['avg_sales_l'] * scenario_mult * wave_1_n
-        else:
-            w1_rev = steady_sales * scenario_mult * wave_1_n
+        total_rev = 0
+        active = 0
         
-        # Wave 2 clinics (launch at wave_2_month)
-        w2_rev = 0
-        w2_month = m - wave_2_month
-        if w2_month >= 0:
-            if w2_month < len(ramp_s):
-                w2_rev = ramp_s.iloc[w2_month]['avg_sales_l'] * scenario_mult * wave_2_n
+        # Each batch contributes based on its age (months since its launch)
+        for batch_launch, batch_size in launch_schedule:
+            age = m - batch_launch  # how many months since this batch launched
+            if age < 0:
+                continue  # batch not yet launched
+            active += batch_size
+            if age < len(ramp_s):
+                total_rev += ramp_s.iloc[age]['avg_sales_l'] * scenario_mult * batch_size
             else:
-                w2_rev = steady_sales * scenario_mult * wave_2_n
+                total_rev += steady_sales * scenario_mult * batch_size
         
-        total_rev = w1_rev + w2_rev
-        active = wave_1_n + (wave_2_n if m >= wave_2_month else 0)
         total_opex = monthly_opex * active
         monthly_ebitda = total_rev - total_opex
         
@@ -1713,7 +1721,7 @@ with tab4:
         rows=2, cols=1, shared_xaxes=True,
         row_heights=[0.55, 0.45], vertical_spacing=0.08,
         subplot_titles=(
-            f"Monthly P&L — {n_clinics} New Clinics ({scenario})",
+            f"Monthly P&L — {n_clinics} Clinics, {clinics_per_month}/month ({scenario})",
             "Cumulative EBITDA vs Capex Recovery"
         )
     )
@@ -1722,8 +1730,9 @@ with tab4:
     fig_proj.add_trace(go.Bar(
         x=df_proj['month'], y=df_proj['monthly_rev_l'],
         name='Revenue', marker_color='#4ECDC4', opacity=0.75,
-        text=[f"₹{v:.0f}L" if i % 3 == 0 else "" for i, v in enumerate(df_proj['monthly_rev_l'])],
-        textposition='outside', textfont_size=9
+        text=[f"₹{v:.0f}L<br>({int(a)} clinics)" if i % 3 == 0 else "" 
+              for i, (v, a) in enumerate(zip(df_proj['monthly_rev_l'], df_proj['active_clinics']))],
+        textposition='outside', textfont_size=8
     ), row=1, col=1)
     
     fig_proj.add_trace(go.Bar(
