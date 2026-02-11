@@ -54,7 +54,7 @@ CITY_NAMES = {
 # ── CSS ─────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    .block-container {padding-top: 0.6rem; padding-bottom: 0.5rem; max-width: 1400px;}
+    .block-container {padding-top: 1.2rem; padding-bottom: 0.5rem; max-width: 1400px;}
     [data-testid="stMetric"] {background: #f8f9fa; border-radius: 10px; padding: 12px 16px;
         border-left: 4px solid #FF6B35;}
     [data-testid="stMetric"] label {font-size: 0.72rem !important; color: #666;}
@@ -84,7 +84,233 @@ st.markdown("""
 
 # ── DATA LOADING ────────────────────────────────────────────────────────
 DATA = "mis_data"
+os.makedirs(DATA, exist_ok=True)
 
+# ── Excel → CSV Processing Engine ──────────────────────────────────────
+def process_mis_excel(file_bytes):
+    """Process Clinic_Location__Monthly_MIS.xlsx → 10 CSVs."""
+    import io, datetime
+    xls = pd.ExcelFile(io.BytesIO(file_bytes))
+    
+    # 1. clinic_master.csv from 'Goal Sales'
+    df_gs = pd.read_excel(xls, sheet_name='Goal Sales')
+    clinics = df_gs.iloc[1:]
+    master = clinics[['Area','Code','Tier','City','Region','Zone','V1','Launch','Age','Cabins']].copy()
+    master.columns = ['area','code','tier','city','region','zone','v1','launch','age','cabins']
+    master['code'] = pd.to_numeric(master['code'], errors='coerce').fillna(0).astype(int)
+    master['cabins'] = pd.to_numeric(master['cabins'], errors='coerce').fillna(1).astype(int)
+    master['launch'] = pd.to_datetime(master['launch'], errors='coerce').dt.strftime('%Y-%m-%d')
+    master = master[master['code'] > 0]
+    master.to_csv(f'{DATA}/clinic_master.csv', index=False)
+    
+    valid_codes = set(master['code'].tolist())
+    master_area_to_code = dict(zip(master['area'].str.lower().str.strip(), master['code']))
+    master_areas = set(master_area_to_code.keys())
+    
+    # Helper: extract clinic-level monthly data by matching Area name
+    def extract_by_area(sheet_name):
+        df = pd.read_excel(xls, sheet_name=sheet_name)
+        date_cols = [c for c in df.columns if isinstance(c, (pd.Timestamp, datetime.datetime))]
+        df['_area_key'] = df['Area'].astype(str).str.lower().str.strip()
+        clinic_rows = df[df['_area_key'].isin(master_areas)].copy()
+        result = pd.DataFrame()
+        result['area'] = clinic_rows['Area'].values
+        result['code'] = clinic_rows['_area_key'].map(master_area_to_code).astype(int).values
+        seen = set()
+        for dc in date_cols:
+            ms = pd.Timestamp(dc).strftime('%Y-%m')
+            if ms not in seen and ms <= '2026-12':
+                result[ms] = pd.to_numeric(clinic_rows[dc], errors='coerce').fillna(0).values
+                seen.add(ms)
+        return result
+    
+    # 2-6. Clinic-level sheets
+    for sheet, fname in [('SalesMTD','clinic_sales_mtd'),('1Cx','clinic_1cx'),
+                          ('rCx','clinic_rcx'),('CAC','clinic_cac'),('LTV','clinic_ltv')]:
+        try:
+            df = extract_by_area(sheet)
+            df.to_csv(f'{DATA}/{fname}.csv', index=False)
+        except: pass
+    
+    # 7. P&L from 'Ebitda Trend'
+    try:
+        df_eb = pd.read_excel(xls, sheet_name='Ebitda Trend')
+        area_col = df_eb.columns[0]
+        df_eb['_ak'] = df_eb[area_col].astype(str).str.lower().str.strip()
+        clinic_pl = df_eb[df_eb['_ak'].isin(master_areas)].copy()
+        pl_out = pd.DataFrame()
+        pl_out['area'] = clinic_pl[area_col].values
+        pl_out['code'] = clinic_pl['_ak'].map(master_area_to_code).astype(int).values
+        if 'Fy26' in clinic_pl.columns:
+            pl_out['fy26_ebitda_pct'] = pd.to_numeric(clinic_pl['Fy26'], errors='coerce').fillna(0).values
+        # Merge FY26 sales from sales data
+        try:
+            sales_df = pd.read_csv(f'{DATA}/clinic_sales_mtd.csv')
+            fy26_cols = [c for c in sales_df.columns if c >= '2025-04' and c <= '2026-03' and c not in ['area','code']]
+            if fy26_cols:
+                sales_df['fy26_sales_l'] = sales_df[fy26_cols].sum(axis=1) * 100
+                pl_out = pl_out.merge(sales_df[['code','fy26_sales_l']], on='code', how='left')
+                if 'fy26_sales_l' in pl_out.columns:
+                    pl_out['fy26_tacos_l'] = pl_out['fy26_sales_l'] * (1 - pl_out.get('fy26_ebitda_pct', 0))
+        except: pass
+        pl_out.to_csv(f'{DATA}/clinic_pl.csv', index=False)
+    except: pass
+    
+    # 8. Network monthly (from total rows in SalesMTD, 1Cx, rCx)
+    try:
+        import datetime
+        rows = []
+        df_sm = pd.read_excel(xls, sheet_name='SalesMTD')
+        date_cols = [c for c in df_sm.columns if isinstance(c, (pd.Timestamp, datetime.datetime))]
+        for dc in date_cols:
+            ms = pd.Timestamp(dc).strftime('%Y-%m')
+            if ms <= '2026-12':
+                rows.append({
+                    'month': ms,
+                    'clinics_cr': float(pd.to_numeric(df_sm.iloc[2][dc], errors='coerce') or 0),
+                    'video_cr': float(pd.to_numeric(df_sm.iloc[1][dc], errors='coerce') or 0)
+                })
+        net_df = pd.DataFrame(rows)
+        # Add 1Cx/rCx totals
+        for sheet, col_name in [('1Cx','clinics_1cx'),('rCx','clinics_rcx')]:
+            df_cx = pd.read_excel(xls, sheet_name=sheet)
+            cx_dates = [c for c in df_cx.columns if isinstance(c, (pd.Timestamp, datetime.datetime))]
+            cx_map = {}
+            for dc in cx_dates:
+                ms = pd.Timestamp(dc).strftime('%Y-%m')
+                if ms <= '2026-12':
+                    cx_map[ms] = float(pd.to_numeric(df_cx.iloc[2][dc], errors='coerce') or 0)
+            net_df[col_name] = net_df['month'].map(cx_map).fillna(0)
+        net_df.to_csv(f'{DATA}/network_monthly.csv', index=False)
+    except: pass
+    
+    # 9-10. Ramp curves
+    try:
+        sales_df = pd.read_csv(f'{DATA}/clinic_sales_mtd.csv')
+        cx1_df = pd.read_csv(f'{DATA}/clinic_1cx.csv')
+        master_df = pd.read_csv(f'{DATA}/clinic_master.csv')
+        
+        for src_df, val_label, out_name, agg_col in [
+            (sales_df, 'avg_sales_cr', 'sales_ramp_curve', 'avg_sales_l'),
+            (cx1_df, 'avg_1cx', '1cx_ramp_curve', None)
+        ]:
+            merged = src_df.merge(master_df[['code','launch']], on='code', how='left')
+            m_cols = [c for c in src_df.columns if c not in ['area','code']]
+            ramp_all = []
+            for _, row in merged.iterrows():
+                launch = pd.to_datetime(row['launch'])
+                for m in m_cols:
+                    mdt = pd.to_datetime(m + '-01')
+                    mn = (mdt.year - launch.year)*12 + (mdt.month - launch.month)
+                    if mn >= 0 and row[m] > 0:
+                        ramp_all.append({'month_num': mn, 'val': row[m]})
+            if ramp_all:
+                df_r = pd.DataFrame(ramp_all)
+                agg = df_r.groupby('month_num').agg(avg_val=('val','mean'), clinics=('val','count')).reset_index()
+                if agg_col == 'avg_sales_l':
+                    agg.rename(columns={'avg_val':'avg_sales_cr'}, inplace=True)
+                    agg['avg_sales_l'] = agg['avg_sales_cr'] * 100
+                else:
+                    agg.rename(columns={'avg_val':'avg_1cx'}, inplace=True)
+                agg = agg[agg['month_num'] <= 30].sort_values('month_num')
+                agg.to_csv(f'{DATA}/{out_name}.csv', index=False)
+    except: pass
+    
+    return True
+
+def process_firsttime_excel(file_bytes):
+    """Process Clinic_wise_FirstTime_TotalQuantity_by_Pincode.xlsx → pincode_firsttime.csv"""
+    import io
+    df = pd.read_excel(io.BytesIO(file_bytes))
+    df.to_csv(f'{DATA}/pincode_firsttime.csv', index=False)
+    return True
+
+def process_zipdata_excel(file_bytes):
+    """Process ZipData_Clinic_NTB.xlsx → clinic_pincode_demand.csv"""
+    import io
+    df = pd.read_excel(io.BytesIO(file_bytes))
+    pin_demand = df.groupby(['Clinic Loc','Zip','City','State']).agg(
+        qty=('Quantity','sum'), revenue=('Total','sum')
+    ).reset_index()
+    pin_demand.to_csv(f'{DATA}/clinic_pincode_demand.csv', index=False)
+    return True
+
+def process_web_orders_excel(file_bytes):
+    """Process 1cx web orders file → web_city_demand.csv + web_pincode_yearly.csv"""
+    import io
+    df = pd.read_excel(io.BytesIO(file_bytes))
+    # City demand
+    web_city = df.groupby('City').agg(
+        total_orders=('Quantity','sum'), total_revenue=('Total','sum'),
+        unique_pincodes=('Zip','nunique')
+    ).reset_index().sort_values('total_orders', ascending=False)
+    web_city.to_csv(f'{DATA}/web_city_demand.csv', index=False)
+    # Yearly pincode
+    df['year'] = pd.to_datetime(df['Date']).dt.year
+    web_pin = df.groupby(['year','Zip','City','State']).agg(
+        orders=('Quantity','sum'), revenue=('Total','sum')
+    ).reset_index()
+    web_pin.to_csv(f'{DATA}/web_pincode_yearly.csv', index=False)
+    return True
+
+
+# ── Upload UI in Sidebar ──────────────────────────────────────────────
+with st.sidebar:
+    with st.expander("📤 Upload Fresh Data", expanded=False):
+        st.markdown("Upload updated Excel files to refresh all metrics instantly.")
+        
+        up_mis = st.file_uploader("Clinic MIS (Monthly)", type=['xlsx','xls'], 
+                                   key='up_mis', help="Clinic_Location__Monthly_MIS.xlsx")
+        up_ft = st.file_uploader("First-Time Pincodes", type=['xlsx','xls'], 
+                                  key='up_ft', help="Clinic_wise_FirstTime_TotalQuantity_by_Pincode.xlsx")
+        up_zip = st.file_uploader("Clinic NTB Zip Data", type=['xlsx','xls'], 
+                                   key='up_zip', help="ZipData_Clinic_NTB.xlsx")
+        up_web = st.file_uploader("Website Orders", type=['xlsx','xls'], 
+                                   key='up_web', help="1cx_order_qty_pincode_of_website.xlsx")
+        
+        if st.button("🔄 Process & Refresh", type="primary", use_container_width=True):
+            processed = []
+            errors = []
+            
+            with st.spinner("Processing uploads..."):
+                if up_mis:
+                    try:
+                        process_mis_excel(up_mis.getvalue())
+                        processed.append("✅ Clinic MIS → 10 CSVs")
+                    except Exception as e:
+                        errors.append(f"❌ MIS: {e}")
+                if up_ft:
+                    try:
+                        process_firsttime_excel(up_ft.getvalue())
+                        processed.append("✅ First-Time Pincodes")
+                    except Exception as e:
+                        errors.append(f"❌ First-Time: {e}")
+                if up_zip:
+                    try:
+                        process_zipdata_excel(up_zip.getvalue())
+                        processed.append("✅ Clinic NTB Zip Data")
+                    except Exception as e:
+                        errors.append(f"❌ Zip Data: {e}")
+                if up_web:
+                    try:
+                        process_web_orders_excel(up_web.getvalue())
+                        processed.append("✅ Website Orders → 2 CSVs")
+                    except Exception as e:
+                        errors.append(f"❌ Web Orders: {e}")
+            
+            if processed:
+                st.success("\n".join(processed))
+                st.cache_data.clear()
+                st.rerun()
+            if errors:
+                st.error("\n".join(errors))
+            if not processed and not errors:
+                st.warning("No files uploaded. Select at least one file above.")
+        
+        st.caption("Upload any combination — only uploaded files get refreshed. Existing data stays for the rest.")
+
+
+# ── Load CSVs (from disk — either original or freshly processed) ──
 @st.cache_data(ttl=600)
 def load_all():
     d = {}
@@ -357,7 +583,7 @@ with st.sidebar:
     st.caption(f"Data: {active_months[0]} to {active_months[-1]} · {len(master)} clinics")
 
 # ── HEADER ──────────────────────────────────────────────────────────────
-st.markdown("## 🧭 Gynoveda Expansion Intelligence")
+st.markdown("<h2 style='margin-bottom:0.2rem;'>Gynoveda Expansion Intelligence</h2>", unsafe_allow_html=True)
 
 # ── TABS ────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4 = st.tabs([
@@ -540,13 +766,13 @@ with tab2:
     st.markdown("#### Composite Expansion Index — Existing Cities")
     
     display_same = same_city_scores.copy()
-    display_same['CEI'] = display_same['cei_same'].round(0).astype(int)
+    display_same['CEI'] = display_same['cei_same'].fillna(0).round(0).astype(int)
     display_same['L3M Rev'] = display_same['l3m_rev_cr'].apply(lambda x: fmt_inr(x * 1e7))
     display_same['Growth'] = display_same['growth_pct'].apply(lambda x: f"{x*100:+.0f}%")
     display_same['Rev/Cabin'] = display_same['sales_per_cabin_l'].apply(lambda x: fmt_inr(x * 1e5))
     display_same['Web Orders'] = display_same['web_orders'].apply(lambda x: fmt_num(x))
     display_same['EBITDA'] = display_same['avg_ebitda_pct'].apply(lambda x: pct(x))
-    display_same['Pincodes'] = display_same['pincodes_served'].astype(int)
+    display_same['Pincodes'] = display_same['pincodes_served'].fillna(0).astype(int)
     
     st.dataframe(
         display_same[['city_name','clinics','total_cabins','CEI','L3M Rev','Growth',
@@ -676,22 +902,23 @@ with tab3:
     
     # ── Whitespace Scoring Table ──
     display_new = new_city_scores.head(30).copy()
-    display_new['CEI'] = display_new['cei_new'].round(0).astype(int)
+    display_new['CEI'] = display_new['cei_new'].fillna(0).round(0).astype(int)
     display_new['Orders'] = display_new['total_orders'].apply(lambda x: fmt_num(x))
     display_new['Revenue'] = display_new['total_revenue'].apply(lambda x: fmt_inr(x))
     display_new['Growth'] = display_new['trend_growth'].apply(lambda x: f"{x*100:+.0f}%")
     
     # O2O projected patients
-    display_new['Projected Monthly NTB'] = (display_new['total_orders'] * (o2o_conversion / 100) / 12).astype(int)
+    display_new['Projected Monthly NTB'] = (display_new['total_orders'] * (o2o_conversion / 100) / 12).fillna(0).astype(int)
     display_new['Projected Monthly Rev'] = display_new['Projected Monthly NTB'] * rev_per_ntb * 1000
     display_new['Proj. Rev (₹L/mo)'] = (display_new['Projected Monthly Rev'] / 1e5).round(1)
     
-    # Breakeven check
-    display_new['Months to OpEx BE'] = np.where(
+    # Breakeven check — safe division, replace Inf/NaN before int cast
+    _be_raw = np.where(
         display_new['Proj. Rev (₹L/mo)'] > 0,
-        np.ceil(monthly_opex / display_new['Proj. Rev (₹L/mo)'] * 3).astype(int),  # Conservative: takes 3x initial months
+        np.ceil(monthly_opex / display_new['Proj. Rev (₹L/mo)'].replace(0, np.nan) * 3),
         99
     )
+    display_new['Months to OpEx BE'] = pd.Series(_be_raw).fillna(99).clip(upper=99).astype(int).values
     
     st.dataframe(
         display_new[['City','CEI','Orders','Revenue','Growth','Projected Monthly NTB',
