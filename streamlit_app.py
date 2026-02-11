@@ -1593,12 +1593,16 @@ with tab4:
                                        line=dict(color='#FF6B35', width=3), marker=dict(size=5)))
         # Add envelope: use clinics count as confidence
         fig_ramp.add_hline(y=monthly_opex, line_dash="dash", line_color="#dc3545",
-                          annotation_text=f"OpEx Breakeven (₹{monthly_opex}L)")
+                          annotation_text=f"OpEx BE (₹{monthly_opex}L)",
+                          annotation_position="top right",
+                          annotation_font_size=11)
         total_monthly = monthly_opex + (capex_per_clinic / 24)  # 24-month amortization
         fig_ramp.add_hline(y=total_monthly, line_dash="dot", line_color="#FFA000",
-                          annotation_text=f"Full Breakeven (₹{total_monthly:.1f}L)")
+                          annotation_text=f"Full BE (₹{total_monthly:.1f}L)",
+                          annotation_position="bottom right",
+                          annotation_font_size=11)
         fig_ramp.update_layout(title="Average Clinic Sales Ramp (M0→M12)", height=380,
-                              margin=dict(l=20, r=20, t=40, b=20),
+                              margin=dict(l=40, r=20, t=50, b=30),
                               xaxis_title="Month Since Launch", yaxis_title="₹ Lakhs/month")
         st.plotly_chart(fig_ramp, use_container_width=True)
     
