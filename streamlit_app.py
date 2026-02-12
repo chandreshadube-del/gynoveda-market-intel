@@ -483,7 +483,8 @@ def process_zipdata_excel(file_bytes):
     """Process ZipData_Clinic_NTB.xlsx → clinic_pincode_demand.csv"""
     import io
     df = pd.read_excel(io.BytesIO(file_bytes))
-    pin_demand = df.groupby(['Clinic Loc','Zip','City','State']).agg(
+    # Keep SubCity for micro-market identification in underserved zone analysis
+    pin_demand = df.groupby(['Clinic Loc','Zip','SubCity','City','State']).agg(
         qty=('Quantity','sum'), revenue=('Total','sum')
     ).reset_index()
     pin_demand.to_csv(f'{DATA}/clinic_pincode_demand.csv', index=False)
@@ -1012,6 +1013,18 @@ def build_whitespace_dual_signal(dist_threshold_km=20):
     pd_copy['pin_int'] = pd_copy['Zip'].apply(_clean_pin)
     ntb_far = pd_copy[pd_copy['pin_int'].isin(far_pins)]
     
+    # Build micro-market lookup: top SubCity names by NTB volume per city
+    _has_subcity = 'SubCity' in ntb_far.columns and ntb_far['SubCity'].notna().any()
+    if _has_subcity:
+        _subcity_vol = ntb_far.groupby(['City', 'SubCity'])['qty'].sum().reset_index()
+        _subcity_vol = _subcity_vol[_subcity_vol['SubCity'].notna() & (_subcity_vol['SubCity'] != '-')]
+        def _top_micro(grp):
+            top = grp.nlargest(3, 'qty')
+            return ', '.join(f"{r['SubCity']} ({int(r['qty'])})" for _, r in top.iterrows())
+        _micro_map = _subcity_vol.groupby('City').apply(_top_micro).to_dict()
+    else:
+        _micro_map = {}
+    
     ntb_agg = ntb_far.groupby('pin_int').agg(
         ntb_qty=('qty', 'sum'),
         ntb_rev=('revenue', 'sum'),
@@ -1067,11 +1080,12 @@ def build_whitespace_dual_signal(dist_threshold_km=20):
         score=('combined_score', 'sum'),
     ).reset_index()
     
-    # Add weighted distance and source clinic
+    # Add weighted distance, source clinic, and top underserved micro-markets
     _w_dist = dual.groupby(['city', 'state']).apply(_weighted_avg_dist).reset_index(name='avg_dist')
     _src_clinic = dual.groupby(['city', 'state']).apply(_primary_source_clinic).reset_index(name='source_clinic')
     city_agg = city_agg.merge(_w_dist, on=['city', 'state'], how='left')
     city_agg = city_agg.merge(_src_clinic, on=['city', 'state'], how='left')
+    city_agg['top_micro_markets'] = city_agg['city'].map(_micro_map).fillna('—')
     city_agg = city_agg.sort_values('score', ascending=False)
     
     # Classify: existing vs new city
@@ -1840,9 +1854,10 @@ The **CEI Penalty** slider (sidebar) automatically reduces expansion scores for 
         display_eu['NTB Rev'] = display_eu['ntb_rev'].apply(lambda x: fmt_inr(x))
         display_eu['Avg Dist'] = display_eu['avg_dist'].apply(lambda x: f"{x:.0f} km")
         display_eu['Source Clinic'] = display_eu['source_clinic'].fillna('—')
+        display_eu['Top Underserved Areas'] = display_eu['top_micro_markets'].fillna('—')
         
         st.dataframe(
-            display_eu[['city','state','pincodes','NTB Visits','Web Orders','NTB Rev','Avg Dist','Source Clinic']].rename(columns={
+            display_eu[['city','state','pincodes','NTB Visits','Web Orders','NTB Rev','Avg Dist','Source Clinic','Top Underserved Areas']].rename(columns={
                 'city':'City','state':'State','pincodes':'Pincodes'
             }),
             use_container_width=True, height=400,
@@ -1916,6 +1931,7 @@ with tab3:
             display_ws['NTB Rev'] = display_ws['ntb_rev'].apply(lambda x: fmt_inr(x))
             display_ws['Avg Dist'] = display_ws['avg_dist'].apply(lambda x: f"{x:.0f} km")
             display_ws['Source Clinic'] = display_ws['source_clinic'].fillna('—')
+            display_ws['Top Underserved Areas'] = display_ws['top_micro_markets'].fillna('—')
             
             # O2O projected monthly NTB
             display_ws['Proj Monthly NTB'] = ((display_ws['total_web'] * (o2o_conversion / 100)) / 12).astype(int)
@@ -1923,7 +1939,7 @@ with tab3:
             
             st.dataframe(
                 display_ws[['city','state','pincodes','NTB Visits','Web Orders','NTB Rev',
-                            'Avg Dist','Source Clinic','Proj Monthly NTB','Proj Rev (₹L/mo)']].rename(columns={
+                            'Avg Dist','Source Clinic','Top Underserved Areas','Proj Monthly NTB','Proj Rev (₹L/mo)']].rename(columns={
                     'city':'City','state':'State','pincodes':'Pincodes'
                 }),
                 use_container_width=True, height=500,
