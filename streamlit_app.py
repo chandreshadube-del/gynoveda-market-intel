@@ -897,7 +897,9 @@ def build_cannibalization_matrix():
     return pd.DataFrame(results)
 
 
-same_city_scores, new_city_scores = build_city_scores()
+_same_cached, _new_cached = build_city_scores()
+same_city_scores = _same_cached.copy()
+new_city_scores = _new_cached.copy()
 cannibal_matrix = build_cannibalization_matrix()
 
 
