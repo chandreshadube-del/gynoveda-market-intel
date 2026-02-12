@@ -1567,6 +1567,89 @@ with tab2:
     
     st.markdown("---")
     
+    # ── NTB Funnel: Appointments → Show % → Show Nos ──
+    st.markdown("#### 📊 NTB Funnel — Appointments vs Show % vs Show Nos")
+    
+    _sel_city_code = same_city_scores[same_city_scores['city_name'] == selected_city]['city_code'].values[0]
+    
+    if len(ntb_show_data) > 0:
+        # Filter clinics in selected city
+        _city_ntb = ntb_show_data[ntb_show_data['city'] == _sel_city_code].copy()
+        
+        if len(_city_ntb) > 0:
+            # Aggregate monthly across all clinics in city
+            _monthly = _city_ntb.groupby('month').agg(
+                total_appt=('ntb_appt', 'sum'),
+                total_show=('ntb_show', 'sum'),
+                clinics=('code', 'nunique'),
+            ).reset_index().sort_values('month')
+            _monthly['show_pct'] = (_monthly['total_show'] / _monthly['total_appt'] * 100).round(1)
+            _monthly['show_pct'] = _monthly['show_pct'].clip(0, 100)
+            
+            # Dual-axis chart: bars for Appt & Show Nos, line for Show %
+            from plotly.subplots import make_subplots
+            fig_funnel = make_subplots(specs=[[{"secondary_y": True}]])
+            
+            fig_funnel.add_trace(go.Bar(
+                x=_monthly['month'], y=_monthly['total_appt'],
+                name='NTB Appointments', marker_color='#C8D6E5', opacity=0.7
+            ), secondary_y=False)
+            
+            fig_funnel.add_trace(go.Bar(
+                x=_monthly['month'], y=_monthly['total_show'],
+                name='NTB Show (Visits)', marker_color='#FF6B35', opacity=0.9
+            ), secondary_y=False)
+            
+            fig_funnel.add_trace(go.Scatter(
+                x=_monthly['month'], y=_monthly['show_pct'],
+                name='Show %', mode='lines+markers+text',
+                text=_monthly['show_pct'].apply(lambda x: f"{x:.0f}%"),
+                textposition='top center', textfont=dict(size=10),
+                line=dict(color='#2ECC71', width=2.5, dash='dot'),
+                marker=dict(size=7)
+            ), secondary_y=True)
+            
+            # Add benchmark line
+            fig_funnel.add_hline(
+                y=ntb_benchmark * _monthly['clinics'].iloc[-1] if len(_monthly) > 0 else ntb_benchmark,
+                line_dash="dash", line_color="#E74C3C", line_width=1.5,
+                annotation_text=f"{ntb_benchmark} NTB/clinic × {_monthly['clinics'].iloc[-1]} clinics = {ntb_benchmark * _monthly['clinics'].iloc[-1]:.0f}",
+                annotation_position="top right",
+                secondary_y=False
+            )
+            
+            fig_funnel.update_layout(
+                title=f"NTB Funnel — {selected_city} ({_monthly['clinics'].iloc[-1]} clinics)",
+                height=420, barmode='group',
+                margin=dict(l=40, r=40, t=60, b=30),
+                legend=dict(orientation='h', y=1.08, x=0.5, xanchor='center'),
+                yaxis_title="Patients",
+            )
+            fig_funnel.update_yaxes(title_text="Show %", secondary_y=True, range=[0, 60])
+            
+            st.plotly_chart(fig_funnel, use_container_width=True, config=PLOTLY_CFG)
+            
+            # Per-clinic breakdown table
+            _clinic_l3m = _city_ntb[_city_ntb['month'].isin(sorted(_city_ntb['month'].unique())[-3:])]
+            _clinic_agg = _clinic_l3m.groupby(['area', 'code']).agg(
+                avg_appt=('ntb_appt', 'mean'),
+                avg_show=('ntb_show', 'mean'),
+                avg_pct=('show_pct', 'mean'),
+            ).reset_index().sort_values('avg_show', ascending=False)
+            _clinic_agg['avg_appt'] = _clinic_agg['avg_appt'].round(0).astype(int)
+            _clinic_agg['avg_show'] = _clinic_agg['avg_show'].round(0).astype(int)
+            _clinic_agg['avg_pct'] = (_clinic_agg['avg_pct'] * 100).round(1)
+            _clinic_agg.columns = ['Clinic', 'Code', 'L3M Avg Appt/mo', 'L3M Avg Show/mo', 'Show %']
+            
+            st.caption(f"Per-clinic L3M average (monthly) — benchmark: {ntb_benchmark} NTB Show/clinic/month")
+            st.dataframe(_clinic_agg, use_container_width=True, hide_index=True)
+        else:
+            st.info(f"No NTB Show data found for {selected_city}. Upload NTB_Show_Month_Wise.xlsx via sidebar.")
+    else:
+        st.info("Upload NTB_Show_Month_Wise.xlsx via sidebar to enable the NTB funnel chart.")
+    
+    st.markdown("---")
+    
     # ── Cannibalization Risk with Radius Safeguard ──
     st.markdown("#### 🛡️ Cannibalization & Radius Safeguard")
     
