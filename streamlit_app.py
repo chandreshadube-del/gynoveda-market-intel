@@ -1046,15 +1046,33 @@ def build_whitespace_dual_signal(dist_threshold_km=20):
     )
     
     # --- City-level aggregation ---
+    # Weighted avg distance (by NTB visits) instead of simple mean
+    dual['_weight'] = dual['ntb_qty'].fillna(0) + dual['web_orders'].fillna(0)
+    def _weighted_avg_dist(group):
+        w = group['_weight']
+        d = group['dist_km']
+        return (d * w).sum() / w.sum() if w.sum() > 0 else d.mean()
+    
+    # Primary source clinic per city (mode of nearest_clinic across pincodes, weighted)
+    def _primary_source_clinic(group):
+        clinic_visits = group.groupby('nearest_clinic')['_weight'].sum()
+        return clinic_visits.idxmax() if len(clinic_visits) > 0 else '?'
+    
     city_agg = dual.groupby(['city', 'state']).agg(
         pincodes=('pin_int', 'nunique'),
         total_ntb=('ntb_qty', 'sum'),
         total_web=('web_orders', 'sum'),
         ntb_rev=('ntb_rev', 'sum'),
         web_rev=('web_rev', 'sum'),
-        avg_dist=('dist_km', 'mean'),
         score=('combined_score', 'sum'),
-    ).reset_index().sort_values('score', ascending=False)
+    ).reset_index()
+    
+    # Add weighted distance and source clinic
+    _w_dist = dual.groupby(['city', 'state']).apply(_weighted_avg_dist).reset_index(name='avg_dist')
+    _src_clinic = dual.groupby(['city', 'state']).apply(_primary_source_clinic).reset_index(name='source_clinic')
+    city_agg = city_agg.merge(_w_dist, on=['city', 'state'], how='left')
+    city_agg = city_agg.merge(_src_clinic, on=['city', 'state'], how='left')
+    city_agg = city_agg.sort_values('score', ascending=False)
     
     # Classify: existing vs new city
     existing_areas = set(master['area'].tolist())
@@ -1738,9 +1756,10 @@ The **CEI Penalty** slider (sidebar) automatically reduces expansion scores for 
         display_eu['Web Orders'] = display_eu['total_web'].apply(lambda x: fmt_num(x))
         display_eu['NTB Rev'] = display_eu['ntb_rev'].apply(lambda x: fmt_inr(x))
         display_eu['Avg Dist'] = display_eu['avg_dist'].apply(lambda x: f"{x:.0f} km")
+        display_eu['Source Clinic'] = display_eu['source_clinic'].fillna('—')
         
         st.dataframe(
-            display_eu[['city','state','pincodes','NTB Visits','Web Orders','NTB Rev','Avg Dist']].rename(columns={
+            display_eu[['city','state','pincodes','NTB Visits','Web Orders','NTB Rev','Avg Dist','Source Clinic']].rename(columns={
                 'city':'City','state':'State','pincodes':'Pincodes'
             }),
             use_container_width=True, height=400,
@@ -1813,6 +1832,7 @@ with tab3:
             display_ws['Web Orders'] = display_ws['total_web'].apply(lambda x: fmt_num(x))
             display_ws['NTB Rev'] = display_ws['ntb_rev'].apply(lambda x: fmt_inr(x))
             display_ws['Avg Dist'] = display_ws['avg_dist'].apply(lambda x: f"{x:.0f} km")
+            display_ws['Source Clinic'] = display_ws['source_clinic'].fillna('—')
             
             # O2O projected monthly NTB
             display_ws['Proj Monthly NTB'] = ((display_ws['total_web'] * (o2o_conversion / 100)) / 12).astype(int)
@@ -1820,7 +1840,7 @@ with tab3:
             
             st.dataframe(
                 display_ws[['city','state','pincodes','NTB Visits','Web Orders','NTB Rev',
-                            'Avg Dist','Proj Monthly NTB','Proj Rev (₹L/mo)']].rename(columns={
+                            'Avg Dist','Source Clinic','Proj Monthly NTB','Proj Rev (₹L/mo)']].rename(columns={
                     'city':'City','state':'State','pincodes':'Pincodes'
                 }),
                 use_container_width=True, height=500,
