@@ -508,6 +508,56 @@ def process_web_orders_excel(file_bytes):
     return True
 
 
+def process_ntb_show_excel(file_bytes):
+    """Process NTB_Show_Month_Wise.xlsx → ntb_show_clinic.csv
+    NTB Show = Appt × Show% (first-time patient visits, pre-purchase)
+    Columns: code, area, city, cabin, month, ntb_appt, show_pct, ntb_show
+    """
+    import io
+    raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name=0)
+    header_row = raw.iloc[0]  # Row 0 has column labels
+    
+    records = []
+    for i in range(1, len(raw)):
+        row = raw.iloc[i]
+        code = str(row.iloc[2]).strip()
+        # Skip zone/summary rows — only process rows with numeric clinic codes
+        if code in ['-', 'Code', 'nan', ''] or len(code) < 2:
+            continue
+        try:
+            int(code)
+        except ValueError:
+            continue
+        
+        area = str(row.iloc[0]).strip()
+        city = str(row.iloc[1]).strip()
+        cabin = row.iloc[4]
+        
+        # Each month has 2 columns: Appt (col 8,10,12,...) and Show% (col 9,11,13,...)
+        for m_idx in range(8, len(row), 2):
+            if m_idx + 1 >= len(row):
+                break
+            month_label = header_row.iloc[m_idx]
+            appt = row.iloc[m_idx]
+            show_pct = row.iloc[m_idx + 1]
+            try:
+                appt_n = float(appt)
+                show_n = float(show_pct)
+                ntb_show = appt_n * show_n
+                month_str = pd.Timestamp(month_label).strftime('%Y-%m') if not isinstance(month_label, str) else str(month_label)[:7]
+                records.append({
+                    'code': code, 'area': area, 'city': city, 'cabin': cabin,
+                    'month': month_str, 'ntb_appt': int(appt_n),
+                    'show_pct': round(show_n, 4), 'ntb_show': round(ntb_show, 1)
+                })
+            except (ValueError, TypeError):
+                pass  # Skip months with '-' or missing data
+    
+    df = pd.DataFrame(records)
+    df.to_csv(f'{DATA}/ntb_show_clinic.csv', index=False)
+    return True
+
+
 # ── Upload UI in Sidebar ──────────────────────────────────────────────
 with st.sidebar:
     with st.expander("📤 Upload Fresh Data", expanded=False):
@@ -521,6 +571,8 @@ with st.sidebar:
                                    key='up_zip', help="ZipData_Clinic_NTB.xlsx")
         up_web = st.file_uploader("Website Orders", type=['xlsx','xls'], 
                                    key='up_web', help="1cx_order_qty_pincode_of_website.xlsx")
+        up_ntb_show = st.file_uploader("NTB Show (Monthly)", type=['xlsx','xls'],
+                                        key='up_ntb_show', help="NTB_Show_Month_Wise.xlsx")
         
         if st.button("🔄 Process & Refresh", type="primary", use_container_width=True):
             processed = []
@@ -551,6 +603,12 @@ with st.sidebar:
                         processed.append("✅ Website Orders → 2 CSVs")
                     except Exception as e:
                         errors.append(f"❌ Web Orders: {e}")
+                if up_ntb_show:
+                    try:
+                        process_ntb_show_excel(up_ntb_show.getvalue())
+                        processed.append("✅ NTB Show → ntb_show_clinic.csv")
+                    except Exception as e:
+                        errors.append(f"❌ NTB Show: {e}")
             
             if processed:
                 st.success("\n".join(processed))
@@ -582,6 +640,12 @@ def load_all():
     d['pin_demand'] = pd.read_csv(f'{DATA}/clinic_pincode_demand.csv')
     d['web_city'] = pd.read_csv(f'{DATA}/web_city_demand.csv')
     d['web_pin'] = pd.read_csv(f'{DATA}/web_pincode_yearly.csv')
+    # NTB Show (optional — may not exist until uploaded)
+    _ntb_show_path = f'{DATA}/ntb_show_clinic.csv'
+    if os.path.exists(_ntb_show_path):
+        d['ntb_show'] = pd.read_csv(_ntb_show_path)
+    else:
+        d['ntb_show'] = pd.DataFrame(columns=['code','area','city','cabin','month','ntb_appt','show_pct','ntb_show'])
     return d
 
 data = load_all()
@@ -622,6 +686,7 @@ else:
 pin_ft = data['pin_ft']
 web_city = data['web_city']
 web_pin = data['web_pin']
+ntb_show_data = data['ntb_show']
 
 # Derived: active months
 s_months = sorted([c for c in sales.columns if c not in ['area','code']])
@@ -1026,8 +1091,10 @@ with st.sidebar:
     
     st.markdown("---")
     st.markdown("### 📊 CEI Weights (v2)")
+    ntb_benchmark = st.number_input("NTB Capacity Benchmark (per clinic/month)", value=150, step=10,
+                                     help="Cities above this threshold are at capacity — strong expansion signal")
     st.caption("Primary Signals")
-    w_capacity = st.slider("Capacity Utilization", 0, 60, 45, help="Sales per cabin vs network benchmark")
+    w_capacity = st.slider("NTB Capacity vs Benchmark", 0, 60, 45, help=f"How close each city is to {ntb_benchmark} NTB/clinic/month")
     w_underserved = st.slider("Patients Traveling 20+ km", 0, 60, 35, help="NTB visits + web orders from underserved pincodes")
     st.caption("Secondary Signals")
     w_secondary = st.slider("Web Orders + Growth + EBITDA + O2O", 0, 40, 20, help="Combined weight for legacy demand signals")
@@ -1097,8 +1164,27 @@ def _norm_v2(s):
     mn, mx = s.min(), s.max()
     return ((s - mn) / (mx - mn) * 100).fillna(0) if mx > mn else pd.Series(50, index=s.index)
 
-# PRIMARY: Capacity Utilization (sales per cabin)
-same_city_scores['d_capacity'] = _norm_v2(same_city_scores['sales_per_cabin_l'])
+# PRIMARY: NTB Capacity vs Benchmark (150 NTB Show/clinic/month default)
+# NTB Show = Appt × Show% (first-time patient visits, BEFORE purchase/1Cx)
+if len(ntb_show_data) > 0:
+    # Use actual NTB Show data — L3M average per clinic per city
+    _ntb_months = sorted(ntb_show_data['month'].unique())
+    _ntb_l3m = _ntb_months[-3:] if len(_ntb_months) >= 3 else _ntb_months
+    _ntb_l3m_data = ntb_show_data[ntb_show_data['month'].isin(_ntb_l3m)]
+    # Avg monthly NTB Show per clinic, then avg across clinics in each city
+    _ntb_clinic_monthly = _ntb_l3m_data.groupby(['city', 'code'])['ntb_show'].mean().reset_index()
+    _ntb_city_avg = _ntb_clinic_monthly.groupby('city')['ntb_show'].mean().reset_index()
+    _ntb_city_avg.columns = ['city_code_ntb', 'ntb_show_avg']
+    # Merge into same_city_scores
+    same_city_scores['ntb_per_clinic_month'] = same_city_scores['city_code'].map(
+        _ntb_city_avg.set_index('city_code_ntb')['ntb_show_avg']
+    ).fillna(0)
+else:
+    # Fallback: estimate from 1Cx (will undercount — NTB Show > 1Cx)
+    same_city_scores['ntb_per_clinic_month'] = (same_city_scores['l3m_1cx'] / 3).fillna(0)
+
+same_city_scores['ntb_pct_of_benchmark'] = (same_city_scores['ntb_per_clinic_month'] / ntb_benchmark * 100).clip(0, 200)
+same_city_scores['d_capacity'] = _norm_v2(same_city_scores['ntb_per_clinic_month'])
 
 # PRIMARY: Underserved Demand (NTB + web from 20+ km pincodes)
 same_city_scores['d_underserved'] = _norm_v2(
@@ -1282,10 +1368,11 @@ with tab1:
         st.markdown("**Same-City (Add Clinics)**")
         for _, row in top_same.iterrows():
             cei = row['cei_same']
+            _ntb_c = row.get('ntb_per_clinic_month', 0)
             badge = "🟢" if cei > 60 else "🟡" if cei > 40 else "🔴"
             st.markdown(f"""
             {badge} **{row['city_name']}** — CEI: **{cei:.0f}** · {int(row['clinics'])} clinics · 
-            L3M Rev: {fmt_inr(row['l3m_rev_cr'] * 1e7)} · Web Orders: {fmt_num(row['web_orders'])}
+            **{_ntb_c:.0f}** NTB/clinic/mo · L3M Rev: {fmt_inr(row['l3m_rev_cr'] * 1e7)}
             """)
     
     with col_new:
@@ -1303,13 +1390,13 @@ with tab1:
     
     # Auto-generated insights
     high_growth_cities = same_city_scores[same_city_scores['growth_pct'] > 0.2]
-    saturated_cities = same_city_scores[same_city_scores['sales_per_cabin_l'] > same_city_scores['sales_per_cabin_l'].quantile(0.75)]
+    at_capacity_cities = same_city_scores[same_city_scores['ntb_per_clinic_month'] >= ntb_benchmark]
     high_cannibal = cannibal_matrix[cannibal_matrix['risk_level'].isin(['Critical', 'High'])] if len(cannibal_matrix) > 0 else pd.DataFrame()
     
     insights = []
-    if len(saturated_cities) > 0:
-        top_sat = saturated_cities.iloc[0]
-        insights.append(f"🔥 **{top_sat['city_name']}** has the highest capacity utilization ({fmt_inr(top_sat['sales_per_cabin_l'] * 1e5)}/cabin) — strong candidate for an additional clinic.")
+    if len(at_capacity_cities) > 0:
+        top_cap = at_capacity_cities.iloc[0]
+        insights.append(f"🔥 **{len(at_capacity_cities)} cities at or above {ntb_benchmark} NTB/clinic/month benchmark** — {top_cap['city_name']} leads at {top_cap['ntb_per_clinic_month']:.0f} NTB/clinic. Strong expansion candidates.")
     if len(high_cannibal) > 0:
         core_total = high_cannibal['core_shared'].sum()
         insights.append(f"⚠️ **{len(high_cannibal)} clinic pairs** flagged Critical/High risk — {core_total} shared core pincodes detected. Review radius safeguard in Same-City tab.")
@@ -1338,7 +1425,8 @@ with tab2:
     _sc_total_clinics = int(_sc['clinics'].sum())
     _sc_total_cabins = int(_sc['total_cabins'].sum())
     _sc_top = _sc.iloc[0]
-    _sc_avg_rpc = _sc['sales_per_cabin_l'].mean()
+    _sc_above_bench = (_sc['ntb_per_clinic_month'] >= ntb_benchmark).sum()
+    _sc_avg_ntb = _sc['ntb_per_clinic_month'].mean()
     _sc_total_underserved = _sc['underserved_ntb'].sum() + _sc['underserved_web'].sum()
     _sc_underserved_rev = _sc['underserved_rev'].sum()
     
@@ -1350,8 +1438,8 @@ with tab2:
         st.metric("Top Expansion Pick", f"{_sc_top['city_name']}")
         st.caption(f"CEI Score: {_sc_top['cei_same']:.0f}")
     with sc_k3:
-        st.metric("Avg Rev / Cabin", fmt_inr(_sc_avg_rpc * 1e5))
-        st.caption("Primary CEI signal (45%)")
+        st.metric(f"Cities ≥ {ntb_benchmark} NTB", f"{_sc_above_bench} of {_sc_total_cities}")
+        st.caption(f"Avg: {_sc_avg_ntb:.0f} NTB/clinic/month")
     with sc_k4:
         st.metric("Underserved Demand", fmt_num(_sc_total_underserved))
         st.caption(f"NTB + Web from 20+ km")
@@ -1363,13 +1451,14 @@ with tab2:
     
     # ── CEI Ranking Table ──
     st.markdown("#### Composite Expansion Index — Existing Cities")
-    st.caption("CEI v2: Capacity (45%) + Underserved Demand (35%) + Secondary Signals (20%) · IVF Competition coming soon")
+    st.caption(f"CEI v2: NTB Capacity vs {ntb_benchmark} benchmark + Underserved Demand (20+ km) + Secondary Signals · IVF Competition coming soon")
     
     display_same = same_city_scores.copy()
     display_same['CEI'] = display_same['cei_same'].fillna(0).round(0).astype(int)
+    display_same['NTB/Clinic'] = display_same['ntb_per_clinic_month'].apply(lambda x: f"{x:.0f}")
+    display_same['vs Bench'] = display_same['ntb_pct_of_benchmark'].apply(lambda x: f"{x:.0f}%")
     display_same['L3M Rev'] = display_same['l3m_rev_cr'].apply(lambda x: fmt_inr(x * 1e7))
     display_same['Growth'] = display_same['growth_pct'].apply(lambda x: f"{x*100:+.0f}%")
-    display_same['Rev/Cabin'] = display_same['sales_per_cabin_l'].apply(lambda x: fmt_inr(x * 1e5))
     display_same['20km NTB'] = display_same['underserved_ntb'].apply(lambda x: fmt_num(x))
     display_same['20km Web'] = display_same['underserved_web'].apply(lambda x: fmt_num(x))
     display_same['20km Rev'] = display_same['underserved_rev'].apply(lambda x: fmt_inr(x))
@@ -1377,9 +1466,9 @@ with tab2:
     display_same['EBITDA'] = display_same['avg_ebitda_pct'].apply(lambda x: pct(x))
     
     st.dataframe(
-        display_same[['city_name','clinics','total_cabins','CEI','Rev/Cabin','20km NTB','20km Web',
+        display_same[['city_name','clinics','CEI','NTB/Clinic','vs Bench','20km NTB','20km Web',
                        '20km Rev','L3M Rev','Growth','Web Orders','EBITDA']].rename(columns={
-            'city_name':'City','clinics':'Clinics','total_cabins':'Cabins'
+            'city_name':'City','clinics':'Clinics'
         }),
         use_container_width=True, height=400,
         column_config={
@@ -1399,7 +1488,8 @@ with tab2:
     col_radar, col_metrics = st.columns([1, 1])
     
     with col_radar:
-        categories = ['Capacity\n(45%)', 'Underserved\nDemand (35%)', 'Web Orders', 'Growth', 'EBITDA', 'O2O Conv.']
+        _ntb_val = city_data.get('ntb_per_clinic_month', 0)
+        categories = [f'NTB/Clinic\nvs {ntb_benchmark}', 'Underserved\nDemand (20+ km)', 'Web Orders', 'Growth', 'EBITDA', 'O2O Conv.']
         values = [city_data['d_capacity'], city_data['d_underserved'],
                   city_data.get('d_sec_web', 0), city_data.get('d_sec_growth', 0),
                   city_data.get('d_sec_ebitda', 0), city_data.get('d_sec_o2o', 0)]
@@ -1412,7 +1502,7 @@ with tab2:
         ))
         fig_radar.update_layout(
             polar=dict(radialaxis=dict(visible=True, range=[0, 100], showticklabels=False)),
-            title=f"CEI v2 Profile — {selected_city}", height=380,
+            title=f"CEI v2 Profile — {selected_city} ({_ntb_val:.0f} NTB/clinic/mo)", height=380,
             margin=dict(l=60, r=60, t=50, b=30)
         )
         st.plotly_chart(fig_radar, use_container_width=True, config=PLOTLY_CFG)
@@ -1428,7 +1518,9 @@ with tab2:
         m1.metric("Clinics", int(city_data['clinics']))
         m2.metric("Cabins", int(city_data['total_cabins']))
         m3, m4 = st.columns(2)
-        m3.metric("Sales/Cabin", fmt_inr(city_data['sales_per_cabin_l'] * 1e5))
+        _ntb_clinic = city_data.get('ntb_per_clinic_month', 0)
+        _ntb_delta = _ntb_clinic - ntb_benchmark
+        m3.metric(f"NTB/Clinic/Month", f"{_ntb_clinic:.0f}", delta=f"{_ntb_delta:+.0f} vs {ntb_benchmark}")
         m4.metric("Revenue Growth", f"{city_data['growth_pct']*100:+.0f}%")
         m5, m6 = st.columns(2)
         m5.metric("20+ km Patients", fmt_num(city_data.get('underserved_ntb', 0) + city_data.get('underserved_web', 0)))
@@ -1439,16 +1531,21 @@ with tab2:
         
         # Recommendation
         _has_underserved = city_data.get('underserved_ntb', 0) + city_data.get('underserved_web', 0) > 100
-        if city_data['cei_same'] > 55 and city_data['sales_per_cabin_l'] > same_city_scores['sales_per_cabin_l'].median():
-            _reason = "high capacity strain + strong underserved demand" if _has_underserved else "high demand + capacity strain"
-            st.markdown(f'<div class="risk-low">✅ <b>Expand</b> — {_reason} suggests a new clinic will capture incremental revenue without cannibalizing existing locations.</div>', unsafe_allow_html=True)
-        elif city_data['cei_same'] > 35:
+        _above_bench = city_data.get('ntb_per_clinic_month', 0) >= ntb_benchmark
+        if city_data['cei_same'] > 55 and _above_bench:
+            _reason = f"clinics running at {_ntb_clinic:.0f} NTB/month (above {ntb_benchmark} benchmark)"
             if _has_underserved:
-                st.markdown('<div class="insight-box">⚠️ <b>Selective — underserved demand detected.</b> Patients are traveling 20+ km. A peripheral clinic could capture this demand with lower cannibalization risk.</div>', unsafe_allow_html=True)
+                _reason += " + patients traveling 20+ km"
+            st.markdown(f'<div class="risk-low">✅ <b>Expand</b> — {_reason}. New clinic will capture incremental revenue.</div>', unsafe_allow_html=True)
+        elif city_data['cei_same'] > 35:
+            if _above_bench and _has_underserved:
+                st.markdown(f'<div class="insight-box">⚠️ <b>Strong signal — at capacity ({_ntb_clinic:.0f}/{ntb_benchmark} NTB) with underserved demand.</b> A peripheral clinic could capture 20+ km patients with lower cannibalization risk.</div>', unsafe_allow_html=True)
+            elif _has_underserved:
+                st.markdown(f'<div class="insight-box">⚠️ <b>Selective — underserved demand detected.</b> Clinics at {_ntb_clinic:.0f}/{ntb_benchmark} NTB — consider a peripheral clinic for 20+ km patients.</div>', unsafe_allow_html=True)
             else:
-                st.markdown('<div class="insight-box">⚠️ <b>Selective</b> — expand only if cannibalization analysis shows low overlap and there are underserved pincodes.</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="insight-box">⚠️ <b>Selective</b> — clinics at {_ntb_clinic:.0f}/{ntb_benchmark} NTB. Expand only if cannibalization analysis shows low overlap.</div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="risk-high">❌ <b>Hold</b> — current clinics are underperforming. Fix operations before adding capacity.</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="risk-high">❌ <b>Hold</b> — clinics averaging {_ntb_clinic:.0f} NTB/month (below {ntb_benchmark} benchmark). Fix operations before adding capacity.</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
