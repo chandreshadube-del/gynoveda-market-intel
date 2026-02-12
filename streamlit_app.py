@@ -1015,15 +1015,13 @@ def build_whitespace_dual_signal(dist_threshold_km=20):
     
     # Build micro-market lookup: top SubCity names by NTB volume per city
     _has_subcity = 'SubCity' in ntb_far.columns and ntb_far['SubCity'].notna().any()
+    _micro_map = {}
     if _has_subcity:
         _subcity_vol = ntb_far.groupby(['City', 'SubCity'])['qty'].sum().reset_index()
-        _subcity_vol = _subcity_vol[_subcity_vol['SubCity'].notna() & (_subcity_vol['SubCity'] != '-')]
-        def _top_micro(grp):
-            top = grp.nlargest(3, 'qty')
-            return ', '.join(f"{r['SubCity']} ({int(r['qty'])})" for _, r in top.iterrows())
-        _micro_map = _subcity_vol.groupby('City').apply(_top_micro).to_dict()
-    else:
-        _micro_map = {}
+        _subcity_vol = _subcity_vol[_subcity_vol['SubCity'].notna() & (_subcity_vol['SubCity'] != '-') & (_subcity_vol['SubCity'] != '')]
+        for _city_name, _grp in _subcity_vol.groupby('City'):
+            _top3 = _grp.nlargest(3, 'qty')
+            _micro_map[_city_name] = ', '.join(f"{r['SubCity']} ({int(r['qty'])})" for _, r in _top3.iterrows())
     
     ntb_agg = ntb_far.groupby('pin_int').agg(
         ntb_qty=('qty', 'sum'),
@@ -1061,15 +1059,7 @@ def build_whitespace_dual_signal(dist_threshold_km=20):
     # --- City-level aggregation ---
     # Weighted avg distance (by NTB visits) instead of simple mean
     dual['_weight'] = dual['ntb_qty'].fillna(0) + dual['web_orders'].fillna(0)
-    def _weighted_avg_dist(group):
-        w = group['_weight']
-        d = group['dist_km']
-        return (d * w).sum() / w.sum() if w.sum() > 0 else d.mean()
-    
-    # Primary source clinic per city (mode of nearest_clinic across pincodes, weighted)
-    def _primary_source_clinic(group):
-        clinic_visits = group.groupby('nearest_clinic')['_weight'].sum()
-        return clinic_visits.idxmax() if len(clinic_visits) > 0 else '?'
+    dual['_wd'] = dual['dist_km'].fillna(0) * dual['_weight']
     
     city_agg = dual.groupby(['city', 'state']).agg(
         pincodes=('pin_int', 'nunique'),
@@ -1078,13 +1068,19 @@ def build_whitespace_dual_signal(dist_threshold_km=20):
         ntb_rev=('ntb_rev', 'sum'),
         web_rev=('web_rev', 'sum'),
         score=('combined_score', 'sum'),
+        _wd_sum=('_wd', 'sum'),
+        _w_sum=('_weight', 'sum'),
     ).reset_index()
+    city_agg['avg_dist'] = (city_agg['_wd_sum'] / city_agg['_w_sum'].replace(0, 1)).round(1)
+    city_agg.drop(columns=['_wd_sum', '_w_sum'], inplace=True)
     
-    # Add weighted distance, source clinic, and top underserved micro-markets
-    _w_dist = dual.groupby(['city', 'state']).apply(_weighted_avg_dist).reset_index(name='avg_dist')
-    _src_clinic = dual.groupby(['city', 'state']).apply(_primary_source_clinic).reset_index(name='source_clinic')
-    city_agg = city_agg.merge(_w_dist, on=['city', 'state'], how='left')
-    city_agg = city_agg.merge(_src_clinic, on=['city', 'state'], how='left')
+    # Source clinic: for each city, find the nearest_clinic with highest weight
+    _clinic_weight = dual.groupby(['city', 'state', 'nearest_clinic'])['_weight'].sum().reset_index()
+    _clinic_weight = _clinic_weight.sort_values('_weight', ascending=False).drop_duplicates(subset=['city', 'state'], keep='first')
+    _clinic_weight = _clinic_weight.rename(columns={'nearest_clinic': 'source_clinic'})[['city', 'state', 'source_clinic']]
+    city_agg = city_agg.merge(_clinic_weight, on=['city', 'state'], how='left')
+    
+    # Top underserved micro-markets from SubCity
     city_agg['top_micro_markets'] = city_agg['city'].map(_micro_map).fillna('—')
     city_agg = city_agg.sort_values('score', ascending=False)
     
@@ -1601,7 +1597,6 @@ with tab2:
             _monthly['show_pct'] = _monthly['show_pct'].clip(0, 100)
             
             # Dual-axis chart: bars for Appt & Show Nos, line for Show %
-            from plotly.subplots import make_subplots
             fig_funnel = make_subplots(specs=[[{"secondary_y": True}]])
             
             fig_funnel.add_trace(go.Bar(
