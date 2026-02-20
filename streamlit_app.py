@@ -1466,8 +1466,40 @@ with tab1:
 # TAB 2: SAME-CITY EXPANSION
 # ═══════════════════════════════════════════════════════════════════════════
 with tab2:
-    with st.expander("⚙ D-score Weights & Safeguards", expanded=False):
-        st.caption("D-score dimensions (Same-City CEI)")
+    # ── City Rankings bar chart (CEI Score) ──
+    st.markdown("##### City Rankings (CEI Score)")
+    _sc_bar = same_city_scores[['city_name', 'cei_same']].copy()
+    _sc_bar['CEI'] = _sc_bar['cei_same'].round(0).astype(int)
+    _sc_bar = _sc_bar.sort_values('CEI', ascending=True)
+    fig_sc_bar = go.Figure(go.Bar(
+        x=_sc_bar['CEI'], y=_sc_bar['city_name'],
+        orientation='h', marker_color=PALETTE[0], opacity=0.85,
+        text=_sc_bar['CEI'], textposition='outside',
+    ))
+    _apply_layout(fig_sc_bar,
+        height=max(300, len(_sc_bar) * 28),
+        margin=dict(l=120, r=40, t=10, b=20),
+        xaxis=dict(title="CEI Score", showgrid=True, gridcolor='#f0f0f0', zeroline=False),
+        yaxis=dict(title="", showgrid=False, zeroline=False),
+    )
+    with st.container(height=250):
+        st.plotly_chart(fig_sc_bar, use_container_width=True, config=PLOTLY_CFG)
+
+    # ── Ranked city list (collapsible) ──
+    with st.expander("City CEI Rankings", expanded=False):
+        _sc_rank = same_city_scores[['city_name', 'clinics', 'cei_same']].copy()
+        _sc_rank['CEI'] = _sc_rank['cei_same'].round(0).astype(int)
+        _sc_rank = _sc_rank.sort_values('CEI', ascending=False).reset_index(drop=True)
+        _sc_rank.insert(0, 'Rank', range(1, len(_sc_rank) + 1))
+        _sc_rank = _sc_rank.rename(columns={'city_name': 'City', 'clinics': 'Clinics'})
+        st.dataframe(
+            _sc_rank[['Rank', 'City', 'Clinics', 'CEI']],
+            use_container_width=True, hide_index=True,
+            height=min(500, 35 + len(_sc_rank) * 35),
+        )
+
+    with st.expander("⚙ CEI Weights & Safeguards", expanded=False):
+        st.caption("CEI dimensions (Same-City)")
         _wc1, _wc2, _wc3, _wc4, _wc5, _wc6 = st.columns(6)
         _wc1.number_input("1Cx/Clinic", value=_DEF_W_CX1, step=1, min_value=0, max_value=100, key='w_cx1',
                            help="Weight (%) — Patient load: are clinics overloaded?")
@@ -1680,36 +1712,6 @@ with tab2:
             else:
                 st.caption("No IVF competitor data available for this city")
 
-    # ── Ranked city table with D-Score ──
-    st.markdown("---")
-    st.markdown("##### City Rankings (D-score)")
-    # Bar chart
-    _sc_bar = same_city_scores[['city_name', 'cei_same']].copy()
-    _sc_bar['CEI'] = _sc_bar['cei_same'].round(0).astype(int)
-    _sc_bar = _sc_bar.sort_values('CEI', ascending=True)
-    fig_sc_bar = go.Figure(go.Bar(
-        x=_sc_bar['CEI'], y=_sc_bar['city_name'],
-        orientation='h', marker_color=PALETTE[0], opacity=0.85,
-        text=_sc_bar['CEI'], textposition='outside',
-    ))
-    _apply_layout(fig_sc_bar,
-        height=max(300, len(_sc_bar) * 28),
-        margin=dict(l=120, r=40, t=10, b=20),
-        xaxis=dict(title="D-Score (CEI)", showgrid=True, gridcolor='#f0f0f0', zeroline=False),
-        yaxis=dict(title="", showgrid=False, zeroline=False),
-    )
-    st.plotly_chart(fig_sc_bar, use_container_width=True, config=PLOTLY_CFG)
-    _sc_rank = same_city_scores[['city_name', 'clinics', 'cei_same']].copy()
-    _sc_rank['CEI'] = _sc_rank['cei_same'].round(0).astype(int)
-    _sc_rank = _sc_rank.sort_values('CEI', ascending=False).reset_index(drop=True)
-    _sc_rank.insert(0, 'Rank', range(1, len(_sc_rank) + 1))
-    _sc_rank = _sc_rank.rename(columns={'city_name': 'City', 'clinics': 'Clinics'})
-    st.dataframe(
-        _sc_rank[['Rank', 'City', 'Clinics', 'CEI']],
-        use_container_width=True, hide_index=True,
-        height=min(500, 35 + len(_sc_rank) * 35),
-    )
-
     # ── Recommended Micro-Markets (Same-City) — from CEI Excel ──
     st.markdown("---")
     with st.expander("Prospect Micro-Markets (Same-City)", expanded=False):
@@ -1733,17 +1735,9 @@ with tab2:
                 if 'Zone' in _mm_raw.columns:
                     _mm_display_cols.append('Zone')
                 if 'D-Score' in _mm_raw.columns:
-                    _mm_raw['D-Score'] = _mm_raw['D-Score'].round(2)
-                    _mm_display_cols.append('D-Score')
-                if 'Broader Catchment Orders' in _mm_raw.columns:
-                    _mm_raw['Catchment Orders'] = _mm_raw['Broader Catchment Orders'].apply(lambda x: fmt_num(int(x)) if pd.notna(x) and x > 0 else '—')
-                    _mm_display_cols.append('Catchment Orders')
-                if 'Y1 Revenue (₹)' in _mm_raw.columns:
-                    _mm_raw['Y1 Rev (₹L)'] = (_mm_raw['Y1 Revenue (₹)'] / 1e5).round(1)
-                    _mm_display_cols.append('Y1 Rev (₹L)')
-                if 'Payback (months)' in _mm_raw.columns:
-                    _mm_raw['Payback (mo)'] = _mm_raw['Payback (months)'].round(1)
-                    _mm_display_cols.append('Payback (mo)')
+                    _ds_max = _mm_raw['D-Score'].max()
+                    _mm_raw['CEI Score'] = ((_mm_raw['D-Score'] * 100 / _ds_max) if _ds_max > 0 else 0).round(0).astype(int)
+                    _mm_display_cols.append('CEI Score')
                 if _mm_display_cols:
                     st.dataframe(
                         _mm_raw[_mm_display_cols],
@@ -1796,9 +1790,43 @@ with tab3:
         _ws_clean['CEI'] = _ws_clean['cei_new'].fillna(0).round(0).astype(int) if 'cei_new' in _ws_clean.columns else 0
 
         if len(_ws_clean) > 0:
-            # ── E-score Weights & Safeguards (collapsed expander) ──
-            with st.expander("⚙ E-score Weights & Safeguards", expanded=False):
-                st.caption("E-score dimensions (New-City CEI)")
+            # ── City Rankings bar chart (CEI Score) ──
+            st.markdown("##### City Rankings (CEI Score)")
+            _nc_bar = _ws_clean[['city', 'CEI']].drop_duplicates(subset='city', keep='first').copy()
+            _nc_bar = _nc_bar.sort_values('CEI', ascending=False).head(25)
+            _nc_bar = _nc_bar.sort_values('CEI', ascending=True)
+            fig_nc_bar = go.Figure(go.Bar(
+                x=_nc_bar['CEI'], y=_nc_bar['city'],
+                orientation='h', marker_color=PALETTE[1], opacity=0.85,
+                text=_nc_bar['CEI'], textposition='outside',
+            ))
+            _apply_layout(fig_nc_bar,
+                height=max(300, len(_nc_bar) * 28),
+                margin=dict(l=140, r=40, t=10, b=20),
+                xaxis=dict(title="CEI Score", showgrid=True, gridcolor='#f0f0f0', zeroline=False),
+                yaxis=dict(title="", showgrid=False, zeroline=False),
+            )
+            with st.container(height=250):
+                st.plotly_chart(fig_nc_bar, use_container_width=True, config=PLOTLY_CFG)
+
+            # ── Ranked city list (collapsible) ──
+            with st.expander("City CEI Rankings", expanded=False):
+                _rank_df = _ws_clean[['city', 'CEI']].drop_duplicates(subset='city', keep='first').copy()
+                if 'state' in _ws_clean.columns:
+                    _rank_df.insert(1, 'State', _ws_clean.drop_duplicates(subset='city', keep='first')['state'].values)
+                if 'pincodes' in _ws_clean.columns:
+                    _rank_df['Pincodes'] = _ws_clean.drop_duplicates(subset='city', keep='first')['pincodes'].astype(int).values
+                _rank_df = _rank_df.sort_values('CEI', ascending=False).reset_index(drop=True)
+                _rank_df.insert(0, 'Rank', range(1, len(_rank_df) + 1))
+                _rank_df = _rank_df.rename(columns={'city': 'City'})
+                st.dataframe(
+                    _rank_df, use_container_width=True, hide_index=True,
+                    height=min(500, 35 + len(_rank_df) * 35),
+                )
+
+            # ── CEI Weights & Safeguards (collapsed expander) ──
+            with st.expander("⚙ CEI Weights & Safeguards", expanded=False):
+                st.caption("CEI dimensions (New-City)")
                 _ec1, _ec2, _ec3, _ec4, _ec5 = st.columns(5)
                 _ec1.number_input("Spillover", value=_DEF_W_SPILLOVER, step=5, min_value=0, max_value=100, key='w_spillover',
                                    help="Weight (%) for spillover demand — patients traveling to other cities for care.")
@@ -1863,45 +1891,11 @@ with tab3:
                 )
                 st.plotly_chart(fig_nc_radar, use_container_width=True, config=PLOTLY_CFG)
 
-            # ── Ranked city table with CEI ──
-            st.markdown("---")
-            st.markdown("##### City Rankings (E-score)")
-            # Bar chart — top 25
-            _nc_bar = _ws_clean[['city', 'CEI']].drop_duplicates(subset='city', keep='first').copy()
-            _nc_bar = _nc_bar.sort_values('CEI', ascending=False).head(25)
-            _nc_bar = _nc_bar.sort_values('CEI', ascending=True)
-            fig_nc_bar = go.Figure(go.Bar(
-                x=_nc_bar['CEI'], y=_nc_bar['city'],
-                orientation='h', marker_color=PALETTE[1], opacity=0.85,
-                text=_nc_bar['CEI'], textposition='outside',
-            ))
-            _apply_layout(fig_nc_bar,
-                height=max(300, len(_nc_bar) * 28),
-                margin=dict(l=140, r=40, t=10, b=20),
-                xaxis=dict(title="E-Score (CEI)", showgrid=True, gridcolor='#f0f0f0', zeroline=False),
-                yaxis=dict(title="", showgrid=False, zeroline=False),
-            )
-            st.plotly_chart(fig_nc_bar, use_container_width=True, config=PLOTLY_CFG)
-            _rank_df = _ws_clean[['city', 'CEI']].copy()
-            if 'state' in _ws_clean.columns:
-                _rank_df.insert(1, 'State', _ws_clean['state'])
-            if 'combined' in _ws_clean.columns:
-                _rank_df['Demand'] = _ws_clean['combined'].apply(lambda x: fmt_num(x) if x > 0 else '—')
-            if 'pincodes' in _ws_clean.columns:
-                _rank_df['Pincodes'] = _ws_clean['pincodes'].astype(int)
-            _rank_df = _rank_df.sort_values('CEI', ascending=False).reset_index(drop=True)
-            _rank_df.insert(0, 'Rank', range(1, len(_rank_df) + 1))
-            _rank_df = _rank_df.rename(columns={'city': 'City'})
-            st.dataframe(
-                _rank_df, use_container_width=True, hide_index=True,
-                height=min(500, 35 + len(_rank_df) * 35),
-            )
-
             # ── 7. 50 Prospect Locations (New Cities) ──
             if 'top_micro_markets' in _ws_clean.columns:
                 st.markdown("---")
                 with st.expander("50 Prospect Locations (New Cities)", expanded=False):
-                    st.caption("Top 50 localities across all expansion-ready cities, ranked by E-score (CEI) then demand.")
+                    st.caption("Top 50 expansion-ready cities with key localities, ranked by CEI Score.")
                     import re as _re
                     _nc_micro_rows = []
                     for _, _nc_row in _ws_clean.iterrows():
@@ -1914,24 +1908,22 @@ with tab3:
                                 _area_part = _area_part.strip()
                                 if _area_part:
                                     _m = _re.match(r'^(.+?)\s*\((\d+)\)$', _area_part)
-                                    if _m:
-                                        _nc_micro_rows.append({
-                                            'City': _nc_city, 'State': _nc_state, 'CEI': int(_nc_cei),
-                                            'Locality': _m.group(1).strip(),
-                                            'Demand': int(_m.group(2)),
-                                        })
-                                    else:
-                                        _nc_micro_rows.append({
-                                            'City': _nc_city, 'State': _nc_state, 'CEI': int(_nc_cei),
-                                            'Locality': _area_part, 'Demand': 0,
-                                        })
+                                    _locality = _m.group(1).strip() if _m else _area_part
+                                    _nc_micro_rows.append({
+                                        'City': _nc_city, 'State': _nc_state, 'CEI': int(_nc_cei),
+                                        'Locality': _locality,
+                                    })
                     if _nc_micro_rows:
-                        _nc_micro_df = pd.DataFrame(_nc_micro_rows).sort_values(['CEI', 'Demand'], ascending=[False, False]).head(50)
-                        _nc_micro_df['Rank'] = range(1, len(_nc_micro_df) + 1)
-                        _nc_micro_df['Demand'] = _nc_micro_df['Demand'].apply(lambda x: fmt_num(x) if x > 0 else '—')
+                        _nc_micro_df = pd.DataFrame(_nc_micro_rows)
+                        # Group localities by city — deduplicate
+                        _nc_grouped = _nc_micro_df.groupby(['City', 'State', 'CEI']).agg(
+                            Localities=('Locality', lambda x: ', '.join(dict.fromkeys(x)))
+                        ).reset_index()
+                        _nc_grouped = _nc_grouped.sort_values('CEI', ascending=False).head(50)
+                        _nc_grouped.insert(0, 'Rank', range(1, len(_nc_grouped) + 1))
                         st.dataframe(
-                            _nc_micro_df[['Rank', 'City', 'State', 'CEI', 'Locality', 'Demand']],
-                            use_container_width=True, hide_index=True, height=min(700, 35 + len(_nc_micro_df) * 35),
+                            _nc_grouped[['Rank', 'City', 'State', 'CEI', 'Localities']],
+                            use_container_width=True, hide_index=True, height=min(700, 35 + len(_nc_grouped) * 35),
                         )
 
     elif len(pin_geo) == 0:
