@@ -273,6 +273,26 @@ st.markdown("""
     /* ── Section dividers ── */
     hr {border: none; border-top: 1px solid #e5e7eb; margin: 1.5rem 0;}
 
+    /* ── Hero banner ── */
+    .hero-banner {
+        background: linear-gradient(135deg, #CB5B51 0%, #9A3E36 100%);
+        border-radius: 14px; padding: 28px 32px; margin-bottom: 1.2rem;
+        color: #fff; position: relative; overflow: hidden;
+        box-shadow: 0 4px 16px rgba(203,91,81,0.25);
+    }
+    .hero-banner::after {
+        content: ''; position: absolute; top: -50px; right: -50px;
+        width: 180px; height: 180px; border-radius: 50%;
+        background: rgba(255,255,255,0.05);
+    }
+    .hero-banner .hero-title {
+        font-size: 1.6rem; font-weight: 800; letter-spacing: -0.3px;
+        line-height: 1.2; margin: 0;
+    }
+    .hero-banner .hero-sub {
+        font-size: 0.82rem; color: rgba(255,255,255,0.7); margin-top: 6px;
+    }
+
     /* ── Plotly charts in white cards ── */
     [data-testid="stPlotlyChart"] {
         background: #ffffff; border-radius: 12px; padding: 8px;
@@ -303,6 +323,8 @@ st.markdown("""
         [data-testid="stMetric"] {padding: 10px 14px; margin-bottom: 4px;}
         [data-testid="stMetric"] label {font-size: 0.6rem !important;}
         [data-testid="stMetric"] [data-testid="stMetricValue"] {font-size: 1.1rem !important;}
+        .hero-banner {padding: 20px 18px;}
+        .hero-banner .hero-title {font-size: 1.3rem;}
         div[data-testid="stTabs"] {padding: 2px 4px 0;}
     }
 </style>
@@ -1293,6 +1315,14 @@ same_city_scores['cei_same'] = (
 )
 same_city_scores = same_city_scores.sort_values('cei_same', ascending=False)
 
+
+st.markdown(
+    """<div class="hero-banner">
+        <div class="hero-title">Gynoveda Expansion Intelligence</div>
+        <div class="hero-sub">Clinic network analytics &amp; new-market opportunity engine</div>
+    </div>""",
+    unsafe_allow_html=True,
+)
 
 tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Same-City", "New Cities", "Forecaster"])
 
