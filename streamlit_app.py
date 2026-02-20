@@ -1495,6 +1495,12 @@ with tab2:
         st.dataframe(
             _sc_rank[['Rank', 'City', 'Clinics', 'CEI']],
             use_container_width=True, hide_index=True,
+            column_config={
+                "Rank": st.column_config.NumberColumn(width="small"),
+                "City": st.column_config.TextColumn(width="large"),
+                "Clinics": st.column_config.NumberColumn(width="small"),
+                "CEI": st.column_config.NumberColumn(width="small"),
+            },
         )
 
     # ── City Deep-Dive ──
@@ -1825,6 +1831,13 @@ with tab3:
                 _rank_df = _rank_df.rename(columns={'city': 'City'})
                 st.dataframe(
                     _rank_df, use_container_width=True, hide_index=True,
+                    column_config={
+                        "Rank": st.column_config.NumberColumn(width="small"),
+                        "City": st.column_config.TextColumn(width="large"),
+                        "State": st.column_config.TextColumn(width="medium"),
+                        "CEI": st.column_config.NumberColumn(width="small"),
+                        "Pincodes": st.column_config.NumberColumn(width="small"),
+                    },
                 )
 
             # ── 5. City Detail — selectbox + placard + radar ──
