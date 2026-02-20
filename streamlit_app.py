@@ -1485,24 +1485,6 @@ with tab2:
     with st.container(height=250):
         st.plotly_chart(fig_sc_bar, use_container_width=True, config=PLOTLY_CFG)
 
-    # ── Ranked city list (collapsible) ──
-    with st.expander("City CEI Rankings", expanded=False):
-        _sc_rank = same_city_scores[['city_name', 'clinics', 'cei_same']].copy()
-        _sc_rank['CEI'] = _sc_rank['cei_same'].round(0).astype(int)
-        _sc_rank = _sc_rank.sort_values('CEI', ascending=False).reset_index(drop=True)
-        _sc_rank.insert(0, 'Rank', range(1, len(_sc_rank) + 1))
-        _sc_rank = _sc_rank.rename(columns={'city_name': 'City', 'clinics': 'Clinics'})
-        st.dataframe(
-            _sc_rank[['Rank', 'City', 'Clinics', 'CEI']],
-            use_container_width=True, hide_index=True,
-            column_config={
-                "Rank": st.column_config.NumberColumn(width="small"),
-                "City": st.column_config.TextColumn(width="large"),
-                "Clinics": st.column_config.NumberColumn(width="small"),
-                "CEI": st.column_config.NumberColumn(width="small"),
-            },
-        )
-
     # ── City Deep-Dive ──
     st.markdown("##### City Detail")
     city_options = same_city_scores['city_name'].tolist()
@@ -1818,27 +1800,6 @@ with tab3:
             )
             with st.container(height=250):
                 st.plotly_chart(fig_nc_bar, use_container_width=True, config=PLOTLY_CFG)
-
-            # ── Ranked city list (collapsible) ──
-            with st.expander("City CEI Rankings", expanded=False):
-                _rank_df = _ws_clean[['city', 'CEI']].drop_duplicates(subset='city', keep='first').copy()
-                if 'state' in _ws_clean.columns:
-                    _rank_df.insert(1, 'State', _ws_clean.drop_duplicates(subset='city', keep='first')['state'].values)
-                if 'pincodes' in _ws_clean.columns:
-                    _rank_df['Pincodes'] = _ws_clean.drop_duplicates(subset='city', keep='first')['pincodes'].astype(int).values
-                _rank_df = _rank_df.sort_values('CEI', ascending=False).reset_index(drop=True)
-                _rank_df.insert(0, 'Rank', range(1, len(_rank_df) + 1))
-                _rank_df = _rank_df.rename(columns={'city': 'City'})
-                st.dataframe(
-                    _rank_df, use_container_width=True, hide_index=True,
-                    column_config={
-                        "Rank": st.column_config.NumberColumn(width="small"),
-                        "City": st.column_config.TextColumn(width="large"),
-                        "State": st.column_config.TextColumn(width="medium"),
-                        "CEI": st.column_config.NumberColumn(width="small"),
-                        "Pincodes": st.column_config.NumberColumn(width="small"),
-                    },
-                )
 
             # ── 5. City Detail — selectbox + placard + radar ──
             st.markdown("##### City Detail")
