@@ -603,6 +603,14 @@ def _detect_and_process(file_bytes, file_name):
         except:
             pass
 
+    # ── 8. CEI MicroMarkets — has 'D-Score (Deepening)' or 'Micro-Market Revenue' sheets
+    if any(k in sheets_lower for k in ['d-score (deepening)', 'e-score (expansion)', 'micro-market revenue']):
+        import shutil, io as _io
+        _dest = os.path.join('mis_data', 'Gynoveda_CEI_v31_MicroMarkets.xlsx')
+        with open(_dest, 'wb') as _f:
+            _f.write(file_bytes)
+        return 'CEI MicroMarkets Model'
+
     # ── 9. Fallback: check filename hints
     if 'address' in fname_lower or 'addr' in fname_lower:
         process_clinic_address_excel(file_bytes)
