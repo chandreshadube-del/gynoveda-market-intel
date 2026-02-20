@@ -273,38 +273,6 @@ st.markdown("""
     /* ── Section dividers ── */
     hr {border: none; border-top: 1px solid #e5e7eb; margin: 1.5rem 0;}
 
-    /* ── North Star hero ── */
-    .north-star {
-        background: linear-gradient(135deg, #CB5B51 0%, #9A3E36 100%);
-        border-radius: 14px; padding: 28px 32px; margin-bottom: 1.2rem;
-        color: #fff; position: relative; overflow: hidden;
-        box-shadow: 0 4px 16px rgba(203,91,81,0.25);
-    }
-    .north-star::after {
-        content: ''; position: absolute; top: -50px; right: -50px;
-        width: 180px; height: 180px; border-radius: 50%;
-        background: rgba(255,255,255,0.05);
-    }
-    .north-star .ns-label {
-        font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.2px;
-        color: rgba(255,255,255,0.7); margin-bottom: 4px; font-weight: 500;
-    }
-    .north-star .ns-value {
-        font-size: 2.4rem; font-weight: 800; letter-spacing: -0.5px;
-        line-height: 1.1; margin-bottom: 6px;
-    }
-    .north-star .ns-sub {
-        font-size: 0.82rem; color: rgba(255,255,255,0.65); line-height: 1.5;
-    }
-    .north-star .ns-pills {
-        display: flex; gap: 12px; margin-top: 14px; flex-wrap: wrap;
-    }
-    .north-star .ns-pill {
-        background: rgba(255,255,255,0.13); border-radius: 20px;
-        padding: 5px 14px; font-size: 0.75rem; color: rgba(255,255,255,0.9);
-        backdrop-filter: blur(4px);
-    }
-
     /* ── Plotly charts in white cards ── */
     [data-testid="stPlotlyChart"] {
         background: #ffffff; border-radius: 12px; padding: 8px;
@@ -335,8 +303,6 @@ st.markdown("""
         [data-testid="stMetric"] {padding: 10px 14px; margin-bottom: 4px;}
         [data-testid="stMetric"] label {font-size: 0.6rem !important;}
         [data-testid="stMetric"] [data-testid="stMetricValue"] {font-size: 1.1rem !important;}
-        .north-star {padding: 20px 18px;}
-        .north-star .ns-value {font-size: 1.8rem;}
         div[data-testid="stTabs"] {padding: 2px 4px 0;}
     }
 </style>
@@ -1328,233 +1294,14 @@ same_city_scores['cei_same'] = (
 same_city_scores = same_city_scores.sort_values('cei_same', ascending=False)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# NORTH STAR — 12-month expansion business case (linked to Forecaster)
-# ═══════════════════════════════════════════════════════════════════════════
-
-_bill_value = _DEF_BILL_VALUE * 1000  # Rs.27K → 27000 (from MIS 1AoV sheet avg)
-
-# ── Ramp curve helpers (shared with Forecaster) ──
-_ns_ramp_raw = ramp_s[ramp_s['month_num'] <= 11].copy() if len(ramp_s) > 0 else pd.DataFrame()
-_ns_ramp_peak = _ns_ramp_raw['avg_sales_l'].max() if len(_ns_ramp_raw) > 0 else 1.0
-_ns_ramp_shape = (_ns_ramp_raw['avg_sales_l'] / _ns_ramp_peak).tolist() if len(_ns_ramp_raw) > 0 else []
-_ns_steady = 40.0      # Mature same-city clinic rev (₹L/mo)
-_ns_steady_new = 30.0  # Mature new-city clinic rev (₹L/mo)
-
-def _ns_schedule(n, per_mo):
-    sched = []; rem = n; lm = 1
-    while rem > 0 and lm < 12:
-        batch = min(per_mo, rem); sched.append((lm, batch)); rem -= batch; lm += 1
-    return sched
-
-def _ns_clinic_rev(age, steady, is_new=False, sc_mult=1.0):
-    if age < len(_ns_ramp_shape):
-        sv = min(_ns_ramp_shape[age], 0.10) if age == 0 else _ns_ramp_shape[age]
-        base = sv * steady
-    else:
-        base = steady
-    penalty = min(0.6 + (age / 12) * 0.4, 1.0) if is_new else 1.0
-    return base * penalty * sc_mult
-
-def _ns_project_12m(n_clinics, per_mo, steady, opex, is_new=False, sc_mult=1.0):
-    """Compute total 12-month projected revenue & EBITDA for a batch of clinics.
-    Returns: (total_rev, total_opex, breakeven_month, month12_rev)
-      - month12_rev: revenue in the final month (Month 12) = run-rate at end of period
-    """
-    sched = _ns_schedule(n_clinics, per_mo)
-    total_rev = total_opex = 0; be = None; m12_rev = 0
-    for m in range(12):
-        m_rev = m_act = 0
-        for lm, batch in sched:
-            age = m - lm
-            if age < 0: continue
-            m_act += batch; m_rev += _ns_clinic_rev(age, steady, is_new, sc_mult) * batch
-        m_opex = opex * m_act
-        total_rev += m_rev; total_opex += m_opex
-        if be is None and m_rev > m_opex:
-            be = m + 1
-        if m == 11:  # Month 12 (0-indexed)
-            m12_rev = m_rev
-    return total_rev, total_opex, be, m12_rev
-
-# ── North Star computes fresh every render ──
-# Same-city: driven by 1Cx benchmark (capacity trigger) — reacts to advanced settings
-# New-city: driven by Forecaster new-city inputs
-# Both use Forecaster's ramp curve parameters for revenue projection
-
-# North Star reads Forecaster "Clinics to add" + "Open per month" from session_state
-# All other assumptions (Capex, OpEx, Mature rev, Scenario) are hardcoded constants
-
-# SAME-CITY: Reads Forecaster "Clinics to add" + "Open per month"; rest hardcoded
-_ns_n_same = st.session_state.get('n_same', 0)          # Forecaster "Clinics to add"
-_ns_f_same_pm = st.session_state.get('same_pm', 1)      # Forecaster "Open per month"
-_ns_12m_same, _, _, _ = _ns_project_12m(
-    _ns_n_same, _ns_f_same_pm, _ns_steady, _DEF_OPEX, is_new=False
-) if _ns_n_same > 0 else (0, 0, None, 0)
-
-# NEW-CITY: Reads Forecaster "Clinics to add" + "Open per month"; rest hardcoded
-_ns_f_n_new = st.session_state.get('n_new', 30)
-_ns_f_new_pm = st.session_state.get('new_pm', 3)
-_ns_12m_new, _, _, _ = _ns_project_12m(
-    _ns_f_n_new, _ns_f_new_pm, _ns_steady_new, _DEF_OPEX, is_new=True
-) if _ns_f_n_new > 0 else (0, 0, None, 0)
-
-# ── Expansion 12-month cumulative revenue (linked to Forecaster inputs) ──
-_ns_expansion_12m = _ns_12m_same + _ns_12m_new  # ₹L, cumulative 12M
-_ns_total_new_clinics = _ns_n_same + _ns_f_n_new
-
-_ns_pills_html = f'<span class="ns-pill">{_ns_total_new_clinics} new clinics</span>'
-if _ns_n_same > 0:
-    _ns_pills_html += f' <span class="ns-pill">Same-City: {fmt_inr(_ns_12m_same * 1e5)} (12M)</span>'
-_ns_pills_html += f' <span class="ns-pill">New-City: {fmt_inr(_ns_12m_new * 1e5)} (12M)</span>'
-_ns_unique_1cx = int(ws_dual['unique_1cx'].sum()) if len(ws_dual) > 0 and 'unique_1cx' in ws_dual.columns else 0
-_ns_unique_clinic = int(ws_dual['unique_clinic_patients'].sum()) if len(ws_dual) > 0 and 'unique_clinic_patients' in ws_dual.columns else 0
-if _ns_unique_1cx > 0 or _ns_unique_clinic > 0:
-    _ns_demand_parts = []
-    if _ns_unique_1cx > 0:
-        _ns_demand_parts.append(f"{fmt_num(_ns_unique_1cx)} web 1Cx")
-    if _ns_unique_clinic > 0:
-        _ns_demand_parts.append(f"{fmt_num(_ns_unique_clinic)} clinic patients")
-    _ns_pills_html += f' <span class="ns-pill">{" · ".join(_ns_demand_parts)} (20+ km)</span>'
-else:
-    _ns_pills_html += f' <span class="ns-pill">{fmt_num(ws_dual["ntb_qty"].sum()) if len(ws_dual) > 0 else "0"} orders from 20+ km</span>'
-st.markdown(
-    f"""<div class="north-star">
-        <div class="ns-label">12-Month Expansion Revenue</div>
-        <div class="ns-value">{fmt_inr(_ns_expansion_12m * 1e5)}</div>
-        <div class="ns-pills">{_ns_pills_html}</div>
-    </div>""",
-    unsafe_allow_html=True
-)
-
 tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Same-City", "New Cities", "Forecaster"])
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# TAB 1: OVERVIEW — Glanceable in 3 seconds
+# TAB 1: OVERVIEW
 # ═══════════════════════════════════════════════════════════════════════════
 with tab1:
-    net_df = net.copy()
-    net_df['month'] = pd.to_datetime(net_df['month'])
-    net_df = net_df.sort_values('month')
-    net_df = net_df[net_df['clinics_cr'] > 0]
-    latest_net = net_df.iloc[-1] if len(net_df) > 0 else {}
-    prev_net = net_df.iloc[-2] if len(net_df) > 1 else {}
-    l12m = net_df.tail(12)
-    l12m_total_rev = l12m['clinics_cr'].sum()
-    # Use clinic_1cx.csv as source of truth (network_monthly has duplicate rows + zero-month gaps)
-    _l12m_months = l12m['month'].dt.strftime('%Y-%m').tolist()
-    _cx1_cols = [c for c in cx1.columns if c not in ['area', 'code']]
-    _cx1_l12m = [c for c in _cx1_cols if c in _l12m_months]
-    l12m_total_1cx = cx1[_cx1_l12m].sum().sum() if _cx1_l12m else 0
-    active_clinics = (sales[latest_month] > 0).sum() if latest_month in sales.columns else len(master)
-    avg_ebitda = data['pl']['fy26_ebitda_pct'].mean() if 'fy26_ebitda_pct' in data['pl'].columns else 0
-
-    # ── Revenue trend (full-width) ──
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=net_df['month'], y=net_df['clinics_cr'],
-        marker_color=PALETTE[0], opacity=0.85, name='Clinic',
-    ))
-    if 'video_cr' in net_df.columns:
-        fig.add_trace(go.Bar(
-            x=net_df['month'], y=net_df['video_cr'],
-            marker_color=PALETTE[1], opacity=0.7, name='Video',
-        ))
-    _apply_layout(fig, height=280, barmode='stack',
-                  title="Monthly Revenue (Cr)",
-                  margin=dict(l=40, r=10, t=36, b=30),
-                  yaxis=dict(title="", showgrid=True, gridcolor='#f0f0f0', zeroline=False))
-    st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CFG)
-
-    # ── KPIs row ──
-    _k1, _k2, _k3 = st.columns(3)
-    _k1.metric("L12M Revenue", fmt_inr(l12m_total_rev * 1e7),
-              help="Total clinic network revenue for the last 12 months.")
-    _k2.metric("1Cx", fmt_num(l12m_total_1cx),
-              help="Total 1Cx (first-time customer) visits across all clinics in the last 12 months.")
-    _k3.metric("Active", f"{int(active_clinics)} clinics",
-              help="Number of clinics with non-zero revenue in the latest month.")
-
-    # ── TOP EXPANSION PICKS — the answer in 3 seconds ──
-    col_s, col_n = st.columns(2)
-    top_same = same_city_scores.head(5)
-
-    with col_s:
-        st.markdown("##### 🏥 Add clinics in")
-        for _, row in top_same.iterrows():
-            cei = row['cei_same']
-            _cx1v = row.get('cx1_per_clinic_month', 0)
-            st.markdown(
-                f"<div style='padding:8px 0;border-bottom:1px solid #f0f0f0'>"
-                f"<span style='font-size:1.05rem;font-weight:700;color:#1a1a1a'>{row['city_name']}</span>"
-                f"<span style='float:right;font-size:0.82rem;color:#c0392b;font-weight:600'>CEI {cei:.0f}</span><br>"
-                f"<span style='font-size:0.78rem;color:#999'>{_cx1v:.0f} 1Cx/clinic/mo · {int(row['clinics'])} clinics</span>"
-                f"</div>", unsafe_allow_html=True
-            )
-
-    with col_n:
-        st.markdown("##### 🌐 Enter new cities")
-        # Use ws_new_cities (dual-signal whitespace) — sorted by E-score (CEI)
-        if len(ws_new_cities) > 0:
-            _ov_new = ws_new_cities.copy()
-            _ov_new['city'] = _ov_new['city'].fillna('').astype(str).str.strip()
-            _ov_bad = {'', 'nan', 'none', '?', '-', 'null', 'undefined', 'None', 'NaN'}
-            _ov_new = _ov_new[~_ov_new['city'].isin(_ov_bad)]
-            if 'cei_new' in _ov_new.columns:
-                _ov_new = _ov_new.sort_values('cei_new', ascending=False)
-            _ov_new = _ov_new.head(5)
-            for _, row in _ov_new.iterrows():
-                _ov_cei = int(round(row.get('cei_new', 0))) if pd.notna(row.get('cei_new', 0)) else 0
-                _ov_demand = int(row.get('total_ntb', 0)) + int(row.get('total_web', 0))
-                st.markdown(
-                    f"<div style='padding:8px 0;border-bottom:1px solid #f0f0f0'>"
-                    f"<span style='font-size:1.05rem;font-weight:700;color:#1a1a1a'>{row['city']}</span>"
-                    f"<span style='float:right;font-size:0.82rem;color:#f97316;font-weight:600'>CEI {_ov_cei}</span><br>"
-                    f"<span style='font-size:0.78rem;color:#999'>{fmt_num(_ov_demand)} demand (clinic + web)</span>"
-                    f"</div>", unsafe_allow_html=True
-                )
-        else:
-            for _, row in new_city_scores.head(5).iterrows():
-                st.markdown(
-                    f"<div style='padding:8px 0;border-bottom:1px solid #f0f0f0'>"
-                    f"<span style='font-size:1.05rem;font-weight:700;color:#1a1a1a'>{row['City']}</span>"
-                    f"<span style='float:right;font-size:0.82rem;color:#f97316;font-weight:600'>CEI {row['cei_new']:.0f}</span><br>"
-                    f"<span style='font-size:0.78rem;color:#999'>{fmt_num(row['total_orders'])} web orders</span>"
-                    f"</div>", unsafe_allow_html=True
-                )
-
-    # ── Clinic Leaderboard ──
-    _lb = data['clinic_lb']
-    if len(_lb) > 0:
-        with st.expander("Clinic Leaderboard"):
-            _lb_display = _lb.head(15).copy()
-            # Compute L12M Avg Sale (Lacs) from sales data
-            if 'Code' in _lb_display.columns and len(sales) > 0:
-                _lb_l12m_cols = active_months[-12:] if len(active_months) >= 12 else active_months
-                _lb_l12m_cols = [c for c in _lb_l12m_cols if c in sales.columns]
-                if _lb_l12m_cols:
-                    _sales_code = sales.copy()
-                    _sales_code['_l12m_avg_cr'] = _sales_code[_lb_l12m_cols].mean(axis=1)
-                    _sales_code['L12M Avg Sale (₹L)'] = (_sales_code['_l12m_avg_cr'] * 100).round(1)  # Cr → Lacs
-                    _code_avg = _sales_code[['code', 'L12M Avg Sale (₹L)']].copy()
-                    _code_avg['code'] = _code_avg['code'].astype(str)
-                    _lb_display['Code'] = _lb_display['Code'].astype(str)
-                    _lb_display = _lb_display.merge(_code_avg, left_on='Code', right_on='code', how='left').drop(columns=['code'], errors='ignore')
-            # Compute Avg Mo 1Cx from Total NTB Visits
-            _n_active_months = len(active_months) if len(active_months) > 0 else 12
-            if 'Total NTB Visits' in _lb_display.columns:
-                _lb_display['Avg Mo 1Cx'] = (_lb_display['Total NTB Visits'] / _n_active_months).apply(
-                    lambda x: f"{x:.0f}" if pd.notna(x) else "—")
-            _lb_cols = ['Clinic', 'City']
-            if 'L12M Avg Sale (₹L)' in _lb_display.columns:
-                _lb_cols.append('L12M Avg Sale (₹L)')
-            if 'Avg Mo 1Cx' in _lb_display.columns:
-                _lb_cols.append('Avg Mo 1Cx')
-            st.dataframe(
-                _lb_display[[c for c in _lb_cols if c in _lb_display.columns]],
-                use_container_width=True, height=350, hide_index=True,
-            )
+    st.markdown("## Gynoveda Expansion Intelligence")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
