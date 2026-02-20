@@ -1853,6 +1853,89 @@ with tab3:
                 )
                 st.plotly_chart(fig_nc_radar, use_container_width=True, config=PLOTLY_CFG)
 
+            # ── IVF Competitor Landscape (New Cities) ──
+            _nc_ivf_comp = data['competitor_prox']
+            _nc_ivf_city_comp = _nc_ivf_comp[_nc_ivf_comp['City'].str.lower() == _nc_selected.lower()]
+            _nc_ivf_raw = data['ivf_comp']
+            _nc_ivf_city = _nc_ivf_raw[_nc_ivf_raw['Centre_City'].str.lower() == _nc_selected.lower()] if len(_nc_ivf_raw) > 0 else pd.DataFrame()
+            _nc_ivf_has = len(_nc_ivf_city_comp) > 0 or len(_nc_ivf_city) > 0
+            if _nc_ivf_has:
+                st.markdown("---")
+                st.markdown("##### IVF Competitor Landscape")
+
+                _nc_ivf_brand_map = {
+                    'National Chain': 'Branded',
+                    'Hospital Chain': 'Regional',
+                    'Regional Chain': 'Regional',
+                    'Local Specialist': 'Non-Branded',
+                    'Regional Specialist': 'Non-Branded',
+                }
+                _nc_ivf_threat = str(_nc_ivf_city_comp.iloc[0].get('Threat Level', 'N/A')).upper() if len(_nc_ivf_city_comp) > 0 else 'N/A'
+                _nc_ivf_threat_color = {'HIGH': '#ef4444', 'MEDIUM': '#f97316', 'LOW': '#22c55e'}.get(_nc_ivf_threat, '#888')
+
+                if len(_nc_ivf_city) > 0 and 'Brand_Type' in _nc_ivf_city.columns:
+                    _nc_ivf_c = _nc_ivf_city.copy()
+                    _nc_ivf_c['Category'] = _nc_ivf_c['Brand_Type'].map(_nc_ivf_brand_map).fillna('Non-Branded')
+                    _nc_ivf_branded = _nc_ivf_c[_nc_ivf_c['Category'] == 'Branded']
+                    _nc_ivf_regional = _nc_ivf_c[_nc_ivf_c['Category'] == 'Regional']
+                    _nc_ivf_nonbranded = _nc_ivf_c[_nc_ivf_c['Category'] == 'Non-Branded']
+
+                    _nmi1, _nmi2, _nmi3 = st.columns(3)
+                    with _nmi1:
+                        st.metric("Branded (National)", len(_nc_ivf_branded),
+                                  help="National IVF chains (e.g. Indira IVF, Nova). High brand awareness — directly compete for patients.")
+                        if len(_nc_ivf_branded) > 0:
+                            _top_b = _nc_ivf_branded['Chain_Name'].value_counts().head(3)
+                            st.caption(' · '.join(f"{n} ({c})" for n, c in _top_b.items()))
+                    with _nmi2:
+                        st.metric("Regional / Hospital", len(_nc_ivf_regional),
+                                  help="Hospital-attached and regional IVF chain centres. Less brand power but established patient trust.")
+                        if len(_nc_ivf_regional) > 0:
+                            _top_r = _nc_ivf_regional['Chain_Name'].value_counts().head(3)
+                            st.caption(' · '.join(f"{n} ({c})" for n, c in _top_r.items()))
+                    with _nmi3:
+                        st.metric("Non-Branded (Local)", len(_nc_ivf_nonbranded),
+                                  help="Local specialist clinics and small independent IVF providers. Gynoveda's Ayurvedic differentiation is strongest against these.")
+                        if len(_nc_ivf_nonbranded) > 0:
+                            _top_l = _nc_ivf_nonbranded['Chain_Name'].value_counts().head(3)
+                            st.caption(' · '.join(f"{n} ({c})" for n, c in _top_l.items()))
+
+                    st.markdown(
+                        f"<div style='margin:10px 0 6px'>"
+                        f"<span style='background:{_nc_ivf_threat_color};color:#fff;font-size:0.7rem;font-weight:600;"
+                        f"padding:2px 10px;border-radius:10px'>{_nc_ivf_threat} competition</span>"
+                        f"<span style='margin-left:10px;font-size:0.8rem;color:#888'>"
+                        f"{len(_nc_ivf_c)} centres · {_nc_ivf_c['Chain_Name'].nunique()} chains</span></div>",
+                        unsafe_allow_html=True
+                    )
+
+                    with st.expander(f"All IVF centres in {_nc_selected} ({len(_nc_ivf_c)})"):
+                        _nc_ivf_display = _nc_ivf_c.copy()
+                        if 'Proximity_to_Gynoveda_Clinic' in _nc_ivf_display.columns:
+                            _nc_ivf_display['Distance'] = _nc_ivf_display['Proximity_to_Gynoveda_Clinic'].fillna('—')
+                        _nc_ivf_show = ['Chain_Name', 'Category', 'Centre_Location', 'Distance']
+                        _nc_ivf_show = [c for c in _nc_ivf_show if c in _nc_ivf_display.columns]
+                        st.dataframe(
+                            _nc_ivf_display[_nc_ivf_show].rename(columns={
+                                'Chain_Name': 'Chain', 'Centre_Location': 'Location'
+                            }).sort_values('Category'),
+                            use_container_width=True, hide_index=True,
+                        )
+                else:
+                    _nc_ivf_count = int(_nc_ivf_city_comp.iloc[0].get('IVF Centres in City', 0)) if len(_nc_ivf_city_comp) > 0 else 0
+                    _nc_ivf_chains = int(_nc_ivf_city_comp.iloc[0].get('Chains Present', 0)) if len(_nc_ivf_city_comp) > 0 else 0
+                    if _nc_ivf_count > 0:
+                        st.metric("IVF Centres in City", _nc_ivf_count,
+                                  help="Total number of IVF centres operating in this city.")
+                        st.markdown(
+                            f"<span style='background:{_nc_ivf_threat_color};color:#fff;font-size:0.7rem;font-weight:600;"
+                            f"padding:2px 10px;border-radius:10px'>{_nc_ivf_threat} competition</span>"
+                            f"<span style='margin-left:10px;font-size:0.8rem;color:#888'>{_nc_ivf_chains} chains</span>",
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        st.caption("No IVF competitor data available for this city")
+
             # ── CEI Weights & Safeguards (collapsed expander) ──
             with st.expander("⚙ CEI Weights & Safeguards", expanded=False):
                 st.caption("CEI dimensions (New-City)")
