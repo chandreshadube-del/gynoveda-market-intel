@@ -13,8 +13,8 @@ Whitefield,Bengaluru,8,5,"Indira IVF, Nova IVF Fertility, Gaudium IVF, Apollo Fe
 Ballygunge,Kolkata,6,4,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Apollo Fertility",0,MEDIUM
 Howrah,Kolkata,6,4,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Apollo Fertility",1,HIGH
 New Town,Kolkata,6,4,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Apollo Fertility",1,HIGH
-Kalasiguda,Hyderabad,5,4,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Apollo Fertility",0,MEDIUM
-Madhapur,Hyderabad,5,4,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Apollo Fertility",1,HIGH
+Kalasiguda,Hyderabad,16,7,"Indira IVF, Nova IVF (x2), Birla Fertility, Apollo Fertility, Oasis Fertility (x2), Hegde Fertility, Medicover (x2), Kiran Infertility, Ferty9, Dr. Padmaja IVF, Felicity IVF, Iswarya IVF, Hyd Women & Fertility",0,HIGH
+Madhapur,Hyderabad,16,7,"Indira IVF, Nova IVF (x2), Birla Fertility, Apollo Fertility, Oasis Fertility (x2), Hegde Fertility, Medicover (x2), Kiran Infertility, Ferty9, Dr. Padmaja IVF, Felicity IVF, Iswarya IVF, Hyd Women & Fertility",1,HIGH
 Anna Ng,Chennai,4,4,"Indira IVF, Nova IVF Fertility, Apollo Fertility, Cloudnine Fertility",2,HIGH
 Kankarbagh,Patna,4,4,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Gaudium IVF",0,MEDIUM
 Kondhwa,Pune,4,3,"Indira IVF, Nova IVF Fertility, Cloudnine Fertility",0,MEDIUM
@@ -88,4 +88,4 @@ Solapur,Solapur,2,2,"Indira IVF, Progenesis IVF",0,LOW
 Jalandhar,Jalandhar,8,3,"Indira IVF, Nova IVF, Aashakiran IVF",0,HIGH
 Dimapur,Dimapur,3,0,"Seeds of Innocens, Faith Hospital, Fertilityworld",0,LOW
 Itanagar,Itanagar,1,0,Gynoveda Ayurvedic Fertility,0,LOW
-Secunderabad,Secunderabad,2,2,"Indira IVF, Nova IVF",0,MEDIUM
+Secunderabad,Secunderabad,8,4,"Indira IVF, Nova IVF, Oasis Fertility, Ferty9, Mamata Fertility, SWCIC, Samyuktha Fertility, Hegde Fertility",0,HIGH
