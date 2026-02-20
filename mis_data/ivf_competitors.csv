@@ -1,0 +1,89 @@
+Chain_Name,Brand_Type,Centre_City,Centre_Location,State,Tier,Address_Detail,Approx_Lat,Approx_Lon,IVF_Cost_INR_Low,IVF_Cost_INR_High,IUI_Cost_INR,Year_Established,Centres_Nationwide,Key_Doctors,Gynoveda_City_Overlap,Proximity_to_Gynoveda_Clinic,Notes
+Indira IVF,National Chain,Mumbai,Dadar,Maharashtra,Metro,"Indira IVF, Dadar, Mumbai",19.0176,72.8562,150000,250000,15000,2011,165,Dr. Sarah Zaidi,Yes,Same locality as Gynoveda Dadar,Largest IVF chain in India
+Indira IVF,National Chain,Mumbai,Bhandup,Maharashtra,Metro,"Bhandup, Mumbai",19.148,72.937,150000,250000,15000,2011,165,Dr. Rinoy,Yes,~15km from nearest Gynoveda,
+Indira IVF,National Chain,Mumbai,Andheri,Maharashtra,Metro,"New Link Rd, Andheri West",19.1197,72.8464,150000,250000,15000,2011,165,,Yes,~5km from Malad,
+Indira IVF,National Chain,Mumbai,Borivali,Maharashtra,Metro,"Western Express Hwy, Borivali E",19.2307,72.8567,150000,250000,15000,2011,165,,Yes,~8km from Malad,
+Indira IVF,National Chain,Delhi,West Patel Nagar,Delhi,Metro,"Opp Metro Pillar 199, Patel Nagar",28.6519,77.1663,120000,200000,12000,2011,165,,Yes,~10km from Lajpat Nagar,
+Indira IVF,National Chain,Delhi,Lajpat Nagar,Delhi,Metro,"B-24, Lala Lajpat Rai Marg",28.5706,77.237,120000,200000,12000,2011,165,,Yes,Same locality as Gynoveda,Direct competitor overlap
+Indira IVF,National Chain,Bengaluru,JP Nagar,Karnataka,Metro,"Near Bangalore Central Mall, JP Nagar",12.9065,77.5857,130000,220000,13000,2011,165,,Yes,Same locality as Gynoveda JP Ng,Direct competitor overlap
+Indira IVF,National Chain,Bengaluru,Rajaji Nagar,Karnataka,Metro,"1st Main Rd, Rajaji Nagar",12.9917,77.5558,130000,220000,13000,2011,165,,Yes,~8km from Gynoveda Whitefield,
+Indira IVF,National Chain,Bengaluru,Indiranagar,Karnataka,Metro,"CMH Road, Near Metro Station",12.9784,77.6408,130000,220000,13000,2011,165,,Yes,~15km from JP Nagar,
+Indira IVF,National Chain,Bengaluru,Kalyan Nagar,Karnataka,Metro,"HRBR Layout, Near Hennur Cross",13.022,77.637,130000,220000,13000,2011,165,,Yes,~5km from Whitefield,
+Indira IVF,National Chain,Hyderabad,Madhapur,Telangana,Tier-1,"Madhapur, Hyderabad",17.4505,78.3827,120000,200000,12000,2011,165,,Yes,Same locality as Gynoveda,Direct competitor overlap
+Indira IVF,National Chain,Pune,Kothrud,Maharashtra,Tier-1,Pune,18.5074,73.8077,130000,220000,13000,2011,165,,Yes,~8km from Viman Nagar,
+Indira IVF,National Chain,Kolkata,Salt Lake,West Bengal,Metro,"Salt Lake, Kolkata",22.5811,88.417,110000,180000,10000,2011,165,,Yes,~10km from Ballygunge,
+Indira IVF,National Chain,Chennai,Anna Nagar,Tamil Nadu,Metro,"Anna Nagar, Chennai",13.085,80.2101,120000,200000,12000,2011,165,,Yes,Same locality as Gynoveda Anna Ng,Direct competitor overlap
+Indira IVF,National Chain,Ahmedabad,Ahmedabad,Gujarat,Tier-1,Ahmedabad,23.0225,72.5714,120000,200000,12000,2011,165,,Yes,~5km from Badakdev,
+Indira IVF,National Chain,Lucknow,Lucknow,Uttar Pradesh,Tier-1,Lucknow,26.8467,80.9462,100000,180000,10000,2011,165,,Yes,Near Gynoveda clinics,
+Indira IVF,National Chain,Jaipur,Jaipur,Rajasthan,Tier-1,Jaipur,26.9124,75.7873,100000,180000,10000,2011,165,,Yes,Near LalKothi,
+Indira IVF,National Chain,Indore,AB Road,Madhya Pradesh,Tier-2,"AB Rd, behind C21 Mall, Scheme 54",22.7196,75.8577,100000,180000,10000,2011,165,Dr. Vinita Vyas,Yes,Same road as Gynoveda,Direct competitor overlap
+Indira IVF,National Chain,Patna,Patna,Bihar,Tier-2,Patna,25.6093,85.1376,90000,160000,8000,2011,165,,Yes,Near KankarBagh,
+Indira IVF,National Chain,Varanasi,Varanasi,Uttar Pradesh,Tier-2,Varanasi,25.3176,82.9739,90000,160000,8000,2011,165,,Yes,Near Mahmoorganj,
+Indira IVF,National Chain,Ranchi,Ranchi,Jharkhand,Tier-2,Ranchi,23.3441,85.3096,90000,160000,8000,2011,165,,Yes,Near Kanka,
+Indira IVF,National Chain,Nashik,Nashik,Maharashtra,Tier-2,Nashik,19.9975,73.7898,100000,180000,10000,2011,165,,Yes,Near Canada Corner,
+Indira IVF,National Chain,Surat,Surat,Gujarat,Tier-2,Surat,21.1702,72.8311,100000,180000,10000,2011,165,,Yes,Near Vesu/Adajan,
+Indira IVF,National Chain,Bhopal,Bhopal,Madhya Pradesh,Tier-3,Bhopal,23.2599,77.4126,90000,160000,8000,2011,165,,Yes,Near Arera Cly,
+Indira IVF,National Chain,Guwahati,Guwahati,Assam,Tier-2,Guwahati,26.1445,91.7362,90000,160000,8000,2011,165,,Yes,Near ABC Point,
+Indira IVF,National Chain,Moradabad,Moradabad,Uttar Pradesh,Metro(NCR),Moradabad,28.8386,78.7733,80000,150000,8000,2011,165,,Yes,Near Begambagh,
+Nova IVF Fertility,National Chain,Mumbai,Andheri West,Maharashtra,Metro,"Sharayan Audeus Bldg, Veera Desai Rd",19.1197,72.8464,120000,250000,9000,2011,83,Dr. Sulbha Arora,Yes,~5km from Malad,Part of TPG-backed AHH
+Nova IVF Fertility,National Chain,Mumbai,Chembur,Maharashtra,Metro,"Corporate Park, Sion Trombay Rd",19.0622,72.9005,120000,250000,9000,2011,83,,Yes,~15km from Dadar,
+Nova IVF Fertility,National Chain,Mumbai,Mira Road,Maharashtra,Metro,"NG Estate, Mira Bhayander Rd",19.2813,72.8684,120000,250000,9000,2011,83,,Yes,Same locality as Gynoveda Mira Rd,Direct competitor overlap
+Nova IVF Fertility,National Chain,Mumbai,Vashi,Maharashtra,Metro,"Sector 17, Vashi, Navi Mumbai",19.0771,72.9986,120000,250000,9000,2011,83,,Yes,~10km from Kharghar,
+Nova IVF Fertility,National Chain,Mumbai,Thane,Maharashtra,Metro,"Hiranandani Meadows, Pokhran Rd 2",19.2183,72.9781,120000,250000,9000,2011,83,,Yes,Same city as Gynoveda Thane,
+Nova IVF Fertility,National Chain,Mumbai,Bandra West,Maharashtra,Metro,"Waterfield Road, Bandra West",19.0544,72.8295,120000,250000,9000,2011,83,,Yes,~10km from Dadar,
+Nova IVF Fertility,National Chain,Delhi,Rajouri Garden,Delhi,Metro,"GN-14, Rajouri Garden",28.649,77.121,120000,250000,10000,2011,83,,Yes,Same area as Gynoveda Rajouri,Direct competitor overlap
+Nova IVF Fertility,National Chain,Pune,Baner,Maharashtra,Tier-1,"Balewadi High St, Baner",18.5642,73.7769,120000,250000,10000,2011,83,,Yes,~12km from Viman Nagar,
+Nova IVF Fertility,National Chain,Pune,Kharadi,Maharashtra,Tier-1,"Valkan Society, Kharadi",18.553,73.9432,120000,250000,10000,2011,83,,Yes,~5km from Viman Nagar,
+Nova IVF Fertility,National Chain,Bengaluru,Koramangala,Karnataka,Metro,"Opus, 143, 1st Cross, 5th Block",12.9352,77.6245,130000,250000,10000,2011,83,Dr. Mahesh Koregol,Yes,~10km from JP Nagar,
+Nova IVF Fertility,National Chain,Hyderabad,Banjara Hills,Telangana,Tier-1,"Banjara Hills, Hyderabad",17.4156,78.4347,110000,220000,10000,2011,83,,Yes,~5km from Madhapur/Kalasiguda,
+Nova IVF Fertility,National Chain,Hyderabad,Kukatpally,Telangana,Tier-1,"Kukatpally, Hyderabad",17.4849,78.3988,110000,220000,10000,2011,83,,Yes,~10km from Madhapur,
+Nova IVF Fertility,National Chain,Kolkata,Kolkata,West Bengal,Metro,Kolkata,22.5726,88.3639,100000,200000,9000,2011,83,,Yes,Near Ballygunge/New Town,
+Nova IVF Fertility,National Chain,Ahmedabad,Ahmedabad,Gujarat,Tier-1,Ahmedabad,23.0225,72.5714,110000,220000,9000,2011,83,,Yes,Near Badakdev,
+Nova IVF Fertility,National Chain,Chennai,Chennai,Tamil Nadu,Metro,Chennai,13.0827,80.2707,120000,240000,10000,2011,83,,Yes,Near Anna Nagar,
+Nova IVF Fertility,National Chain,Indore,Vijaynagar,Madhya Pradesh,Tier-2,"NRK Business Park, Scheme 54",22.725,75.882,100000,200000,9000,2011,83,,Yes,Near AB Rd Gynoveda,
+Nova IVF Fertility,National Chain,Surat,Surat,Gujarat,Tier-2,Surat,21.1702,72.8311,100000,200000,9000,2011,83,,Yes,Near Vesu/Adajan,
+Nova IVF Fertility,National Chain,Lucknow,Lucknow,Uttar Pradesh,Tier-1,Lucknow,26.8467,80.9462,100000,200000,9000,2011,83,,Yes,Near Gomati/Alambagh,
+Nova IVF Fertility,National Chain,Jaipur,Jaipur,Rajasthan,Tier-1,Jaipur,26.9124,75.7873,100000,200000,9000,2011,83,,Yes,Near LalKothi,
+Nova IVF Fertility,National Chain,Patna,Patna,Bihar,Tier-2,Patna,25.6093,85.1376,90000,180000,8000,2011,83,,Yes,Near KankarBagh,
+Nova IVF Fertility,National Chain,Ranchi,Ranchi,Jharkhand,Tier-2,Ranchi,23.3441,85.3096,90000,180000,8000,2011,83,,Yes,Near Kanka,
+Nova IVF Fertility,National Chain,Raipur,Raipur,Chhattisgarh,Tier-2,Raipur,21.2514,81.6296,90000,180000,8000,2011,83,,Yes,Near Shankar Ng,
+Nova IVF Fertility,National Chain,Bhopal,Bhopal,Madhya Pradesh,Tier-3,Bhopal,23.2599,77.4126,90000,180000,8000,2016,83,,Yes,Near Arera Cly,
+Nova IVF Fertility,National Chain,Siliguri,Siliguri,West Bengal,Tier-2,Siliguri,26.7271,88.3953,80000,160000,7000,2011,83,,Yes,Near Sevoke Rd,
+Birla Fertility & IVF,National Chain,Mumbai,Prabhadevi,Maharashtra,Metro,Near Siddhivinayak Temple,19.0169,72.8287,150000,250000,15000,2020,50,Dr. Navina Singh,Yes,~3km from Dadar,CK Birla Group; expanding 4 more in Mumbai
+Birla Fertility & IVF,National Chain,Delhi,Punjabi Bagh,Delhi,Metro,Inside CK Birla Hospital,28.6687,77.1322,140000,250000,14000,2020,50,,Yes,~8km from Rajouri Garden,
+Birla Fertility & IVF,National Chain,Delhi,Dwarka,Delhi,Metro,"Wadhwa Plaza III, Sector 10",28.5921,77.046,140000,250000,14000,2020,50,,Yes,~15km from Lajpat Nagar,
+Birla Fertility & IVF,National Chain,Gurgaon,Sector 51,Haryana,Metro,"Sector 51, Gurgaon",28.4295,77.0412,140000,250000,14000,2020,50,,Yes,Same sector as Gynoveda Sec-46,
+Birla Fertility & IVF,National Chain,Kolkata,Bhowanipore,West Bengal,Metro,"Bhowanipore, Kolkata",22.5252,88.3444,110000,200000,12000,2020,50,,Yes,~3km from Ballygunge,
+Birla Fertility & IVF,National Chain,Kolkata,New Town,West Bengal,Metro,"ABC Square, Near Mangaldeep Metro",22.5958,88.4829,110000,200000,12000,2020,50,,Yes,Same locality as Gynoveda New Town,Direct competitor overlap
+Birla Fertility & IVF,National Chain,Kolkata,Howrah,West Bengal,Metro,"Platina Mall, Nityadhan Mukherjee Rd",22.5958,88.3119,110000,200000,12000,2020,50,,Yes,Same city as Gynoveda Howrah,
+Birla Fertility & IVF,National Chain,Hyderabad,Gachibowli,Telangana,Tier-1,"Care Crystal Bldg, Old Mumbai Hwy",17.4401,78.3489,120000,220000,12000,2020,50,,Yes,~5km from Madhapur,
+Birla Fertility & IVF,National Chain,Lucknow,Hazratganj,Uttar Pradesh,Tier-1,"Hazratganj, Lucknow",26.8509,80.9458,100000,200000,10000,2020,50,,Yes,Near Gomati Nagar,
+Birla Fertility & IVF,National Chain,Ahmedabad,Navrangpura,Gujarat,Tier-1,"Swastik Cross Rd, Navrangpura",23.036,72.561,110000,200000,10000,2020,50,,Yes,~3km from Badakdev,
+Birla Fertility & IVF,National Chain,Patna,Bailey Road,Bihar,Tier-2,"Opposite Pillar 54, Bailey Rd",25.612,85.158,90000,180000,8000,2020,50,,Yes,Near KankarBagh,
+Birla Fertility & IVF,National Chain,Bhubaneswar,Saheed Nagar,Odisha,Tier-2,"Anuj Times Square, Janpath Rd",20.2961,85.8245,90000,180000,8000,2020,50,,Yes,Same area as Gynoveda Janpath,Direct competitor overlap
+Birla Fertility & IVF,National Chain,Nagpur,Nagpur,Maharashtra,Tier-2,Nagpur,21.1458,79.0882,90000,180000,8000,2020,50,,Yes,Near Dharam,
+Birla Fertility & IVF,National Chain,Prayagraj,Civil Station,Uttar Pradesh,Tier-2,"Vinayak City Square, Sardar Patel Marg",25.4358,81.8463,80000,160000,8000,2020,50,,Yes,Near Elegin Rd,
+Birla Fertility & IVF,National Chain,Kozhikode,Kozhikode,Kerala,Tier-2,"BMT Center, Mini Bypass Rd",11.2588,75.7804,100000,200000,10000,2020,50,,No,Expansion target city,Via ARMC IVF acquisition
+Birla Fertility & IVF,National Chain,Thrissur,Thrissur,Kerala,Tier-2,"Falkland Tower, Ayyanthole",10.5276,76.2144,100000,200000,10000,2020,50,,No,Expansion target state,Via ARMC IVF acquisition
+Bloom IVF,Regional Chain,Mumbai,Bandra West,Maharashtra,Metro,"Lilavati Hospital, Bandra Reclamation Rd",19.0544,72.8295,140000,250000,10000,1995,15,Dr. Nandita Palshetkar,Yes,~10km from Dadar,Pioneer chain since 1995
+Bloom IVF,Regional Chain,Mumbai,Andheri East,Maharashtra,Metro,"Andheri East, Mumbai",19.1197,72.87,140000,250000,10000,1995,15,,Yes,~5km from Malad,
+Gaudium IVF,National Chain,Delhi,Kailash Colony,Delhi,Metro,"Kailash Colony, Delhi",28.5554,77.2403,150000,250000,15000,2009,7,Dr. Manika Khanna,Yes,~2km from Lajpat Nagar,No.1 ranked by Times Health 2024
+Gaudium IVF,National Chain,Delhi,Janakpuri,Delhi,Metro,"Block B1, Janakpuri",28.6222,77.0815,150000,250000,15000,2009,7,,Yes,~12km from Rajouri Garden,
+Gaudium IVF,National Chain,Mumbai,Mumbai,Maharashtra,Metro,Mumbai,19.076,72.8777,150000,250000,15000,2009,7,,Yes,Multiple overlaps,
+Gaudium IVF,National Chain,Bengaluru,Bengaluru,Karnataka,Metro,Bengaluru,12.9716,77.5946,150000,250000,15000,2009,7,,Yes,Multiple overlaps,
+Gaudium IVF,National Chain,Patna,Patna,Bihar,Tier-2,Patna,25.6093,85.1376,100000,200000,10000,2009,7,,Yes,Near KankarBagh,
+Gaudium IVF,National Chain,Ludhiana,Ludhiana,Punjab,Tier-2,Ludhiana,30.901,75.8573,100000,200000,10000,2009,7,,Yes,Near Gurudev Ng,
+Apollo Fertility,Hospital Chain,Chennai,Anna Nagar,Tamil Nadu,Metro,"75, 6th Ave, Anna Nagar",13.085,80.2101,150000,300000,15000,2015,22,,Yes,Same locality as Gynoveda,Direct overlap
+Apollo Fertility,Hospital Chain,Hyderabad,Hyderabad,Telangana,Tier-1,Hyderabad,17.385,78.4867,130000,280000,13000,2015,22,,Yes,Near Madhapur/Kalasiguda,
+Apollo Fertility,Hospital Chain,Delhi,Delhi,Delhi,Metro,Delhi,28.6139,77.209,140000,300000,14000,2015,22,,Yes,Multiple overlaps,
+Apollo Fertility,Hospital Chain,Bengaluru,Bengaluru,Karnataka,Metro,Bengaluru,12.9716,77.5946,140000,300000,14000,2015,22,,Yes,Multiple overlaps,
+Apollo Fertility,Hospital Chain,Kolkata,Kolkata,West Bengal,Metro,Kolkata,22.5726,88.3639,110000,250000,11000,2015,22,,Yes,Near Ballygunge/New Town,
+Apollo Fertility,Hospital Chain,Mumbai,Mumbai,Maharashtra,Metro,Mumbai,19.076,72.8777,150000,300000,15000,2015,22,,Yes,Multiple overlaps,
+Saraogi Hospital/IRIS IVF,Local Specialist,Mumbai,Malad West,Maharashtra,Metro,"Khetan Apt, SV Road, Opp Telephone Exchange",19.1874,72.8484,90000,150000,21000,2000,3,Dr. Mohit Saraogi,Yes,SAME LOCALITY as Gynoveda Malad,Closest direct competitor to Malad clinic
+Cloudnine Fertility,Hospital Chain,Bengaluru,Bengaluru,Karnataka,Metro,"Multiple locations, Bangalore",12.9716,77.5946,150000,280000,15000,2007,38,,Yes,Multiple overlaps,38 centres across 12 cities
+Cloudnine Fertility,Hospital Chain,Mumbai,Mumbai,Maharashtra,Metro,Mumbai,19.076,72.8777,150000,280000,15000,2007,38,,Yes,Multiple overlaps,
+Cloudnine Fertility,Hospital Chain,Chennai,Chennai,Tamil Nadu,Metro,Chennai,13.0827,80.2707,140000,260000,14000,2007,38,,Yes,Near Anna Nagar,
+Cloudnine Fertility,Hospital Chain,Pune,Pune,Maharashtra,Tier-1,Pune,18.5204,73.8567,130000,250000,13000,2007,38,,Yes,Near Viman/PCMC,
+Bavishi Fertility,Regional Specialist,Mumbai,Multiple,Maharashtra,Metro,"Andheri, Thane, Vashi",19.1197,72.8464,140000,250000,12000,1990,5,,Yes,Multiple MMR locations,National first with vitrified frozen eggs
+IVF Spring,Local Specialist,Mumbai,Dadar,Maharashtra,Metro,"Dadar, Mumbai",19.0176,72.8562,120000,200000,10000,2015,2,,Yes,Same locality as Gynoveda Dadar,
+Jilla IVF,Local Specialist,Mumbai,Mumbai,Maharashtra,Metro,Mumbai,19.076,72.8777,100000,180000,8000,2000,2,,Yes,"24 years experience, low cost",

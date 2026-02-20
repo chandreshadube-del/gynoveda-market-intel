@@ -1,0 +1,62 @@
+Clinic,City,Code,Tier,Zone,Region,Cabins,Launch,Age(mo),Latest Sales(₹Cr),Goal(₹Cr),Attainment%,3M Growth%,Cumul Sales(₹Cr),Latest 1Cx,CAC(₹K),Total NTB Visits
+Malad,MUM,1001,Metro,West 1,MMR,3,2023-10-23,28.0,0.14,66,0.2,-56.5,1611.06,50.0,5.0,34214
+Badakdev,AHM,1021,Tier-1,West 2,Gujarat,2,2025-01-18,12.9,0.14,44,0.3,-67.5,416.13,40.0,5.9,17946
+Janpath,BBS,1034,Tier-2,East,East,2,2025-04-19,9.9,0.11,44,0.3,-62.2,302.94,40.0,7.5,8700
+Rajouri,NDL,1006,Metro,North 1,NCR,3,2024-08-31,17.6,0.1,66,0.1,-65.8,951.06,39.0,5.9,17826
+Dharam,NAG,1008,Tier-2,West 1,RoM (Rest of Maharastra),2,2024-09-14,17.1,0.1,44,0.2,-67.0,590.04,38.0,5.2,18502
+Sec-51,NOI,1009,Metro,North 1,NCR,2,2024-10-05,16.4,0.1,44,0.2,-43.5,546.04,35.0,7.2,14186
+Madhapur,HYD,1010,Tier-1,South,HMR,3,2024-10-12,16.2,0.1,66,0.2,-59.7,819.06,39.0,6.0,18345
+Lajpat,NDL,1003,Metro,North 1,NCR,3,2024-06-01,20.6,0.09,66,0.1,-55.2,1083.06,32.0,5.4,21795
+JP Ng,BLR,1005,Metro,South,BMR,3,2024-07-27,18.8,0.09,66,0.1,-72.6,1017.06,36.0,6.2,24016
+Dadar,MUM,1007,Metro,West 1,MMR,2,2024-08-31,17.6,0.09,44,0.2,-77.3,634.04,39.0,5.7,21532
+Virar,MUM,1011,Metro,West 1,MMR,2,2024-10-29,15.6,0.09,44,0.2,-68.8,546.04,37.0,6.2,14152
+Kharghar,NVM,1017,Metro,West 1,MMR,2,2024-12-18,14.0,0.09,44,0.2,-75.0,458.04,28.0,5.7,13925
+PCMC,PUN,1029,Tier-1,West 1,PMR,2,2025-03-26,10.7,0.09,44,0.2,-74.8,338.58,39.0,5.9,11091
+Howrah,KOL,1053,Metro,East,KMR,2,2025-09-20,4.8,0.09,44,0.2,-78.1,124.74,35.0,3.6,4644
+Viman,PUN,1002,Tier-1,West 1,PMR,2,2024-04-01,22.7,0.08,44,0.2,-62.1,810.04,26.0,5.6,23701
+Adajan,SUR,1056,Tier-2,West 2,Gujarat,2,2025-10-25,3.6,0.08,44,0.2,-35.7,89.1,29.0,8.0,1569
+Thane,THN,1004,Metro,West 1,MMR,2,2024-07-06,19.5,0.07,44,0.2,-74.8,678.04,27.0,5.6,20540
+LalKothi,JAI,1024,Tier-1,West 2,Rajasthan,2,2025-02-08,12.2,0.07,44,0.1,-67.6,394.13,23.0,10.1,6573
+Vesu,SUR,1025,Tier-2,West 2,Gujarat,2,2025-02-15,12.0,0.07,44,0.2,-67.3,376.31,21.0,5.7,10825
+Sec-46,GUR,1045,Metro,North 1,NCR,2,2025-07-09,7.2,0.07,44,0.2,-62.2,231.66,26.0,7.8,4232
+Kanka,RNC,1028,Tier-2,East,East,2,2025-03-18,11.0,0.06,44,0.1,-76.6,365.31,29.0,9.2,8752
+Nikol,AHM,1057,Tier-1,West 2,Gujarat,2,2025-11-08,3.1,0.05,44,0.1,-57.0,89.1,12.0,8.4,1307
+Alambagh,LKO,1058,Tier-1,North 2,UP & Bihar,2,2025-11-29,2.4,0.05,44,0.1,313.6,53.46,21.0,7.4,964
+Margao,MAR,1036,Tier-1,West 1,RoM (Rest of Maharastra),2,2025-05-03,9.4,0.04,44,0.1,-79.3,302.94,14.0,10.7,4906
+Mira Rd,THN,1051,Metro,West 1,MMR,2,2025-08-16,5.9,0.04,44,0.1,-63.7,160.38,16.0,9.2,1917
+Kondhwa,PUN,1059,Tier-1,West 1,PMR,2,2025-12-13,2.0,0.04,44,0.1,,53.46,12.0,7.4,642
+New Town,KOL,1060,Metro,East,KMR,2,2026-01-10,1.0,0.02,44,0.0,,26.73,12.0,8.0,230
+Model Town,KNP,1012,Tier-2,North 2,UP & Bihar,2,2024-11-23,14.8,,44,,,502.04,,,10369
+Civil Lines,AGR,1013,Tier-3,North 2,UP & Bihar,2,2024-11-26,14.7,,44,,,502.04,,,9016
+Gurudev Ng,LDH,1014,Tier-2,North 1,Punjab,2,2024-11-30,14.6,,44,,,502.04,,,6665
+Raj Ng,GHZ,1015,Metro,North 1,NCR,2,2024-12-03,14.5,,44,,,458.04,,,8193
+Whitefield,BLR,1016,Metro,South,BMR,2,2024-12-11,14.2,,44,,,458.04,,,11195
+Gomati,LKO,1018,Tier-1,North 2,UP & Bihar,2,2024-12-21,13.9,,44,,,458.04,,,14104
+Sec-35,CDG,1019,Tier-1,North 1,Punjab,2,2024-12-26,13.7,,44,,,458.04,,,8706
+Jalandhar,JAL,1020,Tier-3,North 1,Punjab,2,2025-01-11,13.2,,44,,,416.13,,,5617
+Mall Rd,AMR,1022,Tier-2,North 1,Punjab,2,2025-01-30,12.5,,44,,,425.04,,,5399
+Alkapuri,VAD,1023,Tier-3,West 2,Gujarat,2,2025-02-01,12.5,,44,,,376.31,,,9705
+Mahmoorganj,VAR,1026,Tier-2,North 2,UP & Bihar,2,2025-02-26,11.6,,44,,,394.13,,,8052
+Ballygunge,KOL,1027,Metro,East,KMR,2,2025-03-08,11.3,,44,,,365.31,,,20189
+ABCPoint,GUW,1030,Tier-2,East,North East,2,2025-03-22,10.8,,44,,,338.58,,,9595
+Anna Ng,CHE,1031,Metro,South,Rest of South,2,2025-03-29,10.6,,44,,,338.58,,,8163
+Ring Rd,RJK,1032,Tier-3,West 2,Gujarat,2,2025-04-05,10.4,,44,,,338.58,,,8248
+Shankar Ng,RAI,1033,Tier-2,West 2,Central,1,2025-04-12,10.1,,22,,,169.29,,,8032
+Sevoke Rd,SGU,1035,Tier-2,East,East,2,2025-04-26,9.7,,44,,,302.94,,,7903
+KankarBagh,PAT,1037,Tier-2,North 2,UP & Bihar,2,2025-05-10,9.2,,44,,,302.94,,,0
+Dimapur,DMR,1038,Tier-3,East,North East,2,2025-05-17,9.0,,44,,,267.3,,,3733
+Canada,NSK,1039,Tier-2,West 1,RoM (Rest of Maharastra),2,2025-05-24,8.7,,44,,,267.3,,,4226
+AB Rd,IND,1040,Tier-2,West 2,Central,2,2025-05-31,8.5,,44,,,267.3,,,6894
+Arera Cly,BPL,1041,Tier-3,West 2,Central,2,2025-06-14,8.0,,44,,,267.3,,,4986
+Ballupur Rd,DDN,1042,Tier-2,North 1,Rest of North,2,2025-06-21,7.8,,44,,,231.66,,,3067
+Jayalakshmipuram,MYS,1043,Tier-2,South,Rest of South,2,2025-06-28,7.6,,44,,,231.66,,,2994
+Kalasiguda,SEC,1044,Tier-1,South,HMR,2,2025-07-05,7.3,,44,,,231.66,,,6126
+Kailash Ng,AUR,1046,Tier-3,West 1,RoM (Rest of Maharastra),2,2025-07-19,6.9,,44,,,196.02,,,3326
+Khadakpada,KLN,1047,Metro,West 1,MMR,2,2025-07-23,6.7,,44,,,196.02,,,5734
+Begambagh,MRT,1048,Metro,North 1,NCR,2,2025-07-26,6.6,,44,,,196.02,,,1892
+Kalyan Ng,BLR,1049,Metro,South,BMR,2,2025-08-02,6.4,,44,,,196.02,,,3134
+Elegin Rd,PRY,1050,Tier-2,North 2,UP & Bihar,2,2025-08-09,6.2,,44,,,196.02,,,2468
+Basaveshwar,BLR,1052,Metro,South,BMR,2,2025-08-30,5.5,,44,,,160.38,,,2237
+Faridabad,FDB,1054,Metro,North 1,NCR,2,2025-09-27,4.5,,44,,,124.74,,,882
+Itanagar,ITR,1055,Tier-3,East,North East,2,2025-10-15,3.9,,44,,,124.74,,,617
+Ushagram,ASN,1061,Tier-2,East,East,2,2026-01-31,0.3,,44,,,8.91,,,52

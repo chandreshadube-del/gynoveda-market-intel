@@ -1,0 +1,81 @@
+City,State,Web Orders,Web Revenue(₹),Unique Customers,Unique Pincodes,IVF Competitors,Est Rent(₹/sqft),Demand Score(40),Revenue Score(25),Customer Score(20),Competition Penalty(15),EXPANSION SCORE,Priority
+Gautam Buddha Nagar,Uttar Pradesh,6073,10758942,5369,22,0,,7.1,4.6,3.5,0,15.2,MEDIUM
+Goa,Goa,4518,8106593,4105,88,0,60.0,5.3,3.5,2.7,0,11.5,LOW
+Kamrup,Assam,4156,7430713,3819,123,0,,4.9,3.2,2.5,0,10.6,LOW
+North 24 Parganas,West Bengal,3461,6539834,3093,127,0,,4.0,2.8,2.0,0,8.8,LOW
+Raigarh(MH),Maharashtra,2876,5352938,2568,53,0,,3.4,2.3,1.7,0,7.4,LOW
+Khorda,Odisha,2763,5223019,2508,80,0,,3.2,2.2,1.6,0,7.0,LOW
+Papum Pare,Arunachal Pradesh,2202,3883182,2056,24,0,,2.6,1.7,1.4,0,5.7,LOW
+Kanchipuram,Tamil Nadu,2254,3689993,1967,75,0,,2.6,1.6,1.3,0,5.5,LOW
+Darjiling,West Bengal,2160,3927708,1982,52,0,,2.5,1.7,1.3,0,5.5,LOW
+Jammu,Jammu & Kashmir,2116,3593387,1967,42,0,,2.5,1.5,1.3,0,5.3,LOW
+Jalandhar,Punjab,1913,3401181,1751,60,0,,2.2,1.5,1.2,0,4.9,LOW
+Imphal,Manipur,1913,3489570,1768,20,0,,2.2,1.5,1.2,0,4.9,LOW
+East Khasi Hills,Meghalaya,1751,2958487,1619,34,0,,2.0,1.3,1.1,0,4.4,LOW
+Rupnagar,Punjab,1710,3039697,1540,19,0,,2.0,1.3,1.0,0,4.3,LOW
+Dimapur,Nagaland,1681,2992376,1558,8,0,,2.0,1.3,1.0,0,4.3,LOW
+Gandhi Nagar,Gujarat,1573,2959046,1390,35,0,,1.8,1.3,0.9,0,4.0,LOW
+South 24 Parganas,West Bengal,1380,2583391,1246,58,0,,1.6,1.1,0.8,0,3.5,LOW
+East Sikkim,Sikkim,1356,2333842,1251,16,0,,1.6,1.0,0.8,0,3.4,LOW
+Allahabad,Uttar Pradesh,1255,2459573,1140,44,0,,1.5,1.1,0.7,0,3.3,LOW
+Visakhapatnam,Andhra Pradesh,1225,2262000,1111,99,0,,1.4,1.0,0.7,0,3.1,LOW
+Durg,Chhattisgarh,1178,2398178,1084,31,0,,1.4,1.0,0.7,0,3.1,LOW
+East Singhbhum,Jharkhand,1161,2284014,1062,32,0,,1.4,1.0,0.7,0,3.1,LOW
+Coimbatore,Tamil Nadu,1284,1961718,1127,111,0,,1.5,0.8,0.7,0,3.0,LOW
+Tiruvallur,Tamil Nadu,1172,1990539,1031,51,0,,1.4,0.9,0.7,0,3.0,LOW
+Meerut,Uttar Pradesh,1157,2134731,1052,21,0,,1.4,0.9,0.7,0,3.0,LOW
+Jabalpur,Madhya Pradesh,1114,2117745,1028,18,0,,1.3,0.9,0.7,0,2.9,LOW
+Valsad,Gujarat,1114,2148283,1027,33,0,,1.3,0.9,0.7,0,2.9,LOW
+Patiala,Punjab,1111,1954456,1013,22,0,,1.3,0.8,0.7,0,2.8,LOW
+Srinagar,Jammu & Kashmir,1047,2055328,994,50,0,,1.2,0.9,0.7,0,2.8,LOW
+Gurdaspur,Punjab,1071,1907529,987,35,0,,1.3,0.8,0.6,0,2.7,LOW
+Mohali,Punjab,1105,1928724,986,10,0,,1.3,0.8,0.6,0,2.7,LOW
+Purba Bardhaman,West Bengal,1003,1860873,911,74,0,,1.2,0.8,0.6,0,2.6,LOW
+Ernakulam,Kerala,1069,1696105,969,124,0,,1.3,0.7,0.6,0,2.6,LOW
+Kangra,Himachal Pradesh,995,1889390,928,100,0,,1.2,0.8,0.6,0,2.6,LOW
+Jodhpur,Rajasthan,1002,1813998,911,38,0,,1.2,0.8,0.6,0,2.6,LOW
+Shimla,Himachal Pradesh,994,1817061,918,67,0,,1.2,0.8,0.6,0,2.6,LOW
+K.V.Rangareddy,Telangana,984,1794464,859,27,0,,1.2,0.8,0.6,0,2.6,LOW
+Cuttack,Odisha,925,1831576,847,54,0,,1.1,0.8,0.6,0,2.5,LOW
+Dakshina Kannada,Karnataka,984,1648698,863,77,0,,1.2,0.7,0.6,0,2.5,LOW
+Howrah,West Bengal,979,1952342,890,49,0,,1.1,0.8,0.6,0,2.5,LOW
+West Tripura,Tripura,954,1774677,888,35,0,,1.1,0.8,0.6,0,2.5,LOW
+Bareilly,Uttar Pradesh,920,1758499,839,26,0,,1.1,0.8,0.6,0,2.5,LOW
+Kohima,Nagaland,925,1609266,858,17,0,,1.1,0.7,0.6,0,2.4,LOW
+Hoshiarpur,Punjab,944,1669740,852,54,0,,1.1,0.7,0.6,0,2.4,LOW
+Panchkula,Haryana,954,1671428,856,18,0,,1.1,0.7,0.6,0,2.4,LOW
+Dibrugarh,Assam,901,1684463,825,27,0,,1.1,0.7,0.5,0,2.3,LOW
+Cachar,Assam,884,1651515,830,48,0,,1.0,0.7,0.5,0,2.2,LOW
+Kolhapur,Maharashtra,895,1703469,827,66,0,,1.0,0.7,0.5,0,2.2,LOW
+Belagavi,Karnataka,889,1628386,829,85,0,,1.0,0.7,0.5,0,2.2,LOW
+Sundergarh,Odisha,846,1642005,788,52,0,,1.0,0.7,0.5,0,2.2,LOW
+Haridwar,Uttarakhand,883,1638243,805,18,0,,1.0,0.7,0.5,0,2.2,LOW
+Gorakhpur,Uttar Pradesh,831,1699042,762,37,0,,1.0,0.7,0.5,0,2.2,LOW
+Hooghly,West Bengal,823,1606562,737,76,0,,1.0,0.7,0.5,0,2.2,LOW
+Kachchh,Gujarat,821,1551338,732,46,0,,1.0,0.7,0.5,0,2.2,LOW
+Udaipur,Rajasthan,823,1547906,743,28,0,,1.0,0.7,0.5,0,2.2,LOW
+Ganjam,Odisha,792,1528781,703,69,0,,0.9,0.7,0.5,0,2.1,LOW
+Jalaun,Uttar Pradesh,1151,1500221,138,13,0,,1.3,0.6,0.1,0,2.0,LOW
+Nainital,Uttarakhand,784,1440813,718,14,0,,0.9,0.6,0.5,0,2.0,LOW
+Krishna,Andhra Pradesh,782,1310899,697,68,0,,0.9,0.6,0.5,0,2.0,LOW
+Ambala,Haryana,776,1400421,706,28,0,,0.9,0.6,0.5,0,2.0,LOW
+Nagaon,Assam,774,1473037,730,34,0,,0.9,0.6,0.5,0,2.0,LOW
+Gwalior,Madhya Pradesh,762,1391690,700,18,0,,0.9,0.6,0.5,0,2.0,LOW
+Sonitpur,Assam,748,1455838,699,41,0,,0.9,0.6,0.5,0,2.0,LOW
+Dharwad,Karnataka,753,1368541,679,31,0,,0.9,0.6,0.4,0,1.9,LOW
+Kota,Rajasthan,748,1390599,676,26,0,,0.9,0.6,0.4,0,1.9,LOW
+Satara,Maharashtra,736,1462245,662,69,0,,0.9,0.6,0.4,0,1.9,LOW
+Bilaspur(CGH),Chhattisgarh,734,1485756,669,20,0,,0.9,0.6,0.4,0,1.9,LOW
+Ahmed Nagar,Maharashtra,727,1403548,677,62,0,,0.9,0.6,0.4,0,1.9,LOW
+Tinsukia,Assam,704,1315466,654,30,0,,0.8,0.6,0.4,0,1.8,LOW
+Medak,Telangana,665,1330529,598,41,0,,0.8,0.6,0.4,0,1.8,LOW
+Ajmer,Rajasthan,677,1314090,617,35,0,,0.8,0.6,0.4,0,1.8,LOW
+Sibsagar,Assam,641,1210671,601,38,0,,0.8,0.5,0.4,0,1.7,LOW
+Thiruvananthapuram,Kerala,691,1096656,605,126,0,,0.8,0.5,0.4,0,1.7,LOW
+Kapurthala,Punjab,686,1240922,618,28,0,,0.8,0.5,0.4,0,1.7,LOW
+West Garo Hills,Meghalaya,686,1124643,637,14,0,,0.8,0.5,0.4,0,1.7,LOW
+Sonipat,Haryana,657,1218480,599,22,0,,0.8,0.5,0.4,0,1.7,LOW
+Solan,Himachal Pradesh,643,1113085,593,30,0,,0.8,0.5,0.4,0,1.7,LOW
+Anand,Gujarat,612,1191750,540,42,0,,0.7,0.5,0.4,0,1.6,LOW
+West Midnapore,West Bengal,637,1220520,575,59,0,,0.7,0.5,0.4,0,1.6,LOW
+Chittoor,Andhra Pradesh,625,1214884,566,60,0,,0.7,0.5,0.4,0,1.6,LOW

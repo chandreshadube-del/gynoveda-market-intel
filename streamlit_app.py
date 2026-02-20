@@ -1,8 +1,5 @@
 """
-Gynoveda North Star — Expansion Intelligence Dashboard
-=======================================================
-Composite scoring engine for same-city & new-city expansion decisions.
-Replaces prior Clinic Intelligence app with forward-looking analytics.
+Gynoveda Expansion Intelligence
 """
 
 import streamlit as st
@@ -13,12 +10,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import os, json, math
 
-st.set_page_config(page_title="Gynoveda Expansion Intelligence", layout="wide", page_icon="🧭")
-
-# ── Mobile viewport meta tag ──────────────────────────────────────────
-st.markdown("""
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-""", unsafe_allow_html=True)
+st.set_page_config(page_title="Gynoveda · Expansion Intel", layout="wide", page_icon="◉")
 
 # ── Formatting helpers ──────────────────────────────────────────────────
 def fmt_inr(v, prefix="₹", d=1):
@@ -42,64 +34,50 @@ def pct(v, d=0):
     if v is None or (isinstance(v, float) and np.isnan(v)): return "0%"
     return f"{v*100:.{d}f}%" if abs(v) < 1 else f"{v:.{d}f}%"
 
-# ── Plotly responsive config (hides toolbar on mobile) ──
-PLOTLY_CFG = {'responsive': True, 'displayModeBar': False}
+PLOTLY_CFG = {'responsive': True, 'displayModeBar': False, 'staticPlot': False}
 
-# City code → primary e-commerce city name mapping
-# 14 corrections applied from forensic audit (11 Feb 2026)
-# Maps MIS clinic codes to the city names used in e-commerce order data
+# Plotly layout defaults — clean, minimal
+# NOTE: Do NOT include xaxis/yaxis/margin here — they conflict with per-chart overrides
+CHART_LAYOUT = dict(
+    plot_bgcolor='rgba(0,0,0,0)',
+    paper_bgcolor='rgba(0,0,0,0)',
+    font=dict(family="Inter, system-ui, sans-serif", size=12, color="#333"),
+    legend=dict(orientation='h', y=-0.22, x=0.5, xanchor='center', font=dict(size=11)),
+    title=dict(text='', font=dict(size=14, color="#555")),
+)
+
+def _apply_layout(fig, **overrides):
+    """Apply CHART_LAYOUT + sensible axis defaults, then overrides."""
+    defaults = dict(
+        margin=dict(l=40, r=20, t=44, b=50),
+        xaxis=dict(showgrid=False, zeroline=False),
+        yaxis=dict(showgrid=True, gridcolor='#f0f0f0', zeroline=False),
+    )
+    defaults.update(CHART_LAYOUT)
+    # Convert string title to dict format for consistency
+    if 'title' in overrides and isinstance(overrides['title'], str):
+        overrides['title'] = dict(text=overrides['title'], font=dict(size=14, color="#555"))
+    defaults.update(overrides)
+    fig.update_layout(**defaults)
+
+PALETTE = ['#c0392b', '#f97316', '#10b981', '#8b5cf6', '#3b82f6', '#06b6d4']
+
+# ── City mapping ────────────────────────────────────────────────────────
 CITY_NAMES = {
-    'AGR': 'Agra',
-    'AHM': 'Ahmedabad',
-    'AMR': 'Amritsar',
-    'ASN': 'Asansol',
-    'AUR': 'Aurangabad',
-    'BBS': 'Bhubaneswar',
-    'BLR': 'Bengaluru',
-    'BPL': 'Bhopal',
-    'CDG': 'Chandigarh',
-    'CHE': 'Chennai',
-    'DDN': 'Dehradun',
-    'DMR': 'Dimapur',
-    'FDB': 'Faridabad',
-    'GHZ': 'Ghaziabad',
-    'GUR': 'Gurugram',
-    'GUW': 'Guwahati',
-    'HYD': 'Hyderabad',
-    'IND': 'Indore',
-    'ITR': 'Itanagar',
-    'JAI': 'Jaipur',
-    'JAL': 'Jalandhar',
-    'KLN': 'Kalyan',
-    'KNP': 'Kanpur',
-    'KOL': 'Kolkata',
-    'LDH': 'Ludhiana',
-    'LKO': 'Lucknow',
-    'MAR': 'Goa',
-    'MRT': 'Meerut',
-    'MUM': 'Mumbai',
-    'MYS': 'Mysuru',
-    'NAG': 'Nagpur',
-    'NDL': 'Delhi',
-    'NOI': 'Noida',
-    'NSK': 'Nashik',
-    'NVM': 'Navi Mumbai',
-    'PAT': 'Patna',
-    'PRY': 'Prayagraj',
-    'PUN': 'Pune',
-    'RAI': 'Raipur',
-    'RJK': 'Rajkot',
-    'RNC': 'Ranchi',
-    'SEC': 'Secunderabad',
-    'SGU': 'Siliguri',
-    'SUR': 'Surat',
-    'THN': 'Thane',
-    'VAD': 'Vadodara',
-    'VAR': 'Varanasi',
+    'AGR': 'Agra', 'AHM': 'Ahmedabad', 'AMR': 'Amritsar', 'ASN': 'Asansol',
+    'AUR': 'Aurangabad', 'BBS': 'Bhubaneswar', 'BLR': 'Bengaluru', 'BPL': 'Bhopal',
+    'CDG': 'Chandigarh', 'CHE': 'Chennai', 'DDN': 'Dehradun', 'DMR': 'Dimapur',
+    'FDB': 'Faridabad', 'GHZ': 'Ghaziabad', 'GUR': 'Gurugram', 'GUW': 'Guwahati',
+    'HYD': 'Hyderabad', 'IND': 'Indore', 'ITR': 'Itanagar', 'JAI': 'Jaipur',
+    'JAL': 'Jalandhar', 'KLN': 'Kalyan', 'KNP': 'Kanpur', 'KOL': 'Kolkata',
+    'LDH': 'Ludhiana', 'LKO': 'Lucknow', 'MAR': 'Goa', 'MRT': 'Meerut',
+    'MUM': 'Mumbai', 'MYS': 'Mysuru', 'NAG': 'Nagpur', 'NDL': 'Delhi',
+    'NOI': 'Noida', 'NSK': 'Nashik', 'NVM': 'Navi Mumbai', 'PAT': 'Patna',
+    'PRY': 'Prayagraj', 'PUN': 'Pune', 'RAI': 'Raipur', 'RJK': 'Rajkot',
+    'RNC': 'Ranchi', 'SEC': 'Secunderabad', 'SGU': 'Siliguri', 'SUR': 'Surat',
+    'THN': 'Thane', 'VAD': 'Vadodara', 'VAR': 'Varanasi',
 }
 
-# Served City Aliases — maps each clinic code to ALL known e-commerce names
-# Used for whitespace detection (a city is "served" if ANY alias matches)
 SERVED_CITY_ALIASES = {
     'AGR': {'Agra'}, 'AHM': {'Ahmedabad'}, 'AMR': {'Amritsar'},
     'ASN': {'Purba Bardhaman', 'Asansol'},
@@ -127,7 +105,7 @@ SERVED_CITY_ALIASES = {
     'NAG': {'Nagpur'}, 'NDL': {'Delhi', 'New Delhi'},
     'NOI': {'Gautam Buddha Nagar', 'Noida', 'Greater Noida'},
     'NSK': {'Nashik'},
-    'NVM': {'Raigarh(MH)', 'Navi Mumbai', 'Panvel'},
+    'NVM': {'Navi Mumbai', 'Panvel', 'Raigarh(MH)', 'Raigarh'},
     'PAT': {'Patna'},
     'PRY': {'Allahabad', 'Prayagraj'},
     'PUN': {'Pune'}, 'RAI': {'Raipur'},
@@ -141,7 +119,6 @@ SERVED_CITY_ALIASES = {
 }
 
 def _match_city_to_code(city_name):
-    """Match an e-commerce city name to its MIS clinic code using aliases."""
     if not city_name or not isinstance(city_name, str):
         return None
     city_l = city_name.lower().strip()
@@ -150,7 +127,6 @@ def _match_city_to_code(city_name):
             return code
     return None
 
-# ── CLINIC COORDINATES (approximate) ───────────────────────────────────
 CLINIC_COORDS = {
     'Malad': (19.187, 72.849), 'Dadar': (19.018, 72.848), 'Thane': (19.218, 72.978),
     'Khadakpada': (19.244, 73.136), 'Virar': (19.456, 72.812), 'Mira Rd': (19.281, 72.872),
@@ -181,157 +157,187 @@ CLINIC_COORDS = {
 }
 
 def _haversine_km(lat1, lon1, lat2, lon2):
-    """Haversine distance in km between two coordinate pairs."""
     R = 6371
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
     a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
     return R * 2 * math.asin(math.sqrt(a))
 
-# ── CSS ─────────────────────────────────────────────────────────────────
+def _haversine_vec(lat1, lon1, lat2_arr, lon2_arr):
+    """Vectorized haversine: one point vs arrays of points. Returns km array."""
+    R = 6371.0
+    rlat1 = np.radians(lat1)
+    rlat2 = np.radians(lat2_arr)
+    dlat = rlat2 - rlat1
+    dlon = np.radians(lon2_arr) - np.radians(lon1)
+    a = np.sin(dlat / 2) ** 2 + np.cos(rlat1) * np.cos(rlat2) * np.sin(dlon / 2) ** 2
+    return R * 2 * np.arcsin(np.sqrt(a))
+
+# ── CSS — Modern Dashboard ─────────────────────────────────────────────────
 st.markdown("""
 <style>
-    /* ── Desktop defaults ─────────────────────────────────── */
-    .block-container {padding-top: 1.2rem; padding-bottom: 0.5rem; max-width: 1400px;}
-    [data-testid="stMetric"] {background: #f8f9fa; border-radius: 10px; padding: 12px 16px;
-        border-left: 4px solid #FF6B35;}
-    [data-testid="stMetric"] label {font-size: 0.72rem !important; color: #666;}
-    [data-testid="stMetric"] [data-testid="stMetricValue"] {font-size: 1.3rem !important; font-weight: 700;}
-    .score-card {border-radius: 12px; padding: 18px 22px; margin-bottom: 0.6rem; text-align: center;}
-    .score-high {background: #A8E6CF; color: #1a1a1a;}
-    .score-med  {background: #B8E6CF; color: #1a1a1a;}
-    .score-low  {background: #C8E6CF; color: #1a1a1a;}
-    .score-negative {background: #FF6B6B; color: #ffffff;}
-    .score-card h2 {margin: 0; font-size: 2.2rem; font-weight: 800;}
-    .score-card p {margin: 4px 0 0 0; font-size: 0.82rem; opacity: 0.85;}
-    .insight-box {background: #EDE7F6; border-left: 4px solid #5E35B1; padding: 12px 16px;
-        border-radius: 8px; margin: 8px 0; font-size: 0.88rem; line-height: 1.5;}
-    .risk-high {background: #FFEBEE; border-left: 4px solid #C62828; padding: 10px 14px;
-        border-radius: 8px; margin: 4px 0; font-size: 0.85rem;}
-    .risk-low {background: #E8F5E9; border-left: 4px solid #2E7D32; padding: 10px 14px;
-        border-radius: 8px; margin: 4px 0; font-size: 0.85rem;}
-    .kpi-hero {background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        color: white; padding: 16px 24px; border-radius: 12px; margin-bottom: 0.8rem;}
-    .kpi-hero h3 {margin: 0; font-size: 0.78rem; color: #a0a0b0; font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px;}
-    .kpi-hero p {margin: 4px 0 0 0; font-size: 1.7rem; font-weight: 700;}
-    .kpi-hero span {font-size: 0.8rem; color: #81C784;}
-    #MainMenu {visibility: hidden;} footer {visibility: hidden;} .stDeployButton {display: none;}
-    div[data-testid="stTabs"] button {font-size: 0.9rem; font-weight: 600;}
-    div[data-testid="stTabs"] button[aria-selected="true"] {border-bottom: 3px solid #FF6B35;}
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-    /* ── Mobile responsive (≤ 768px) ──────────────────────── */
-    @media (max-width: 768px) {
-        /* Stack columns vertically */
-        [data-testid="stHorizontalBlock"] {
-            flex-direction: column !important;
-        }
-        [data-testid="column"] {
-            width: 100% !important;
-            flex: 1 1 100% !important;
-            min-width: 100% !important;
-        }
+    /* Global */
+    html, body, [class*="css"] {font-family: 'Inter', system-ui, -apple-system, sans-serif !important;}
+    .block-container {padding-top: 0.5rem; padding-bottom: 1rem; max-width: 1260px;}
+    .main .block-container {background: #f4f6f9;}
+    .stApp {background: #f4f6f9;}
+    /* Hide white band but keep sidebar toggle */
+    header[data-testid="stHeader"] {background: transparent !important; backdrop-filter: none !important;}
+    [data-testid="stSidebarCollapsedControl"] {top: 0.5rem;}
 
-        /* Tighter container padding */
-        .block-container {
-            padding-left: 0.8rem !important;
-            padding-right: 0.8rem !important;
-            padding-top: 0.8rem !important;
-            max-width: 100% !important;
-        }
-
-        /* Compact metric cards */
-        [data-testid="stMetric"] {
-            padding: 8px 10px;
-            margin-bottom: 6px;
-        }
-        [data-testid="stMetric"] label {font-size: 0.65rem !important;}
-        [data-testid="stMetric"] [data-testid="stMetricValue"] {font-size: 1.1rem !important;}
-
-        /* Smaller score cards */
-        .score-card {padding: 12px 14px; margin-bottom: 0.4rem;}
-        .score-card h2 {font-size: 1.6rem;}
-        .score-card p {font-size: 0.75rem;}
-
-        /* Compact KPI hero cards */
-        .kpi-hero {padding: 10px 14px; margin-bottom: 0.5rem;}
-        .kpi-hero h3 {font-size: 0.68rem;}
-        .kpi-hero p {font-size: 1.3rem;}
-        .kpi-hero span {font-size: 0.72rem;}
-
-        /* Tighter insight/risk boxes */
-        .insight-box, .risk-high, .risk-low {
-            padding: 8px 10px;
-            font-size: 0.78rem;
-        }
-
-        /* Tabs: scrollable + smaller text */
-        div[data-testid="stTabs"] button {
-            font-size: 0.72rem;
-            padding: 6px 8px;
-            white-space: nowrap;
-        }
-        div[data-testid="stTabs"] [role="tablist"] {
-            overflow-x: auto;
-            flex-wrap: nowrap;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: none;
-        }
-        div[data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar {
-            display: none;
-        }
-
-        /* Tables: horizontal scroll wrapper */
-        [data-testid="stDataFrame"],
-        [data-testid="stTable"],
-        .stDataFrame {
-            overflow-x: auto !important;
-            -webkit-overflow-scrolling: touch;
-        }
-
-        /* Plotly charts: constrain & allow touch scroll */
-        [data-testid="stPlotlyChart"] {
-            overflow-x: auto !important;
-            -webkit-overflow-scrolling: touch;
-        }
-
-        /* Smaller headings */
-        h1 {font-size: 1.3rem !important;}
-        h2 {font-size: 1.1rem !important;}
-        h3 {font-size: 0.95rem !important;}
-
-        /* Number inputs / selectors: full width */
-        [data-testid="stNumberInput"],
-        [data-testid="stSelectbox"],
-        [data-testid="stRadio"] {
-            width: 100% !important;
-        }
-
-        /* Expanders: compact */
-        details summary {font-size: 0.82rem;}
-
-        /* Reduce sidebar width on mobile */
-        [data-testid="stSidebar"] {
-            min-width: 220px !important;
-            max-width: 260px !important;
-        }
+    /* ── Sidebar — dark navy ── */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #1a1f36 0%, #151929 100%) !important;
+    }
+    [data-testid="stSidebar"] * {color: #b0b7c3 !important;}
+    [data-testid="stSidebar"] .stMarkdown h3 {
+        font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px;
+        color: #6b7280 !important; margin-top: 1rem;
+    }
+    [data-testid="stSidebar"] .stSelectbox label,
+    [data-testid="stSidebar"] .stFileUploader label {
+        color: #8b95a5 !important; font-size: 0.78rem;
+    }
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] {
+        background: rgba(255,255,255,0.04); border-radius: 8px;
+        border: 1px dashed rgba(255,255,255,0.1); padding: 8px;
+    }
+    [data-testid="stSidebar"] .stSelectbox > div > div {
+        background: rgba(255,255,255,0.06) !important;
+        border: 1px solid rgba(255,255,255,0.08) !important;
+        color: #e0e4ea !important;
     }
 
-    /* ── Small mobile (≤ 480px) — extra compact ───────────── */
-    @media (max-width: 480px) {
-        .block-container {
-            padding-left: 0.5rem !important;
-            padding-right: 0.5rem !important;
-        }
-        [data-testid="stMetric"] {padding: 6px 8px;}
+    /* ── Metric cards — elevated white cards ── */
+    [data-testid="stMetric"] {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 18px 20px;
+        border: none;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+        transition: box-shadow 0.2s ease;
+    }
+    [data-testid="stMetric"]:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+    }
+    [data-testid="stMetric"] label {
+        font-size: 0.7rem !important; color: #6b7280 !important;
+        text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500;
+    }
+    [data-testid="stMetric"] [data-testid="stMetricValue"] {
+        font-size: 1.5rem !important; font-weight: 700; color: #111827 !important;
+    }
+    [data-testid="stMetric"] [data-testid="stMetricDelta"] {font-size: 0.72rem !important;}
+
+    /* ── Hide Streamlit chrome ── */
+    #MainMenu {visibility: hidden;} footer {visibility: hidden;} .stDeployButton {display: none;}
+
+    /* ── Tabs — modern pill-style ── */
+    div[data-testid="stTabs"] {
+        background: #ffffff; border-radius: 12px; padding: 4px 8px 0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        margin-bottom: 1rem;
+    }
+    div[data-testid="stTabs"] button {
+        font-size: 0.82rem; font-weight: 500; color: #6b7280;
+        border-radius: 8px 8px 0 0; padding: 10px 18px;
+        transition: all 0.15s ease;
+    }
+    div[data-testid="stTabs"] button:hover {color: #374151; background: #f9fafb;}
+    div[data-testid="stTabs"] button[aria-selected="true"] {
+        color: #c0392b !important; font-weight: 600;
+        border-bottom: 2.5px solid #c0392b !important;
+        background: transparent;
+    }
+
+    /* ── Expanders — card style ── */
+    details[data-testid="stExpander"] {
+        background: #ffffff; border-radius: 10px; border: none !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        margin-bottom: 0.5rem;
+    }
+    details[data-testid="stExpander"] summary {font-weight: 500; color: #374151;}
+
+    /* ── Tables — clean ── */
+    [data-testid="stDataFrame"] {
+        border-radius: 10px; overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    /* ── Headings ── */
+    h1, h2, h3 {font-weight: 700 !important; color: #111827 !important;}
+    h5 {font-size: 0.95rem !important; font-weight: 600 !important; color: #374151 !important;}
+
+    /* ── Section dividers ── */
+    hr {border: none; border-top: 1px solid #e5e7eb; margin: 1.5rem 0;}
+
+    /* ── North Star hero ── */
+    .north-star {
+        background: linear-gradient(135deg, #CB5B51 0%, #9A3E36 100%);
+        border-radius: 14px; padding: 28px 32px; margin-bottom: 1.2rem;
+        color: #fff; position: relative; overflow: hidden;
+        box-shadow: 0 4px 16px rgba(203,91,81,0.25);
+    }
+    .north-star::after {
+        content: ''; position: absolute; top: -50px; right: -50px;
+        width: 180px; height: 180px; border-radius: 50%;
+        background: rgba(255,255,255,0.05);
+    }
+    .north-star .ns-label {
+        font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.2px;
+        color: rgba(255,255,255,0.7); margin-bottom: 4px; font-weight: 500;
+    }
+    .north-star .ns-value {
+        font-size: 2.4rem; font-weight: 800; letter-spacing: -0.5px;
+        line-height: 1.1; margin-bottom: 6px;
+    }
+    .north-star .ns-sub {
+        font-size: 0.82rem; color: rgba(255,255,255,0.65); line-height: 1.5;
+    }
+    .north-star .ns-pills {
+        display: flex; gap: 12px; margin-top: 14px; flex-wrap: wrap;
+    }
+    .north-star .ns-pill {
+        background: rgba(255,255,255,0.13); border-radius: 20px;
+        padding: 5px 14px; font-size: 0.75rem; color: rgba(255,255,255,0.9);
+        backdrop-filter: blur(4px);
+    }
+
+    /* ── Plotly charts in white cards ── */
+    [data-testid="stPlotlyChart"] {
+        background: #ffffff; border-radius: 12px; padding: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    /* ── Section cards — wrap content sections ── */
+    .dash-card {
+        background: #ffffff; border-radius: 12px; padding: 20px 24px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+        margin-bottom: 1rem;
+    }
+    .dash-card h5 {margin-top: 0 !important;}
+
+    /* ── Buttons ── */
+    .stButton > button {
+        background: #c0392b; color: #fff; border: none;
+        border-radius: 8px; font-weight: 600; font-size: 0.8rem;
+        padding: 8px 20px; transition: all 0.15s ease;
+    }
+    .stButton > button:hover {background: #a93226; color: #fff;}
+
+    /* ── Mobile ── */
+    @media (max-width: 768px) {
+        [data-testid="stHorizontalBlock"] {flex-direction: column !important;}
+        [data-testid="column"] {width: 100% !important; flex: 1 1 100% !important; min-width: 100% !important;}
+        .block-container {padding-left: 0.8rem !important; padding-right: 0.8rem !important; max-width: 100% !important;}
+        [data-testid="stMetric"] {padding: 10px 14px; margin-bottom: 4px;}
         [data-testid="stMetric"] label {font-size: 0.6rem !important;}
-        [data-testid="stMetric"] [data-testid="stMetricValue"] {font-size: 0.95rem !important;}
-        .score-card {padding: 10px 12px;}
-        .score-card h2 {font-size: 1.3rem;}
-        .kpi-hero p {font-size: 1.1rem;}
-        h1 {font-size: 1.1rem !important;}
-        h2 {font-size: 0.95rem !important;}
-        h3 {font-size: 0.85rem !important;}
-        div[data-testid="stTabs"] button {font-size: 0.65rem; padding: 4px 6px;}
+        [data-testid="stMetric"] [data-testid="stMetricValue"] {font-size: 1.1rem !important;}
+        .north-star {padding: 20px 18px;}
+        .north-star .ns-value {font-size: 1.8rem;}
+        div[data-testid="stTabs"] {padding: 2px 4px 0;}
     }
 </style>
 """, unsafe_allow_html=True)
@@ -340,13 +346,10 @@ st.markdown("""
 DATA = "mis_data"
 os.makedirs(DATA, exist_ok=True)
 
-# ── Excel → CSV Processing Engine ──────────────────────────────────────
+# ── Excel Processing (unchanged logic) ──────────────────────────────────
 def process_mis_excel(file_bytes):
-    """Process Clinic_Location__Monthly_MIS.xlsx → 10 CSVs."""
     import io, datetime
     xls = pd.ExcelFile(io.BytesIO(file_bytes))
-    
-    # 1. clinic_master.csv from 'Goal Sales'
     df_gs = pd.read_excel(xls, sheet_name='Goal Sales')
     clinics = df_gs.iloc[1:]
     master = clinics[['Area','Code','Tier','City','Region','Zone','V1','Launch','Age','Cabins']].copy()
@@ -356,12 +359,9 @@ def process_mis_excel(file_bytes):
     master['launch'] = pd.to_datetime(master['launch'], errors='coerce').dt.strftime('%Y-%m-%d')
     master = master[master['code'] > 0]
     master.to_csv(f'{DATA}/clinic_master.csv', index=False)
-    
     valid_codes = set(master['code'].tolist())
     master_area_to_code = dict(zip(master['area'].str.lower().str.strip(), master['code']))
     master_areas = set(master_area_to_code.keys())
-    
-    # Helper: extract clinic-level monthly data by matching Area name
     def extract_by_area(sheet_name):
         df = pd.read_excel(xls, sheet_name=sheet_name)
         date_cols = [c for c in df.columns if isinstance(c, (pd.Timestamp, datetime.datetime))]
@@ -377,16 +377,12 @@ def process_mis_excel(file_bytes):
                 result[ms] = pd.to_numeric(clinic_rows[dc], errors='coerce').fillna(0).values
                 seen.add(ms)
         return result
-    
-    # 2-6. Clinic-level sheets
     for sheet, fname in [('SalesMTD','clinic_sales_mtd'),('1Cx','clinic_1cx'),
                           ('rCx','clinic_rcx'),('CAC','clinic_cac'),('LTV','clinic_ltv')]:
         try:
             df = extract_by_area(sheet)
             df.to_csv(f'{DATA}/{fname}.csv', index=False)
         except: pass
-    
-    # 7. P&L from 'Ebitda Trend'
     try:
         df_eb = pd.read_excel(xls, sheet_name='Ebitda Trend')
         area_col = df_eb.columns[0]
@@ -397,7 +393,6 @@ def process_mis_excel(file_bytes):
         pl_out['code'] = clinic_pl['_ak'].map(master_area_to_code).astype(int).values
         if 'Fy26' in clinic_pl.columns:
             pl_out['fy26_ebitda_pct'] = pd.to_numeric(clinic_pl['Fy26'], errors='coerce').fillna(0).values
-        # Merge FY26 sales from sales data
         try:
             sales_df = pd.read_csv(f'{DATA}/clinic_sales_mtd.csv')
             fy26_cols = [c for c in sales_df.columns if c >= '2025-04' and c <= '2026-03' and c not in ['area','code']]
@@ -409,8 +404,6 @@ def process_mis_excel(file_bytes):
         except: pass
         pl_out.to_csv(f'{DATA}/clinic_pl.csv', index=False)
     except: pass
-    
-    # 8. Network monthly (from total rows in SalesMTD, 1Cx, rCx)
     try:
         import datetime
         rows = []
@@ -425,7 +418,6 @@ def process_mis_excel(file_bytes):
                     'video_cr': float(pd.to_numeric(df_sm.iloc[1][dc], errors='coerce') or 0)
                 })
         net_df = pd.DataFrame(rows)
-        # Add 1Cx/rCx totals
         for sheet, col_name in [('1Cx','clinics_1cx'),('rCx','clinics_rcx')]:
             df_cx = pd.read_excel(xls, sheet_name=sheet)
             cx_dates = [c for c in df_cx.columns if isinstance(c, (pd.Timestamp, datetime.datetime))]
@@ -437,13 +429,10 @@ def process_mis_excel(file_bytes):
             net_df[col_name] = net_df['month'].map(cx_map).fillna(0)
         net_df.to_csv(f'{DATA}/network_monthly.csv', index=False)
     except: pass
-    
-    # 9-10. Ramp curves
     try:
         sales_df = pd.read_csv(f'{DATA}/clinic_sales_mtd.csv')
         cx1_df = pd.read_csv(f'{DATA}/clinic_1cx.csv')
         master_df = pd.read_csv(f'{DATA}/clinic_master.csv')
-        
         for src_df, val_label, out_name, agg_col in [
             (sales_df, 'avg_sales_cr', 'sales_ramp_curve', 'avg_sales_l'),
             (cx1_df, 'avg_1cx', '1cx_ramp_curve', None)
@@ -469,21 +458,17 @@ def process_mis_excel(file_bytes):
                 agg = agg[agg['month_num'] <= 30].sort_values('month_num')
                 agg.to_csv(f'{DATA}/{out_name}.csv', index=False)
     except: pass
-    
     return True
 
 def process_firsttime_excel(file_bytes):
-    """Process Clinic_wise_FirstTime_TotalQuantity_by_Pincode.xlsx → pincode_firsttime.csv"""
     import io
     df = pd.read_excel(io.BytesIO(file_bytes))
     df.to_csv(f'{DATA}/pincode_firsttime.csv', index=False)
     return True
 
 def process_zipdata_excel(file_bytes):
-    """Process ZipData_Clinic_NTB.xlsx → clinic_pincode_demand.csv"""
     import io
     df = pd.read_excel(io.BytesIO(file_bytes))
-    # Keep SubCity for micro-market identification in underserved zone analysis
     pin_demand = df.groupby(['Clinic Loc','Zip','SubCity','City','State']).agg(
         qty=('Quantity','sum'), revenue=('Total','sum')
     ).reset_index()
@@ -491,16 +476,13 @@ def process_zipdata_excel(file_bytes):
     return True
 
 def process_web_orders_excel(file_bytes):
-    """Process 1cx web orders file → web_city_demand.csv + web_pincode_yearly.csv"""
     import io
     df = pd.read_excel(io.BytesIO(file_bytes))
-    # City demand
     web_city = df.groupby('City').agg(
         total_orders=('Quantity','sum'), total_revenue=('Total','sum'),
         unique_pincodes=('Zip','nunique')
     ).reset_index().sort_values('total_orders', ascending=False)
     web_city.to_csv(f'{DATA}/web_city_demand.csv', index=False)
-    # Yearly pincode
     df['year'] = pd.to_datetime(df['Date']).dt.year
     web_pin = df.groupby(['year','Zip','City','State']).agg(
         orders=('Quantity','sum'), revenue=('Total','sum')
@@ -509,123 +491,186 @@ def process_web_orders_excel(file_bytes):
     return True
 
 
-def process_ntb_show_excel(file_bytes):
-    """Process NTB_Show_Month_Wise.xlsx → ntb_show_clinic.csv
-    NTB Show = Appt × Show% (first-time patient visits, pre-purchase)
-    Columns: code, area, city, cabin, month, ntb_appt, show_pct, ntb_show
-    """
+# ── Excel Processors: Analysis Suite, Competitor/Rent, Clinic Addresses ──
+
+def process_analysis_suite_excel(file_bytes):
+    """Process Gynoveda_8_Analysis_Suite.xlsx → 4 CSVs."""
     import io
-    raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name=0)
-    header_row = raw.iloc[0]  # Row 0 has column labels
-    
-    records = []
-    for i in range(1, len(raw)):
-        row = raw.iloc[i]
-        code = str(row.iloc[2]).strip()
-        # Skip zone/summary rows — only process rows with numeric clinic codes
-        if code in ['-', 'Code', 'nan', ''] or len(code) < 2:
-            continue
-        try:
-            int(code)
-        except ValueError:
-            continue
-        
-        area = str(row.iloc[0]).strip()
-        city = str(row.iloc[1]).strip()
-        cabin = row.iloc[4]
-        
-        # Each month has 2 columns: Appt (col 8,10,12,...) and Show% (col 9,11,13,...)
-        for m_idx in range(8, len(row), 2):
-            if m_idx + 1 >= len(row):
-                break
-            month_label = header_row.iloc[m_idx]
-            appt = row.iloc[m_idx]
-            show_pct = row.iloc[m_idx + 1]
-            try:
-                appt_n = float(appt)
-                show_n = float(show_pct)
-                ntb_show = appt_n * show_n
-                month_str = pd.Timestamp(month_label).strftime('%Y-%m') if not isinstance(month_label, str) else str(month_label)[:7]
-                records.append({
-                    'code': code, 'area': area, 'city': city, 'cabin': cabin,
-                    'month': month_str, 'ntb_appt': int(appt_n),
-                    'show_pct': round(show_n, 4), 'ntb_show': round(ntb_show, 1)
-                })
-            except (ValueError, TypeError):
-                pass  # Skip months with '-' or missing data
-    
-    df = pd.DataFrame(records)
-    df.to_csv(f'{DATA}/ntb_show_clinic.csv', index=False)
+    xls = pd.ExcelFile(io.BytesIO(file_bytes))
+    _sheet_map = {s.lower(): s for s in xls.sheet_names}
+    _written = []
+    # 1. Clinic Leaderboard
+    for key in ['1. clinic leaderboard', 'clinic leaderboard']:
+        if key in _sheet_map:
+            pd.read_excel(xls, sheet_name=_sheet_map[key]).to_csv(f'{DATA}/clinic_leaderboard.csv', index=False)
+            _written.append('clinic_leaderboard'); break
+    # 3. Patient Catchment
+    for key in ['3. patient catchment', 'patient catchment']:
+        if key in _sheet_map:
+            pd.read_excel(xls, sheet_name=_sheet_map[key]).to_csv(f'{DATA}/patient_catchment.csv', index=False)
+            _written.append('patient_catchment'); break
+    # 6. Competitor Proximity
+    for key in ['6. competitor proximity', 'competitor proximity']:
+        if key in _sheet_map:
+            pd.read_excel(xls, sheet_name=_sheet_map[key]).to_csv(f'{DATA}/competitor_proximity.csv', index=False)
+            _written.append('competitor_proximity'); break
+    return _written
+
+def process_competitor_rent_excel(file_bytes):
+    """Process Gynoveda_Competitor_Rent_Data.xlsx → 2 CSVs."""
+    import io
+    xls = pd.ExcelFile(io.BytesIO(file_bytes))
+    _sheet_map = {s.lower(): s for s in xls.sheet_names}
+    _written = []
+    for key in ['ivf competitor locations', 'ivf competitors']:
+        if key in _sheet_map:
+            pd.read_excel(xls, sheet_name=_sheet_map[key]).to_csv(f'{DATA}/ivf_competitors.csv', index=False)
+            _written.append('ivf_competitors'); break
+    for key in ['rent benchmarks by city', 'rent benchmarks']:
+        if key in _sheet_map:
+            pd.read_excel(xls, sheet_name=_sheet_map[key]).to_csv(f'{DATA}/rent_benchmarks.csv', index=False)
+            _written.append('rent_benchmarks'); break
+    return _written
+
+def process_clinic_address_excel(file_bytes):
+    """Process Clinic address.xlsx → clinic_addresses.csv."""
+    import io
+    df = pd.read_excel(io.BytesIO(file_bytes), sheet_name=0, header=None)
+    # Find the header row (contains 'Clinic Code' or 'City')
+    hdr_idx = 0
+    for i in range(min(5, len(df))):
+        row_vals = [str(v).lower() for v in df.iloc[i].values if pd.notna(v)]
+        if any('clinic code' in v or 'city name' in v or 'opening date' in v for v in row_vals):
+            hdr_idx = i; break
+    df.columns = df.iloc[hdr_idx]
+    df = df.iloc[hdr_idx + 1:].reset_index(drop=True)
+    df.columns = [str(c).strip() for c in df.columns]
+    # Standardize column names
+    col_map = {}
+    for c in df.columns:
+        cl = c.lower()
+        if 'area' in cl and 'code' not in cl: col_map[c] = 'area'
+        elif cl in ['city', 'city name']: col_map[c] = 'city'
+        elif cl == 'state': col_map[c] = 'state'
+        elif 'clinic code' in cl and 'new' not in cl: col_map[c] = 'clinic_code'
+        elif 'new clinic' in cl or 'new_clinic' in cl: col_map[c] = 'new_clinic_code'
+        elif 'opening' in cl or 'date' in cl: col_map[c] = 'opening_date'
+        elif 'address' in cl: col_map[c] = 'address'
+        elif 'landmark' in cl: col_map[c] = 'landmark'
+        elif 'location' in cl: col_map[c] = 'location'
+    if col_map:
+        df = df.rename(columns=col_map)
+    # Keep only rows with a valid city
+    if 'city' in df.columns:
+        df = df[df['city'].notna() & (df['city'].astype(str).str.strip() != '')]
+    keep_cols = [c for c in ['area','city','state','clinic_code','new_clinic_code','opening_date','address','landmark','location'] if c in df.columns]
+    df[keep_cols].to_csv(f'{DATA}/clinic_addresses.csv', index=False)
     return True
 
 
-# ── Upload UI in Sidebar ──────────────────────────────────────────────
+def _detect_and_process(file_bytes, file_name):
+    """Auto-detect Excel file type from sheet names / columns and process accordingly."""
+    import io
+    fname_lower = file_name.lower()
+    xls = pd.ExcelFile(io.BytesIO(file_bytes))
+    sheets_lower = {s.lower() for s in xls.sheet_names}
+    df0 = pd.read_excel(xls, sheet_name=0, nrows=5)
+    cols_lower = {str(c).lower().strip() for c in df0.columns}
+
+    # ── 1. Clinic MIS — has 'Goal Sales' and 'SalesMTD' sheets
+    if 'goal sales' in sheets_lower and 'salesmtd' in sheets_lower:
+        process_mis_excel(file_bytes)
+        return 'Clinic MIS'
+
+    # ── 2. Analysis Suite — has numbered analysis sheets
+    if any(k in sheets_lower for k in ['1. clinic leaderboard', 'clinic leaderboard', '3. patient catchment', 'patient catchment', '6. competitor proximity', 'competitor proximity']):
+        written = process_analysis_suite_excel(file_bytes)
+        return f'Analysis Suite ({len(written)} datasets)'
+
+    # ── 3. Competitor/Rent Data — has 'IVF Competitor Locations' or 'Rent Benchmarks'
+    if any(k in sheets_lower for k in ['ivf competitor locations', 'rent benchmarks by city']):
+        written = process_competitor_rent_excel(file_bytes)
+        return f'Competitor & Rent ({len(written)} datasets)'
+
+    # ── 4. ZipData — has 'Clinic Loc', 'Zip', 'Quantity' columns
+    if 'clinic loc' in cols_lower and 'zip' in cols_lower and 'quantity' in cols_lower:
+        process_zipdata_excel(file_bytes)
+        return 'Zip Demand'
+
+    # ── 5. Web Orders — has 'Date', 'Quantity', 'Zip', 'Customer ID' columns but no 'Clinic Loc'
+    if 'date' in cols_lower and 'quantity' in cols_lower and 'zip' in cols_lower and 'clinic loc' not in cols_lower:
+        process_web_orders_excel(file_bytes)
+        return 'Web Orders'
+
+    # ── 6. FirstTime Pincodes — has 'Pincode' and 'Total Quantity'
+    if 'pincode' in cols_lower and 'total quantity' in cols_lower:
+        process_firsttime_excel(file_bytes)
+        return 'First-Time Pincodes'
+
+    # ── 7. Clinic Address — has 'Rule' sheet or columns like 'Clinic Code', 'Opening Date'
+    if 'rule' in sheets_lower or 'clinic code' in cols_lower or 'opening date' in cols_lower:
+        try:
+            process_clinic_address_excel(file_bytes)
+            return 'Clinic Addresses'
+        except:
+            pass
+
+    # ── 9. Fallback: check filename hints
+    if 'address' in fname_lower or 'addr' in fname_lower:
+        process_clinic_address_excel(file_bytes)
+        return 'Clinic Addresses'
+    if 'firsttime' in fname_lower or 'first_time' in fname_lower or 'first time' in fname_lower:
+        process_firsttime_excel(file_bytes)
+        return 'First-Time Pincodes'
+
+    return None  # Unrecognized
+
+
+# ── Sidebar: Upload ──────────────────────────────────────────────────────
 with st.sidebar:
-    with st.expander("📤 Upload Fresh Data", expanded=False):
-        st.markdown("Upload updated Excel files to refresh all metrics instantly.")
-        
-        up_mis = st.file_uploader("Clinic MIS (Monthly)", type=['xlsx','xls'], 
-                                   key='up_mis', help="Clinic_Location__Monthly_MIS.xlsx")
-        up_ft = st.file_uploader("First-Time Pincodes", type=['xlsx','xls'], 
-                                  key='up_ft', help="Clinic_wise_FirstTime_TotalQuantity_by_Pincode.xlsx")
-        up_zip = st.file_uploader("Clinic NTB Zip Data", type=['xlsx','xls'], 
-                                   key='up_zip', help="ZipData_Clinic_NTB.xlsx")
-        up_web = st.file_uploader("Website Orders", type=['xlsx','xls'], 
-                                   key='up_web', help="1cx_order_qty_pincode_of_website.xlsx")
-        up_ntb_show = st.file_uploader("NTB Show (Monthly)", type=['xlsx','xls'],
-                                        key='up_ntb_show', help="NTB_Show_Month_Wise.xlsx")
-        
-        if st.button("🔄 Process & Refresh", type="primary", use_container_width=True):
-            processed = []
-            errors = []
-            
-            with st.spinner("Processing uploads..."):
-                if up_mis:
-                    try:
-                        process_mis_excel(up_mis.getvalue())
-                        processed.append("✅ Clinic MIS → 10 CSVs")
-                    except Exception as e:
-                        errors.append(f"❌ MIS: {e}")
-                if up_ft:
-                    try:
-                        process_firsttime_excel(up_ft.getvalue())
-                        processed.append("✅ First-Time Pincodes")
-                    except Exception as e:
-                        errors.append(f"❌ First-Time: {e}")
-                if up_zip:
-                    try:
-                        process_zipdata_excel(up_zip.getvalue())
-                        processed.append("✅ Clinic NTB Zip Data")
-                    except Exception as e:
-                        errors.append(f"❌ Zip Data: {e}")
-                if up_web:
-                    try:
-                        process_web_orders_excel(up_web.getvalue())
-                        processed.append("✅ Website Orders → 2 CSVs")
-                    except Exception as e:
-                        errors.append(f"❌ Web Orders: {e}")
-                if up_ntb_show:
-                    try:
-                        process_ntb_show_excel(up_ntb_show.getvalue())
-                        processed.append("✅ NTB Show → ntb_show_clinic.csv")
-                    except Exception as e:
-                        errors.append(f"❌ NTB Show: {e}")
-            
+    with st.expander("📂  Update data", expanded=False):
+        st.caption("Drop all Excel files at once — auto-detected")
+        _uploaded_files = st.file_uploader(
+            "Upload Excel files", type=['xlsx', 'xls'],
+            accept_multiple_files=True, key='bulk_upload',
+            label_visibility="collapsed",
+        )
+
+        if _uploaded_files:
+            st.info(f"{len(_uploaded_files)} file{'s' if len(_uploaded_files) > 1 else ''} ready")
+
+        if st.button("Process & refresh", type="primary", use_container_width=True, disabled=not _uploaded_files):
+            processed, skipped, errors = [], [], []
+            progress = st.progress(0, text="Starting...")
+            for i, uf in enumerate(_uploaded_files):
+                progress.progress((i + 1) / len(_uploaded_files), text=f"Detecting {uf.name}...")
+                try:
+                    result = _detect_and_process(uf.getvalue(), uf.name)
+                    if result:
+                        processed.append(f"{uf.name} → {result}")
+                    else:
+                        skipped.append(uf.name)
+                except Exception as e:
+                    errors.append(f"{uf.name}: {e}")
+            progress.empty()
             if processed:
-                st.success("\n".join(processed))
+                st.success(f"✓ {len(processed)} processed")
+                for p in processed:
+                    st.caption(f"  {p}")
+                # Bust ALL cached data — increment version counter + clear cache
+                st.session_state['_data_ver'] = st.session_state.get('_data_ver', 0) + 1
                 st.cache_data.clear()
                 st.rerun()
-            if errors:
-                st.error("\n".join(errors))
-            if not processed and not errors:
-                st.warning("No files uploaded. Select at least one file above.")
-        
-        st.caption("Upload any combination — only uploaded files get refreshed. Existing data stays for the rest.")
+            for s in skipped:
+                st.warning(f"⚠ {s} — not recognized")
+            for e in errors:
+                st.error(e)
 
 
-# ── Load CSVs (from disk — either original or freshly processed) ──
-@st.cache_data(ttl=600)
-def load_all():
+# ── Load CSVs ────────────────────────────────────────────────────────────
+@st.cache_data(ttl=600, show_spinner=False)
+def load_all(_ver=0):
+    """Load all CSVs. _ver param busts cache when data is re-uploaded."""
     d = {}
     d['master'] = pd.read_csv(f'{DATA}/clinic_master.csv')
     d['sales'] = pd.read_csv(f'{DATA}/clinic_sales_mtd.csv')
@@ -634,22 +679,33 @@ def load_all():
     d['cac'] = pd.read_csv(f'{DATA}/clinic_cac.csv')
     d['ltv'] = pd.read_csv(f'{DATA}/clinic_ltv.csv')
     d['pl'] = pd.read_csv(f'{DATA}/clinic_pl.csv')
-    d['network'] = pd.read_csv(f'{DATA}/network_monthly.csv')
+    _net_raw = pd.read_csv(f'{DATA}/network_monthly.csv')
+    _net_raw = _net_raw.sort_values('month').drop_duplicates(subset=['month'], keep='first')
+    d['network'] = _net_raw
     d['ramp_sales'] = pd.read_csv(f'{DATA}/sales_ramp_curve.csv')
     d['ramp_1cx'] = pd.read_csv(f'{DATA}/1cx_ramp_curve.csv')
     d['pin_ft'] = pd.read_csv(f'{DATA}/pincode_firsttime.csv')
     d['pin_demand'] = pd.read_csv(f'{DATA}/clinic_pincode_demand.csv')
     d['web_city'] = pd.read_csv(f'{DATA}/web_city_demand.csv')
     d['web_pin'] = pd.read_csv(f'{DATA}/web_pincode_yearly.csv')
-    # NTB Show (optional — may not exist until uploaded)
-    _ntb_show_path = f'{DATA}/ntb_show_clinic.csv'
-    if os.path.exists(_ntb_show_path):
-        d['ntb_show'] = pd.read_csv(_ntb_show_path)
-    else:
-        d['ntb_show'] = pd.DataFrame(columns=['code','area','city','cabin','month','ntb_appt','show_pct','ntb_show'])
+    _u1cx_path = f'{DATA}/web_pincode_unique_1cx.csv'
+    d['web_unique_1cx'] = pd.read_csv(_u1cx_path) if os.path.exists(_u1cx_path) else pd.DataFrame(columns=['pin_int', 'unique_1cx', 'total_orders', 'total_revenue'])
+    _cup_path = f'{DATA}/clinic_pincode_unique_patients.csv'
+    d['clinic_unique_patients'] = pd.read_csv(_cup_path) if os.path.exists(_cup_path) else pd.DataFrame(columns=['pin_int', 'unique_clinic_patients', 'clinic_orders', 'clinic_revenue', 'clinics_visited'])
+    # ── New enrichment datasets ──
+    def _safe_csv(name, fallback_cols):
+        p = f'{DATA}/{name}'
+        return pd.read_csv(p) if os.path.exists(p) else pd.DataFrame(columns=fallback_cols)
+    d['competitor_prox'] = _safe_csv('competitor_proximity.csv', ['Clinic','City','IVF Centres in City','Threat Level'])
+    d['rent_bench'] = _safe_csv('rent_benchmarks.csv', ['City','Tier','Avg_Rent_PSF_Month_INR','Monthly_Rent_Estimate_Low','Monthly_Rent_Estimate_High'])
+    # expansion_scorecard removed per user request
+    d['clinic_addr'] = _safe_csv('clinic_addresses.csv', ['area','city','address','landmark'])
+    d['patient_catch'] = _safe_csv('patient_catchment.csv', ['Clinic','City','Total Visits','Unique Pins','Pins for 80%','Top10 Conc%'])
+    d['clinic_lb'] = _safe_csv('clinic_leaderboard.csv', ['Clinic','City','Code','Latest Sales(₹Cr)','Attainment%','3M Growth%','CAC(₹K)'])
+    d['ivf_comp'] = _safe_csv('ivf_competitors.csv', ['Chain_Name','Centre_City','Centre_Location','Approx_Lat','Approx_Lon','IVF_Cost_INR_Low','IVF_Cost_INR_High'])
     return d
 
-data = load_all()
+data = load_all(_ver=st.session_state.get('_data_ver', 0))
 master = data['master']
 sales = data['sales']
 cx1 = data['cx1']
@@ -659,194 +715,102 @@ ramp_s = data['ramp_sales']
 ramp_c = data['ramp_1cx']
 pin_demand = data['pin_demand']
 
-# Load pin geocode outside cache — try multiple paths
 pin_geo = pd.DataFrame(columns=['pincode','lat','lon'])
-_geo_candidates = [
-    f'{DATA}/pin_geocode.csv',
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), DATA, 'pin_geocode.csv'),
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pin_geocode.csv'),
-    'pin_geocode.csv',
-]
-_geo_found = False
-for _gp in _geo_candidates:
+for _gp in [f'{DATA}/pin_geocode.csv',
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), DATA, 'pin_geocode.csv')]:
     if os.path.exists(_gp):
         pin_geo = pd.read_csv(_gp)
-        _geo_found = True
         break
 
-if not _geo_found:
-    # Debug: list what's actually in mis_data
-    _mis_files = os.listdir(DATA) if os.path.isdir(DATA) else []
-    _cwd = os.getcwd()
-    _script_dir = os.path.dirname(os.path.abspath(__file__))
-    _debug_msg = f"CWD={_cwd}, ScriptDir={_script_dir}, mis_data contents={_mis_files[:10]}"
-    # Store for display in Tab 3
-    _geo_debug = _debug_msg
-else:
-    _geo_debug = None
 pin_ft = data['pin_ft']
 web_city = data['web_city']
 web_pin = data['web_pin']
-ntb_show_data = data['ntb_show']
+# ntb_show removed — 1Cx is source of truth for first-visit patients
 
-# Derived: active months
 s_months = sorted([c for c in sales.columns if c not in ['area','code']])
 active_months = [m for m in s_months if (sales[m] > 0).sum() > 0]
 latest_month = active_months[-1] if active_months else '2025-12'
 l3m = active_months[-3:] if len(active_months) >= 3 else active_months
 l6m = active_months[-6:] if len(active_months) >= 6 else active_months
 
-# ── SCORING ENGINE ──────────────────────────────────────────────────────
-@st.cache_data(ttl=300)
-def build_city_scores(cache_version='v1.2'):
-    """
-    Build Composite Expansion Index (CEI) for every city.
-    Returns two DataFrames: same_city (existing) and new_city (whitespace).
-    
-    CEI v2 Dimensions:
-    PRIMARY (recomputed post-function with underserved data):
-    1. Capacity Utilization (45%) — sales per cabin vs network benchmark
-    2. Patients Traveling 20+ km (35%) — NTB visits + web orders from underserved pincodes
-    SECONDARY (20% combined):
-    3. Web Orders, Revenue Growth, EBITDA, O2O Conversion
-    FUTURE (0% — activates when data uploaded):
-    4. Branded IVF Proximity (15%)
-    5. Non-Branded IVF Proximity (15%)
-    
-    Note: Legacy d1-d7 dimensions are retained for backward compatibility
-    but CEI scores are overwritten by the v2 recompute block.
-    """
-    
-    # ── Dimension 1: Online Demand ──
+# ── SCORING ENGINE (unchanged logic) ─────────────────────────────────────
+@st.cache_data(ttl=300, show_spinner=False)
+def build_city_scores(_ver=0):
     web_demand = web_city.copy()
     web_demand['City_lower'] = web_demand['City'].str.lower().str.strip()
-    # Normalize to 0-100
     max_orders = web_demand['total_orders'].max()
     web_demand['demand_score'] = (web_demand['total_orders'] / max_orders * 100).clip(0, 100)
-    
-    # ── Dimension 2 & 3: Revenue + Growth for existing cities ──
     city_perf = []
     for city_code in master['city'].unique():
         city_clinics = master[master['city'] == city_code]
         city_sales = sales[sales['code'].isin(city_clinics['code'])]
         city_1cx = cx1[cx1['code'].isin(city_clinics['code'])]
-        
-        # L3M revenue
         l3m_rev = city_sales[l3m].sum(axis=1).mean() if len(city_sales) > 0 and all(m in city_sales.columns for m in l3m) else 0
-        
-        # Growth: compare L3M vs prior 3M
         if len(active_months) >= 6:
             prior_3m = active_months[-6:-3]
             prior_rev = city_sales[prior_3m].sum(axis=1).mean() if len(city_sales) > 0 and all(m in city_sales.columns for m in prior_3m) else 0
             growth = ((l3m_rev - prior_rev) / prior_rev) if prior_rev > 0 else 0
         else:
             growth = 0
-        
-        # L3M 1Cx
         cx_months = [c for c in cx1.columns if c not in ['area','code']]
         cx_l3m = cx_months[-3:] if len(cx_months) >= 3 else cx_months
         l3m_1cx = city_1cx[cx_l3m].sum(axis=1).mean() if len(city_1cx) > 0 else 0
-        
-        # Cabins and capacity
         total_cabins = city_clinics['cabins'].sum()
-        sales_per_cabin = (l3m_rev * 100) / total_cabins if total_cabins > 0 else 0  # ₹L per cabin
-        
-        # Pincode coverage
+        sales_per_cabin = (l3m_rev * 100) / total_cabins if total_cabins > 0 else 0
         city_areas = city_clinics['area'].tolist()
         city_pins = pin_demand[pin_demand['Clinic Loc'].isin(city_areas)]['Zip'].nunique()
-        
         city_name = CITY_NAMES.get(city_code, city_code)
-        
-        # EBITDA
         pl = data['pl']
         city_pl = pl[pl['code'].isin(city_clinics['code'])]
         avg_ebitda = city_pl['fy26_ebitda_pct'].mean() if len(city_pl) > 0 else 0
-        
         city_perf.append({
-            'city_code': city_code,
-            'city_name': city_name,
-            'clinics': len(city_clinics),
-            'total_cabins': total_cabins,
-            'l3m_rev_cr': l3m_rev,
-            'l3m_1cx': l3m_1cx,
-            'growth_pct': growth,
-            'sales_per_cabin_l': sales_per_cabin,
-            'pincodes_served': city_pins,
+            'city_code': city_code, 'city_name': city_name,
+            'clinics': len(city_clinics), 'total_cabins': total_cabins,
+            'l3m_rev_cr': l3m_rev, 'l3m_1cx': l3m_1cx, 'growth_pct': growth,
+            'sales_per_cabin_l': sales_per_cabin, 'pincodes_served': city_pins,
             'avg_ebitda_pct': avg_ebitda
         })
-    
     df_city = pd.DataFrame(city_perf)
-    
-    # ── Match web demand to existing cities ──
     name_to_code = {}
     for code, primary in CITY_NAMES.items():
         name_to_code[primary.lower()] = code
-    # Add all aliases for comprehensive matching
     for code, aliases in SERVED_CITY_ALIASES.items():
         for alias in aliases:
             name_to_code[alias.lower()] = code
     web_demand['matched_code'] = web_demand['City_lower'].map(name_to_code)
-    
-    # Merge web demand into city perf
     web_agg = web_demand.groupby('matched_code').agg(
-        web_orders=('total_orders', 'sum'),
-        web_revenue=('total_revenue', 'sum'),
+        web_orders=('total_orders', 'sum'), web_revenue=('total_revenue', 'sum'),
         demand_score=('demand_score', 'max')
     ).reset_index().rename(columns={'matched_code': 'city_code'})
-    
     df_city = df_city.merge(web_agg, on='city_code', how='left').fillna(0)
-    
-    # ── Compute Same-City CEI ──
-    # Normalize each dimension to 0-100
     def norm(s):
         mn, mx = s.min(), s.max()
         return ((s - mn) / (mx - mn) * 100).fillna(0) if mx > mn else pd.Series(50, index=s.index)
-    
     df_city['d1_demand'] = norm(df_city['web_orders'])
     df_city['d2_revenue'] = norm(df_city['l3m_rev_cr'])
     df_city['d3_growth'] = norm(df_city['growth_pct'].clip(-0.5, 2))
     df_city['d4_capacity'] = norm(df_city['sales_per_cabin_l'])
-    
-    # O2O: ratio of clinic demand to web demand (higher = better conversion)
     clinic_demand_by_city = pin_demand.merge(
         master[['area','city']].rename(columns={'area':'Clinic Loc'}), on='Clinic Loc', how='left'
     ).groupby('city')['qty'].sum().reset_index().rename(columns={'city':'city_code','qty':'clinic_demand'})
     df_city = df_city.merge(clinic_demand_by_city, on='city_code', how='left').fillna(0)
     df_city['o2o_ratio'] = df_city['clinic_demand'] / df_city['web_orders'].replace(0, 1)
     df_city['d5_o2o'] = norm(df_city['o2o_ratio'].clip(0, 20))
-    
-    # Whitespace: pincodes with web orders but no clinic coverage
-    # (for same-city, this means room for additional clinics)
     df_city['d6_whitespace'] = norm(100 - df_city['pincodes_served'].clip(0, 500) / 5)
-    
-    # Economic viability
     df_city['d7_ebitda'] = norm(df_city['avg_ebitda_pct'].clip(-0.1, 0.5))
-    
-    # Weighted CEI
     df_city['cei_same'] = (
-        df_city['d1_demand'] * 0.25 +
-        df_city['d2_revenue'] * 0.20 +
-        df_city['d3_growth'] * 0.15 +
-        df_city['d4_capacity'] * 0.15 +
-        df_city['d5_o2o'] * 0.10 +
-        df_city['d6_whitespace'] * 0.10 +
-        df_city['d7_ebitda'] * 0.05
+        df_city['d1_demand'] * 0.25 + df_city['d2_revenue'] * 0.20 +
+        df_city['d3_growth'] * 0.15 + df_city['d4_capacity'] * 0.15 +
+        df_city['d5_o2o'] * 0.10 + df_city['d6_whitespace'] * 0.10 + df_city['d7_ebitda'] * 0.05
     )
-    
-    # ── New City Scores (cities without clinics) ──
     existing_codes = set(master['city'].unique())
     new_cities = web_demand[web_demand['matched_code'].isna() | ~web_demand['matched_code'].isin(existing_codes)].copy()
     new_cities = new_cities.groupby('City').agg(
-        total_orders=('total_orders', 'sum'),
-        total_revenue=('total_revenue', 'sum'),
-        unique_pincodes=('City', 'count')  # proxy
+        total_orders=('total_orders', 'sum'), total_revenue=('total_revenue', 'sum'),
+        unique_pincodes=('City', 'count')
     ).reset_index()
-    
-    # For new cities: demand is the primary signal
     new_cities['d1_demand'] = norm(new_cities['total_orders'])
     new_cities['d2_revenue_potential'] = norm(new_cities['total_revenue'])
-    
-    # Use web_pin for growth trajectory
     web_pin_city = web_pin.groupby(['City','year']).agg(orders=('orders','sum')).reset_index()
     growth_by_city = []
     for city in new_cities['City'].unique():
@@ -858,62 +822,140 @@ def build_city_scores(cache_version='v1.2'):
         else:
             g = 0
         growth_by_city.append({'City': city, 'trend_growth': g})
-    
     df_growth = pd.DataFrame(growth_by_city)
     new_cities = new_cities.merge(df_growth, on='City', how='left').fillna(0)
     new_cities['d3_growth'] = norm(new_cities['trend_growth'].clip(-1, 5))
-    
+    # E-score dimensions (computed here; final weighted score computed post-cache with session_state weights)
+    # Dim 1: Spillover — from CEI_E1_Spillover_Demand.xlsx (or fallback to demand proxy)
+    _e1_path = os.path.join('mis_data', 'CEI_E1_Spillover_Demand.xlsx')
+    if os.path.exists(_e1_path):
+        try:
+            _e1_raw = pd.read_excel(_e1_path, header=None)
+            _e1_hdr = None
+            for _ei, _er in _e1_raw.iterrows():
+                if 'Rank' in [str(v).strip() for v in _er.values if pd.notna(v)]:
+                    _e1_hdr = _ei; break
+            if _e1_hdr is not None:
+                _e1_data = pd.read_excel(_e1_path, header=_e1_hdr)
+                _e1_data = _e1_data[_e1_data['City'].notna()].copy()
+                _e1_data['City_lower'] = _e1_data['City'].str.strip().str.lower()
+                new_cities['City_lower'] = new_cities['City'].str.strip().str.lower()
+                _e1_map = _e1_data.set_index('City_lower')['E1 Score'].to_dict()
+                new_cities['e_spillover_raw'] = new_cities['City_lower'].map(_e1_map).fillna(0)
+                new_cities['e_spillover'] = norm(new_cities['e_spillover_raw'])
+                new_cities.drop(columns=['City_lower'], inplace=True, errors='ignore')
+            else:
+                new_cities['e_spillover'] = new_cities['d1_demand']
+        except Exception:
+            new_cities['e_spillover'] = new_cities['d1_demand']
+    else:
+        new_cities['e_spillover'] = new_cities['d1_demand']
+    # Dim 2: Combined Demand = d2_revenue_potential (proxy: total revenue)
+    new_cities['e_demand'] = new_cities['d2_revenue_potential']
+    # Dim 3: PCOS Heat Index — from CEI_D2_PCOS_Heat_Index.xlsx
+    _e_pcos_path = os.path.join('mis_data', 'CEI_D2_PCOS_Heat_Index.xlsx')
+    if os.path.exists(_e_pcos_path):
+        try:
+            _ep_raw = pd.read_excel(_e_pcos_path, header=None)
+            _ep_hdr = None
+            for _epi, _epr in _ep_raw.iterrows():
+                if 'Rank' in [str(v).strip() for v in _epr.values if pd.notna(v)]:
+                    _ep_hdr = _epi; break
+            if _ep_hdr is not None:
+                _ep_data = pd.read_excel(_e_pcos_path, header=_ep_hdr)
+                _ep_data = _ep_data[_ep_data['City'].notna()].copy()
+                _ep_data['City_lower'] = _ep_data['City'].str.strip().str.lower()
+                new_cities['City_lower'] = new_cities['City'].str.strip().str.lower()
+                _ep_map = _ep_data.set_index('City_lower')['D2 Score'].to_dict()
+                new_cities['e_pcos_raw'] = new_cities['City_lower'].map(_ep_map).fillna(0)
+                new_cities['e_pcos'] = norm(new_cities['e_pcos_raw'])
+                new_cities.drop(columns=['City_lower'], inplace=True, errors='ignore')
+            else:
+                new_cities['e_pcos'] = 50.0
+        except Exception:
+            new_cities['e_pcos'] = 50.0
+    else:
+        new_cities['e_pcos'] = 50.0
+    # Dim 4: Competitive Whitespace — from CEI_E3_Competitive_Whitespace.xlsx
+    _e3_path = os.path.join('mis_data', 'CEI_E3_Competitive_Whitespace.xlsx')
+    if os.path.exists(_e3_path):
+        try:
+            _e3_raw = pd.read_excel(_e3_path, header=None)
+            _e3_hdr = None
+            for _e3i, _e3r in _e3_raw.iterrows():
+                if 'Rank' in [str(v).strip() for v in _e3r.values if pd.notna(v)]:
+                    _e3_hdr = _e3i; break
+            if _e3_hdr is not None:
+                _e3_data = pd.read_excel(_e3_path, header=_e3_hdr)
+                _e3_data = _e3_data[_e3_data['City'].notna()].copy()
+                _e3_data['City_lower'] = _e3_data['City'].str.strip().str.lower()
+                new_cities['City_lower'] = new_cities['City'].str.strip().str.lower()
+                _e3_map = _e3_data.set_index('City_lower')['E3 Score'].to_dict()
+                new_cities['e_comp_ws_raw'] = new_cities['City_lower'].map(_e3_map).fillna(0)
+                new_cities['e_comp_ws'] = norm(new_cities['e_comp_ws_raw'])
+                new_cities.drop(columns=['City_lower'], inplace=True, errors='ignore')
+            else:
+                new_cities['e_comp_ws'] = 50.0
+        except Exception:
+            new_cities['e_comp_ws'] = 50.0
+    else:
+        new_cities['e_comp_ws'] = 50.0
+    # Dim 5: Catchment Density — from CEI_D1_Catchment_Density.xlsx
+    _e_catch_path = os.path.join('mis_data', 'CEI_D1_Catchment_Density.xlsx')
+    if os.path.exists(_e_catch_path):
+        try:
+            _ec_raw = pd.read_excel(_e_catch_path, header=None)
+            _ec_hdr = None
+            for _eci, _ecr in _ec_raw.iterrows():
+                if 'Rank' in [str(v).strip() for v in _ecr.values if pd.notna(v)]:
+                    _ec_hdr = _eci; break
+            if _ec_hdr is not None:
+                _ec_data = pd.read_excel(_e_catch_path, header=_ec_hdr)
+                _ec_data = _ec_data[_ec_data['City'].notna()].copy()
+                _ec_data['City_lower'] = _ec_data['City'].str.strip().str.lower()
+                new_cities['City_lower'] = new_cities['City'].str.strip().str.lower()
+                _ec_map = _ec_data.set_index('City_lower')['D1 Score'].to_dict()
+                new_cities['e_catchment_raw'] = new_cities['City_lower'].map(_ec_map).fillna(0)
+                new_cities['e_catchment'] = norm(new_cities['e_catchment_raw'])
+                new_cities.drop(columns=['City_lower'], inplace=True, errors='ignore')
+            else:
+                new_cities['e_catchment'] = 50.0
+        except Exception:
+            new_cities['e_catchment'] = 50.0
+    else:
+        new_cities['e_catchment'] = 50.0
+    # Default equal-weight CEI (overridden post-cache with session_state weights)
     new_cities['cei_new'] = (
-        new_cities['d1_demand'] * 0.40 +
-        new_cities['d2_revenue_potential'] * 0.30 +
-        new_cities['d3_growth'] * 0.30
+        new_cities['e_spillover'] * 0.20 + new_cities['e_demand'] * 0.20 +
+        new_cities['e_pcos'] * 0.20 + new_cities['e_comp_ws'] * 0.20 + new_cities['e_catchment'] * 0.20
     )
-    
     return df_city.sort_values('cei_same', ascending=False), new_cities.sort_values('cei_new', ascending=False)
 
 
-@st.cache_data(ttl=300)
-def build_cannibalization_matrix():
-    """
-    For each existing city with 2+ clinics, compute:
-    1. Pincode overlap (original)
-    2. Inter-clinic distance (haversine km)
-    3. Volume-weighted overlap (% of each clinic's revenue from shared pincodes)
-    4. Core catchment collision (shared top-10 pincodes)
-    """
+@st.cache_data(ttl=300, show_spinner=False)
+def build_cannibalization_matrix(_ver=0):
     multi_clinic_cities = master.groupby('city').filter(lambda x: len(x) >= 2)['city'].unique()
-    
     results = []
     for city in multi_clinic_cities:
         city_clinics = master[master['city'] == city]['area'].tolist()
-        
-        # Get pincodes + volumes per clinic
         clinic_pins = {}
         clinic_pin_vol = {}
         for clinic in city_clinics:
             cdata = pin_demand[pin_demand['Clinic Loc'] == clinic]
             clinic_pins[clinic] = set(cdata['Zip'].unique())
             clinic_pin_vol[clinic] = cdata.groupby('Zip')['qty'].sum().sort_values(ascending=False)
-        
-        # Pairwise overlap
         for i, c1 in enumerate(city_clinics):
             for c2 in city_clinics[i+1:]:
                 overlap = clinic_pins.get(c1, set()) & clinic_pins.get(c2, set())
                 union = clinic_pins.get(c1, set()) | clinic_pins.get(c2, set())
                 overlap_pct = len(overlap) / len(union) if len(union) > 0 else 0
-                
-                # Revenue in overlapping pincodes
                 overlap_rev_c1 = pin_demand[(pin_demand['Clinic Loc'] == c1) & (pin_demand['Zip'].isin(overlap))]['revenue'].sum()
                 overlap_rev_c2 = pin_demand[(pin_demand['Clinic Loc'] == c2) & (pin_demand['Zip'].isin(overlap))]['revenue'].sum()
-                
-                # Distance
                 dist_km = None
                 if c1 in CLINIC_COORDS and c2 in CLINIC_COORDS:
                     lat1, lon1 = CLINIC_COORDS[c1]
                     lat2, lon2 = CLINIC_COORDS[c2]
                     dist_km = round(_haversine_km(lat1, lon1, lat2, lon2), 1)
-                
-                # Volume-weighted overlap
                 vol1 = clinic_pin_vol.get(c1, pd.Series(dtype=float))
                 vol2 = clinic_pin_vol.get(c2, pd.Series(dtype=float))
                 vol1_total = vol1.sum()
@@ -923,97 +965,70 @@ def build_cannibalization_matrix():
                 vol_overlap_a = vol1_shared / vol1_total if vol1_total else 0
                 vol_overlap_b = vol2_shared / vol2_total if vol2_total else 0
                 avg_vol_overlap = (vol_overlap_a + vol_overlap_b) / 2
-                
-                # Core catchment collision (top-10 pincodes)
                 top10_c1 = set(vol1.head(10).index) if len(vol1) > 0 else set()
                 top10_c2 = set(vol2.head(10).index) if len(vol2) > 0 else set()
                 shared_core = top10_c1 & top10_c2
                 core_count = len(shared_core)
-                
-                # Composite risk level
-                if core_count >= 3:
-                    risk = 'Critical'
-                elif core_count >= 1 or (dist_km is not None and dist_km < 5):
-                    risk = 'High'
-                elif avg_vol_overlap > 0.7:
-                    risk = 'Medium'
-                elif avg_vol_overlap > 0.4:
-                    risk = 'Low'
-                else:
-                    risk = 'Minimal'
-                
+                if core_count >= 3: risk = 'Critical'
+                elif core_count >= 1 or (dist_km is not None and dist_km < 5): risk = 'High'
+                elif avg_vol_overlap > 0.7: risk = 'Medium'
+                elif avg_vol_overlap > 0.4: risk = 'Low'
+                else: risk = 'Minimal'
                 results.append({
-                    'city': CITY_NAMES.get(city, city),
-                    'city_code': city,
-                    'clinic_1': c1,
-                    'clinic_2': c2,
-                    'distance_km': dist_km,
-                    'shared_pincodes': len(overlap),
-                    'total_pincodes': len(union),
+                    'city': CITY_NAMES.get(city, city), 'city_code': city,
+                    'clinic_1': c1, 'clinic_2': c2, 'distance_km': dist_km,
+                    'shared_pincodes': len(overlap), 'total_pincodes': len(union),
                     'overlap_pct': overlap_pct,
                     'overlap_revenue': overlap_rev_c1 + overlap_rev_c2,
-                    'vol_overlap_a': vol_overlap_a,
-                    'vol_overlap_b': vol_overlap_b,
+                    'vol_overlap_a': vol_overlap_a, 'vol_overlap_b': vol_overlap_b,
                     'avg_vol_overlap': avg_vol_overlap,
                     'core_shared': core_count,
-                    'core_pins': ', '.join(str(int(p)) for p in shared_core) if shared_core else '—',
+                    'core_pins': ', '.join(str(int(p)) for p in shared_core) if shared_core else '',
                     'risk_level': risk,
                 })
-    
     return pd.DataFrame(results)
 
 
-_same_cached, _new_cached = build_city_scores()
+_same_cached, _new_cached = build_city_scores(_ver=st.session_state.get('_data_ver', 0))
 same_city_scores = _same_cached.copy()
 new_city_scores = _new_cached.copy()
-cannibal_matrix = build_cannibalization_matrix()
+cannibal_matrix = build_cannibalization_matrix(_ver=st.session_state.get('_data_ver', 0))
 
 
-def build_whitespace_dual_signal(dist_threshold_km=20):
-    """
-    Identify pincodes > dist_threshold_km from nearest clinic that have BOTH:
-    1. Historic clinic NTB visits (patients traveling far)
-    2. Historic website orders (proven online demand)
-    Returns city-level aggregation for new-city and existing-city underserved zones.
-    """
+@st.cache_data(ttl=300, show_spinner=False)
+def build_whitespace_dual_signal(dist_threshold_km=20, _ver=0):
     if len(pin_geo) == 0:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    
-    # Build pincode → (lat, lon) lookup
     geo_lookup = dict(zip(pin_geo['pincode'].astype(int), zip(pin_geo['lat'], pin_geo['lon'])))
-    
-    # For each geocoded pincode, compute distance to nearest clinic
     clinic_list = list(CLINIC_COORDS.items())
+
+    # Vectorized nearest-clinic computation (~100x faster)
+    clinic_names = [c[0] for c in clinic_list]
+    clinic_lats = np.array([c[1][0] for c in clinic_list])
+    clinic_lons = np.array([c[1][1] for c in clinic_list])
+
+    pin_keys = list(geo_lookup.keys())
+    pin_lats = np.array([geo_lookup[p][0] for p in pin_keys])
+    pin_lons = np.array([geo_lookup[p][1] for p in pin_keys])
+
     pin_dist = {}
     pin_nearest = {}
-    for pin, (plat, plon) in geo_lookup.items():
-        min_d = float('inf')
-        nearest = None
-        for clinic, (clat, clon) in clinic_list:
-            d = _haversine_km(plat, plon, clat, clon)
-            if d < min_d:
-                min_d = d
-                nearest = clinic
-        pin_dist[pin] = round(min_d, 1)
-        pin_nearest[pin] = nearest
-    
-    # Pincodes beyond threshold
+    for i, pin in enumerate(pin_keys):
+        dists = _haversine_vec(pin_lats[i], pin_lons[i], clinic_lats, clinic_lons)
+        idx = np.argmin(dists)
+        pin_dist[pin] = round(float(dists[idx]), 1)
+        pin_nearest[pin] = clinic_names[idx]
+
     far_pins = {p for p, d in pin_dist.items() if d > dist_threshold_km}
-    
-    # Clean pincode helper
     def _clean_pin(p):
         try:
             v = int(float(p))
             return v if 100000 <= v <= 999999 else None
         except Exception:
             return None
-    
-    # --- NTB visits from far pincodes ---
     pd_copy = pin_demand.copy()
     pd_copy['pin_int'] = pd_copy['Zip'].apply(_clean_pin)
     ntb_far = pd_copy[pd_copy['pin_int'].isin(far_pins)]
-    
-    # Build micro-market lookup: top SubCity names by NTB volume per city
     _has_subcity = 'SubCity' in ntb_far.columns and ntb_far['SubCity'].notna().any()
     _micro_map = {}
     if _has_subcity:
@@ -1022,17 +1037,13 @@ def build_whitespace_dual_signal(dist_threshold_km=20):
         for _city_name, _grp in _subcity_vol.groupby('City'):
             _top3 = _grp.nlargest(3, 'qty')
             _micro_map[_city_name] = ', '.join(f"{r['SubCity']} ({int(r['qty'])})" for _, r in _top3.iterrows())
-    
     ntb_agg = ntb_far.groupby('pin_int').agg(
-        ntb_qty=('qty', 'sum'),
-        ntb_rev=('revenue', 'sum'),
+        ntb_qty=('qty', 'sum'), ntb_rev=('revenue', 'sum'),
         clinics_visited=('Clinic Loc', 'nunique'),
         primary_clinic=('Clinic Loc', lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else '?'),
         city=('City', lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else '?'),
         state=('State', lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else '?'),
     ).reset_index()
-    
-    # --- Web orders from far pincodes ---
     wp = data.get('web_pin', pd.DataFrame())
     if len(wp) > 0 and 'Zip' in wp.columns:
         wp['pin_int'] = wp['Zip'].apply(_clean_pin)
@@ -1045,134 +1056,160 @@ def build_whitespace_dual_signal(dist_threshold_km=20):
         web_agg = web_far.groupby('pin_int').agg(**_web_agg_dict).reset_index()
     else:
         web_agg = pd.DataFrame(columns=['pin_int', 'web_orders', 'web_rev'])
-    
-    # --- Merge: dual-signal pincodes ---
     combined = ntb_agg.merge(web_agg, on='pin_int', how='outer', indicator=True)
     dual = combined[combined['_merge'] == 'both'].copy()
+    # Merge unique 1Cx web customer counts per pincode
+    _u1cx = data.get('web_unique_1cx', pd.DataFrame())
+    if len(_u1cx) > 0 and 'pin_int' in _u1cx.columns:
+        dual = dual.merge(_u1cx[['pin_int', 'unique_1cx']], on='pin_int', how='left')
+        dual['unique_1cx'] = dual['unique_1cx'].fillna(0).astype(int)
+    else:
+        dual['unique_1cx'] = 0
+    # Merge unique clinic patient counts per pincode
+    _cup = data.get('clinic_unique_patients', pd.DataFrame())
+    if len(_cup) > 0 and 'pin_int' in _cup.columns:
+        dual = dual.merge(_cup[['pin_int', 'unique_clinic_patients']], on='pin_int', how='left')
+        dual['unique_clinic_patients'] = dual['unique_clinic_patients'].fillna(0).astype(int)
+    else:
+        dual['unique_clinic_patients'] = 0
     dual['dist_km'] = dual['pin_int'].map(pin_dist)
     dual['nearest_clinic'] = dual['pin_int'].map(pin_nearest)
-    dual['combined_score'] = (
-        dual['ntb_qty'].fillna(0) * 0.5 +
-        dual['web_orders'].fillna(0) * 0.5
-    )
-    
-    # --- City-level aggregation ---
-    # Weighted avg distance (by NTB visits) instead of simple mean
+    dual['combined_score'] = dual['ntb_qty'].fillna(0) * 0.5 + dual['web_orders'].fillna(0) * 0.5
     dual['_weight'] = dual['ntb_qty'].fillna(0) + dual['web_orders'].fillna(0)
     dual['_wd'] = dual['dist_km'].fillna(0) * dual['_weight']
-    
     city_agg = dual.groupby(['city', 'state']).agg(
-        pincodes=('pin_int', 'nunique'),
-        total_ntb=('ntb_qty', 'sum'),
-        total_web=('web_orders', 'sum'),
+        pincodes=('pin_int', 'nunique'), total_ntb=('ntb_qty', 'sum'),
+        total_web=('web_orders', 'sum'), unique_1cx=('unique_1cx', 'sum'),
+        unique_clinic_patients=('unique_clinic_patients', 'sum'),
         ntb_rev=('ntb_rev', 'sum'),
-        web_rev=('web_rev', 'sum'),
-        score=('combined_score', 'sum'),
-        _wd_sum=('_wd', 'sum'),
-        _w_sum=('_weight', 'sum'),
+        web_rev=('web_rev', 'sum'), score=('combined_score', 'sum'),
+        _wd_sum=('_wd', 'sum'), _w_sum=('_weight', 'sum'),
     ).reset_index()
     city_agg['avg_dist'] = (city_agg['_wd_sum'] / city_agg['_w_sum'].replace(0, 1)).round(1)
     city_agg.drop(columns=['_wd_sum', '_w_sum'], inplace=True)
-    
-    # Source clinic: for each city, find the nearest_clinic with highest weight
     _clinic_weight = dual.groupby(['city', 'state', 'nearest_clinic'])['_weight'].sum().reset_index()
     _clinic_weight = _clinic_weight.sort_values('_weight', ascending=False).drop_duplicates(subset=['city', 'state'], keep='first')
     _clinic_weight = _clinic_weight.rename(columns={'nearest_clinic': 'source_clinic'})[['city', 'state', 'source_clinic']]
     city_agg = city_agg.merge(_clinic_weight, on=['city', 'state'], how='left')
-    
-    # Top underserved micro-markets from SubCity
-    city_agg['top_micro_markets'] = city_agg['city'].map(_micro_map).fillna('—')
+    city_agg['top_micro_markets'] = city_agg['city'].map(_micro_map).fillna('')
     city_agg = city_agg.sort_values('score', ascending=False)
-    
-    # Classify: existing vs new city
-    existing_areas = set(master['area'].tolist())
     existing_city_codes = set(master['city'].tolist())
-    city_names_reverse = {}
-    for code, name in CITY_NAMES.items():
-        city_names_reverse[name] = code
-    
+    city_names_reverse = {name: code for code, name in CITY_NAMES.items()}
     def _has_clinic(city_name):
         if city_name in city_names_reverse:
             return city_names_reverse[city_name] in existing_city_codes
-        # Fuzzy: check if any clinic city name matches
         for code, aliases in SERVED_CITY_ALIASES.items():
             if any(a.lower() == city_name.lower() for a in aliases):
                 if code in existing_city_codes:
                     return True
         return False
-    
     city_agg['has_clinic'] = city_agg['city'].apply(_has_clinic)
-    
     new_cities = city_agg[~city_agg['has_clinic'] & (city_agg['city'] != '-')].copy()
     existing_underserved = city_agg[city_agg['has_clinic']].copy()
-    
     return dual, new_cities, existing_underserved
 
-# ── SIDEBAR ─────────────────────────────────────────────────────────────
+
+# ── Sidebar: Defaults + Advanced toggle ──────────────────────────────────
+# Sensible defaults — most users never need to change these
+_DEF_CAPEX = 28.0; _DEF_OPEX = 3.0; _DEF_BILL_VALUE = 27.0; _DEF_1CX_CONV = 100
+_DEF_METRO_R = 5.0; _DEF_T2_R = 8.0; _DEF_WS_DIST = 20.0
+# D-score weights (Same-City CEI) — 6 dimensions matching Excel model
+_DEF_W_CX1 = 26; _DEF_W_REV_CLINIC = 21; _DEF_W_COMB_DEMAND = 15; _DEF_W_CATCHMENT_BREADTH = 14; _DEF_W_SHOW_RATE = 12; _DEF_W_PCOS = 12
+# E-score weights (New-City CEI) — 5 dimensions, each default 20%
+_DEF_W_SPILLOVER = 20; _DEF_W_NC_DEMAND = 20; _DEF_W_NC_PCOS = 20; _DEF_W_COMP_WS = 20; _DEF_W_NC_CATCHMENT = 20
+_INDIAN_STATES = {
+    'andhra pradesh','arunachal pradesh','assam','bihar','chhattisgarh',
+    'goa','gujarat','haryana','himachal pradesh','jharkhand','karnataka',
+    'kerala','madhya pradesh','maharashtra','manipur','meghalaya','mizoram',
+    'nagaland','odisha','punjab','rajasthan','sikkim','tamil nadu',
+    'telangana','tripura','uttar pradesh','uttarakhand','west bengal',
+    'delhi','chandigarh','puducherry','jammu & kashmir','jammu and kashmir',
+    'ladakh','andaman and nicobar islands','lakshadweep',
+    'dadra and nagar haveli and daman and diu',
+    'the government of nct of delhi','nct of delhi',
+}
+
 with st.sidebar:
-    st.markdown("### ⚙️ Expansion Parameters")
-    capex_per_clinic = st.number_input("Capex / Clinic (₹L)", value=28.0, step=1.0, format="%.0f")
-    monthly_opex = st.number_input("Monthly OpEx (₹L)", value=3.1, step=0.1, format="%.1f")
-    rev_per_ntb = st.number_input("Revenue / NTB Patient (₹K)", value=22.0, step=1.0, format="%.0f")
-    target_ebitda = st.slider("Target EBITDA %", 10, 50, 25)
-    o2o_conversion = st.slider("Online→Offline Conversion %", 1, 15, 5)
-    
-    st.markdown("---")
-    st.markdown("### 📊 CEI Weights (v2)")
-    ntb_benchmark = st.number_input("NTB Capacity Benchmark (per clinic/month)", value=150, step=10,
-                                     help="Cities above this threshold are at capacity — strong expansion signal")
-    st.caption("Primary Signals")
-    w_capacity = st.slider("NTB Capacity vs Benchmark", 0, 60, 45, help=f"How close each city is to {ntb_benchmark} NTB/clinic/month")
-    w_underserved = st.slider("Patients Traveling 20+ km", 0, 60, 35, help="NTB visits + web orders from underserved pincodes")
-    st.caption("Secondary Signals")
-    w_secondary = st.slider("Web Orders + Growth + EBITDA + O2O", 0, 40, 20, help="Combined weight for legacy demand signals")
-    st.caption("🔒 IVF Competition (Coming Soon)")
-    st.markdown("""<div style="background:#f0f0f0; padding:8px 12px; border-radius:6px; font-size:0.78rem; color:#888;">
-        Branded IVF (15%) + Non-Branded IVF (15%) — activates when competition data is uploaded.
-        Current weights are redistributed proportionally.
-    </div>""", unsafe_allow_html=True)
-    
-    # Normalize weights to sum to 100
-    _w_total = w_capacity + w_underserved + w_secondary
-    if _w_total > 0:
-        w_cap_n = w_capacity / _w_total
-        w_und_n = w_underserved / _w_total
-        w_sec_n = w_secondary / _w_total
-    else:
-        w_cap_n, w_und_n, w_sec_n = 0.45, 0.35, 0.20
-    
-    st.markdown("---")
-    st.markdown("### 🛡️ Radius Safeguard")
-    metro_radius = st.number_input("Metro Min Distance (km)", value=5.0, step=1.0, format="%.0f",
-                                    help="MMR, BMR, NCR, HMR — minimum km between clinics")
-    tier2_radius = st.number_input("Tier-2 Min Distance (km)", value=8.0, step=1.0, format="%.0f",
-                                    help="Pune, Surat, Ahmedabad, Lucknow etc.")
-    core_penalty_pct = st.slider("CEI Penalty / Shared Core Pin (%)", 1, 15, 5,
-                                  help="CEI score reduced by this % for each shared top-10 pincode")
-    whitespace_dist_km = st.number_input("Whitespace Distance (km)", value=20.0, step=5.0, format="%.0f",
-                                          help="Pincodes beyond this distance from nearest clinic = underserved")
-    
-    st.markdown("---")
-    st.caption(f"Data: {active_months[0]} to {active_months[-1]} · {len(master)} clinics")
+    st.caption(f"{active_months[0]} → {active_months[-1]}  ·  {len(master)} clinics  ·  CEI v2")
 
-# ── HEADER ──────────────────────────────────────────────────────────────
-st.markdown("<h2 style='margin-bottom:0.2rem;'>Gynoveda Expansion Intelligence</h2>", unsafe_allow_html=True)
+# Read D-score weights (Same-City) from session_state — 6 dimensions
+w_cx1 = st.session_state.get('w_cx1', _DEF_W_CX1)
+w_rev_clinic = st.session_state.get('w_rev_clinic', _DEF_W_REV_CLINIC)
+w_comb_demand = st.session_state.get('w_comb_demand', _DEF_W_COMB_DEMAND)
+w_catchment_breadth = st.session_state.get('w_catchment_breadth', _DEF_W_CATCHMENT_BREADTH)
+w_show_rate = st.session_state.get('w_show_rate', _DEF_W_SHOW_RATE)
+w_pcos = st.session_state.get('w_pcos', _DEF_W_PCOS)
+metro_radius = st.session_state.get('sg_metro', _DEF_METRO_R)
+tier2_radius = st.session_state.get('sg_t2', _DEF_T2_R)
+whitespace_dist_km = st.session_state.get('sg_ws', _DEF_WS_DIST)
+# Read E-score weights (New-City) from session_state
+w_spillover = st.session_state.get('w_spillover', _DEF_W_SPILLOVER)
+w_nc_demand = st.session_state.get('w_nc_demand', _DEF_W_NC_DEMAND)
+w_nc_pcos = st.session_state.get('w_nc_pcos', _DEF_W_NC_PCOS)
+w_comp_ws = st.session_state.get('w_comp_ws', _DEF_W_COMP_WS)
+w_nc_catchment = st.session_state.get('w_nc_catchment', _DEF_W_NC_CATCHMENT)
 
-# ── PRE-COMPUTE: Dual-Signal Whitespace (needed by both Same-City & New-City tabs) ──
-ws_dual, ws_new_cities, ws_existing_underserved = build_whitespace_dual_signal(dist_threshold_km=whitespace_dist_km)
+# Normalize D-score weights (Same-City) — 6 dimensions
+_wd_total = w_cx1 + w_rev_clinic + w_comb_demand + w_catchment_breadth + w_show_rate + w_pcos
+if _wd_total > 0:
+    wd_cx1_n = w_cx1 / _wd_total
+    wd_rev_n = w_rev_clinic / _wd_total
+    wd_demand_n = w_comb_demand / _wd_total
+    wd_catch_b_n = w_catchment_breadth / _wd_total
+    wd_show_n = w_show_rate / _wd_total
+    wd_pcos_n = w_pcos / _wd_total
+else:
+    wd_cx1_n = 0.26; wd_rev_n = 0.21; wd_demand_n = 0.15
+    wd_catch_b_n = 0.14; wd_show_n = 0.12; wd_pcos_n = 0.12
 
-# ── CEI v2: Recompute Same-City scores with new dimensions ──────────────
-# Merge underserved demand (20+ km patients) into city-level scores
+# Normalize E-score weights (New-City)
+_we_total = w_spillover + w_nc_demand + w_nc_pcos + w_comp_ws + w_nc_catchment
+if _we_total > 0:
+    we_spill_n = w_spillover / _we_total
+    we_demand_n = w_nc_demand / _we_total
+    we_pcos_n = w_nc_pcos / _we_total
+    we_comp_n = w_comp_ws / _we_total
+    we_catch_n = w_nc_catchment / _we_total
+else:
+    we_spill_n = we_demand_n = we_pcos_n = we_comp_n = we_catch_n = 0.20
+
+# ── Pre-compute whitespace ───────────────────────────────────────────────
+ws_dual, ws_new_cities, ws_existing_underserved = build_whitespace_dual_signal(dist_threshold_km=whitespace_dist_km, _ver=st.session_state.get('_data_ver', 0))
+
+# ── Merge E-score dimensions from new_city_scores into ws_new_cities ──
+if len(ws_new_cities) > 0 and len(new_city_scores) > 0:
+    _escore_cols = ['e_spillover', 'e_demand', 'e_pcos', 'e_comp_ws', 'e_catchment', 'cei_new']
+    _available = [c for c in _escore_cols if c in new_city_scores.columns]
+    if _available:
+        _nc_lookup = new_city_scores.copy()
+        _nc_lookup['_join_key'] = _nc_lookup['City'].str.strip().str.lower()
+        _nc_lookup = _nc_lookup.drop_duplicates(subset='_join_key', keep='first')
+        ws_new_cities['_join_key'] = ws_new_cities['city'].str.strip().str.lower()
+        for col in _available:
+            _col_map = _nc_lookup.set_index('_join_key')[col].to_dict()
+            ws_new_cities[col] = ws_new_cities['_join_key'].map(_col_map).fillna(0)
+        ws_new_cities.drop(columns=['_join_key'], inplace=True, errors='ignore')
+
+# ── E-score recompute with session_state weights (post-cache) ──
+if len(ws_new_cities) > 0 and all(c in ws_new_cities.columns for c in ['e_spillover', 'e_demand', 'e_pcos', 'e_comp_ws', 'e_catchment']):
+    ws_new_cities['cei_new'] = (
+        ws_new_cities['e_spillover'] * we_spill_n +
+        ws_new_cities['e_demand'] * we_demand_n +
+        ws_new_cities['e_pcos'] * we_pcos_n +
+        ws_new_cities['e_comp_ws'] * we_comp_n +
+        ws_new_cities['e_catchment'] * we_catch_n
+    )
+    ws_new_cities = ws_new_cities.sort_values('cei_new', ascending=False)
+
+# ── CEI v2 recompute ─────────────────────────────────────────────────────
 if len(ws_existing_underserved) > 0:
     _eu = ws_existing_underserved.copy()
     _eu['city_code'] = _eu['city'].apply(_match_city_to_code)
     _eu_valid = _eu[_eu['city_code'].notna()]
     if len(_eu_valid) > 0:
         _eu_agg = _eu_valid.groupby('city_code').agg(
-            underserved_ntb=('total_ntb', 'sum'),
-            underserved_web=('total_web', 'sum'),
-            underserved_rev=('ntb_rev', 'sum'),
-            underserved_pins=('pincodes', 'sum'),
+            underserved_ntb=('total_ntb', 'sum'), underserved_web=('total_web', 'sum'),
+            underserved_rev=('ntb_rev', 'sum'), underserved_pins=('pincodes', 'sum'),
             underserved_avg_dist=('avg_dist', 'mean'),
         ).reset_index()
         same_city_scores = same_city_scores.merge(_eu_agg, on='city_code', how='left')
@@ -1187,1157 +1224,1119 @@ same_city_scores[['underserved_ntb','underserved_web','underserved_rev','underse
     same_city_scores[['underserved_ntb','underserved_web','underserved_rev','underserved_pins']].fillna(0)
 same_city_scores['underserved_avg_dist'] = same_city_scores['underserved_avg_dist'].fillna(0)
 
-# Normalize helper
 def _norm_v2(s):
     mn, mx = s.min(), s.max()
     return ((s - mn) / (mx - mn) * 100).fillna(0) if mx > mn else pd.Series(50, index=s.index)
 
-# PRIMARY: NTB Capacity vs Benchmark (150 NTB Show/clinic/month default)
-# NTB Show = Appt × Show% (first-time patient visits, BEFORE purchase/1Cx)
-if len(ntb_show_data) > 0:
-    # Use actual NTB Show data — L3M average per clinic per city
-    _ntb_months = sorted(ntb_show_data['month'].unique())
-    _ntb_l3m = _ntb_months[-3:] if len(_ntb_months) >= 3 else _ntb_months
-    _ntb_l3m_data = ntb_show_data[ntb_show_data['month'].isin(_ntb_l3m)]
-    # Avg monthly NTB Show per clinic, then avg across clinics in each city
-    _ntb_clinic_monthly = _ntb_l3m_data.groupby(['city', 'code'])['ntb_show'].mean().reset_index()
-    _ntb_city_avg = _ntb_clinic_monthly.groupby('city')['ntb_show'].mean().reset_index()
-    _ntb_city_avg.columns = ['city_code_ntb', 'ntb_show_avg']
-    # Merge into same_city_scores
-    same_city_scores['ntb_per_clinic_month'] = same_city_scores['city_code'].map(
-        _ntb_city_avg.set_index('city_code_ntb')['ntb_show_avg']
-    ).fillna(0)
+# ── 1Cx per clinic per month (from clinic_1cx.csv) ──
+_cx1_months = [c for c in cx1.columns if c not in ['area', 'code']]
+_cx1_l12m_cols = _cx1_months[-12:] if len(_cx1_months) >= 12 else _cx1_months
+_n_cx1_months = max(len(_cx1_l12m_cols), 1)
+_cx1_city_rows = []
+for _cc in same_city_scores['city_code']:
+    _cc_clinics = master[master['city'] == _cc]['code'].tolist()
+    _cc_cx1 = cx1[cx1['code'].isin(_cc_clinics)]
+    if len(_cc_cx1) > 0 and len(_cx1_l12m_cols) > 0:
+        _cc_avg = _cc_cx1[_cx1_l12m_cols].sum(axis=1).mean() / _n_cx1_months
+    else:
+        _cc_avg = 0
+    _cx1_city_rows.append(_cc_avg)
+same_city_scores['cx1_per_clinic_month'] = _cx1_city_rows
+
+
+# ── D-score: 6-dimension Same-City CEI (matches Excel model) ──
+# Dim 1 (P1): 1Cx per Clinic — patient load (26%)
+same_city_scores['d_cx1'] = _norm_v2(same_city_scores['cx1_per_clinic_month'])
+# Dim 2 (P3): Rev/Clinic — revenue per clinic (21%)
+same_city_scores['rev_per_clinic'] = (same_city_scores['l3m_rev_cr'] / same_city_scores['clinics'].replace(0, 1))
+same_city_scores['d_rev_clinic'] = _norm_v2(same_city_scores['rev_per_clinic'])
+# Dim 3 (D1): Combined Demand — clinic+web orders per lakh women, from CEI_D1_Catchment_Density.xlsx (15%)
+_d1_path = os.path.join('mis_data', 'CEI_D1_Catchment_Density.xlsx')
+if os.path.exists(_d1_path):
+    try:
+        _d1_raw = pd.read_excel(_d1_path, header=None)
+        _d1_hdr = None
+        for _di, _dr in _d1_raw.iterrows():
+            if 'Rank' in [str(v).strip() for v in _dr.values if pd.notna(v)]:
+                _d1_hdr = _di; break
+        if _d1_hdr is not None:
+            _d1_data = pd.read_excel(_d1_path, header=_d1_hdr)
+            _d1_data = _d1_data[_d1_data['City'].notna()].copy()
+            _d1_data['_city_code'] = _d1_data['City'].apply(_match_city_to_code)
+            _d1_data = _d1_data[_d1_data['_city_code'].notna()]
+            _d1_map = _d1_data.set_index('_city_code')['D1 Score'].to_dict()
+            same_city_scores['comb_demand_raw'] = same_city_scores['city_code'].map(_d1_map).fillna(50)
+            same_city_scores['d_comb_demand'] = _norm_v2(same_city_scores['comb_demand_raw'])
+        else:
+            same_city_scores['comb_demand_raw'] = 50; same_city_scores['d_comb_demand'] = 50.0
+    except Exception:
+        same_city_scores['comb_demand_raw'] = 50; same_city_scores['d_comb_demand'] = 50.0
 else:
-    # Fallback: estimate from 1Cx (will undercount — NTB Show > 1Cx)
-    same_city_scores['ntb_per_clinic_month'] = (same_city_scores['l3m_1cx'] / 3).fillna(0)
-
-same_city_scores['ntb_pct_of_benchmark'] = (same_city_scores['ntb_per_clinic_month'] / ntb_benchmark * 100).clip(0, 200)
-same_city_scores['d_capacity'] = _norm_v2(same_city_scores['ntb_per_clinic_month'])
-
-# PRIMARY: Underserved Demand (NTB + web from 20+ km pincodes)
-same_city_scores['d_underserved'] = _norm_v2(
-    same_city_scores['underserved_ntb'] + same_city_scores['underserved_web']
+    same_city_scores['comb_demand_raw'] = 50; same_city_scores['d_comb_demand'] = 50.0
+# Dim 4 (P2): Catchment Breadth — orders per catchment pincode (14%)
+same_city_scores['orders_per_pin'] = (
+    same_city_scores['clinic_demand'] / same_city_scores['pincodes_served'].replace(0, 1)
 )
+same_city_scores['d_catchment_breadth'] = _norm_v2(same_city_scores['orders_per_pin'])
+# Dim 5 (P4): Show Rate — appointment show-up percentage (12%)
+_show_path = os.path.join('mis_data', 'ntb_show_clinic.csv')
+if os.path.exists(_show_path):
+    try:
+        _show_data = pd.read_csv(_show_path)
+        _show_city_avg = _show_data.groupby('city')['show_pct'].mean().to_dict()
+        same_city_scores['show_rate'] = same_city_scores['city_code'].map(_show_city_avg).fillna(
+            _show_data['show_pct'].mean() if len(_show_data) > 0 else 0.20
+        )
+    except Exception:
+        same_city_scores['show_rate'] = 0.20
+else:
+    same_city_scores['show_rate'] = 0.20
+same_city_scores['d_show_rate'] = _norm_v2(same_city_scores['show_rate'])
+# Dim 6 (D2): PCOS Heat Index — addressable PCOS patient pool (12%)
+_pcos_path = os.path.join('mis_data', 'CEI_D2_PCOS_Heat_Index.xlsx')
+if os.path.exists(_pcos_path):
+    try:
+        _pcos_raw = pd.read_excel(_pcos_path, header=None)
+        _pcos_hdr = None
+        for _pi, _pr in _pcos_raw.iterrows():
+            if 'Rank' in [str(v).strip() for v in _pr.values if pd.notna(v)]:
+                _pcos_hdr = _pi; break
+        if _pcos_hdr is not None:
+            _pcos_data = pd.read_excel(_pcos_path, header=_pcos_hdr)
+            _pcos_data = _pcos_data[_pcos_data['City'].notna()].copy()
+            _pcos_data['_city_code'] = _pcos_data['City'].apply(_match_city_to_code)
+            _pcos_data = _pcos_data[_pcos_data['_city_code'].notna()]
+            _pcos_map = _pcos_data.set_index('_city_code')['D2 Score'].to_dict()
+            same_city_scores['pcos_heat_index'] = same_city_scores['city_code'].map(_pcos_map).fillna(50)
+            same_city_scores['d_pcos'] = _norm_v2(same_city_scores['pcos_heat_index'])
+        else:
+            same_city_scores['pcos_heat_index'] = 50; same_city_scores['d_pcos'] = 50.0
+    except Exception:
+        same_city_scores['pcos_heat_index'] = 50; same_city_scores['d_pcos'] = 50.0
+else:
+    same_city_scores['pcos_heat_index'] = 50; same_city_scores['d_pcos'] = 50.0
 
-# SECONDARY: Combined legacy signals (web orders, growth, EBITDA, O2O)
-same_city_scores['d_sec_web'] = _norm_v2(same_city_scores['web_orders'])
-same_city_scores['d_sec_growth'] = _norm_v2(same_city_scores['growth_pct'].clip(-0.5, 2))
-same_city_scores['d_sec_ebitda'] = _norm_v2(same_city_scores['avg_ebitda_pct'].clip(-0.1, 0.5))
-same_city_scores['d_sec_o2o'] = _norm_v2(same_city_scores.get('o2o_ratio', pd.Series(0, index=same_city_scores.index)).clip(0, 20))
-same_city_scores['d_secondary'] = (
-    same_city_scores['d_sec_web'] * 0.35 +
-    same_city_scores['d_sec_growth'] * 0.25 +
-    same_city_scores['d_sec_ebitda'] * 0.20 +
-    same_city_scores['d_sec_o2o'] * 0.20
-)
-
-# PLACEHOLDER: IVF Competition (0% weight — activates when data is uploaded)
-same_city_scores['d_ivf_branded'] = 0
-same_city_scores['d_ivf_nonbranded'] = 0
-
-# ── Final CEI v2 Score ──
+# D-score = weighted sum of 6 normalized dimensions (Excel model)
 same_city_scores['cei_same'] = (
-    same_city_scores['d_capacity'] * w_cap_n +
-    same_city_scores['d_underserved'] * w_und_n +
-    same_city_scores['d_secondary'] * w_sec_n
+    same_city_scores['d_cx1'] * wd_cx1_n +
+    same_city_scores['d_rev_clinic'] * wd_rev_n +
+    same_city_scores['d_comb_demand'] * wd_demand_n +
+    same_city_scores['d_catchment_breadth'] * wd_catch_b_n +
+    same_city_scores['d_show_rate'] * wd_show_n +
+    same_city_scores['d_pcos'] * wd_pcos_n
 )
 same_city_scores = same_city_scores.sort_values('cei_same', ascending=False)
 
-# ── TABS ────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs([
-    "🎯 Executive Summary",
-    "🏙️ Same-City Expansion",
-    "🌍 New-City Whitespace",
-    "📈 Revenue Forecaster"
-])
 
-# ═══════════════════════════════════════════════════════════════════════
-# TAB 1: EXECUTIVE SUMMARY
-# ═══════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════
+# NORTH STAR — 12-month expansion business case (linked to Forecaster)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_bill_value = _DEF_BILL_VALUE * 1000  # Rs.27K → 27000 (from MIS 1AoV sheet avg)
+
+# ── Ramp curve helpers (shared with Forecaster) ──
+_ns_ramp_raw = ramp_s[ramp_s['month_num'] <= 11].copy() if len(ramp_s) > 0 else pd.DataFrame()
+_ns_ramp_peak = _ns_ramp_raw['avg_sales_l'].max() if len(_ns_ramp_raw) > 0 else 1.0
+_ns_ramp_shape = (_ns_ramp_raw['avg_sales_l'] / _ns_ramp_peak).tolist() if len(_ns_ramp_raw) > 0 else []
+_ns_steady = 40.0      # Mature same-city clinic rev (₹L/mo)
+_ns_steady_new = 30.0  # Mature new-city clinic rev (₹L/mo)
+
+def _ns_schedule(n, per_mo):
+    sched = []; rem = n; lm = 1
+    while rem > 0 and lm < 12:
+        batch = min(per_mo, rem); sched.append((lm, batch)); rem -= batch; lm += 1
+    return sched
+
+def _ns_clinic_rev(age, steady, is_new=False, sc_mult=1.0):
+    if age < len(_ns_ramp_shape):
+        sv = min(_ns_ramp_shape[age], 0.10) if age == 0 else _ns_ramp_shape[age]
+        base = sv * steady
+    else:
+        base = steady
+    penalty = min(0.6 + (age / 12) * 0.4, 1.0) if is_new else 1.0
+    return base * penalty * sc_mult
+
+def _ns_project_12m(n_clinics, per_mo, steady, opex, is_new=False, sc_mult=1.0):
+    """Compute total 12-month projected revenue & EBITDA for a batch of clinics.
+    Returns: (total_rev, total_opex, breakeven_month, month12_rev)
+      - month12_rev: revenue in the final month (Month 12) = run-rate at end of period
+    """
+    sched = _ns_schedule(n_clinics, per_mo)
+    total_rev = total_opex = 0; be = None; m12_rev = 0
+    for m in range(12):
+        m_rev = m_act = 0
+        for lm, batch in sched:
+            age = m - lm
+            if age < 0: continue
+            m_act += batch; m_rev += _ns_clinic_rev(age, steady, is_new, sc_mult) * batch
+        m_opex = opex * m_act
+        total_rev += m_rev; total_opex += m_opex
+        if be is None and m_rev > m_opex:
+            be = m + 1
+        if m == 11:  # Month 12 (0-indexed)
+            m12_rev = m_rev
+    return total_rev, total_opex, be, m12_rev
+
+# ── North Star computes fresh every render ──
+# Same-city: driven by 1Cx benchmark (capacity trigger) — reacts to advanced settings
+# New-city: driven by Forecaster new-city inputs
+# Both use Forecaster's ramp curve parameters for revenue projection
+
+# North Star reads Forecaster "Clinics to add" + "Open per month" from session_state
+# All other assumptions (Capex, OpEx, Mature rev, Scenario) are hardcoded constants
+
+# SAME-CITY: Reads Forecaster "Clinics to add" + "Open per month"; rest hardcoded
+_ns_n_same = st.session_state.get('n_same', 0)          # Forecaster "Clinics to add"
+_ns_f_same_pm = st.session_state.get('same_pm', 1)      # Forecaster "Open per month"
+_ns_12m_same, _, _, _ = _ns_project_12m(
+    _ns_n_same, _ns_f_same_pm, _ns_steady, _DEF_OPEX, is_new=False
+) if _ns_n_same > 0 else (0, 0, None, 0)
+
+# NEW-CITY: Reads Forecaster "Clinics to add" + "Open per month"; rest hardcoded
+_ns_f_n_new = st.session_state.get('n_new', 30)
+_ns_f_new_pm = st.session_state.get('new_pm', 3)
+_ns_12m_new, _, _, _ = _ns_project_12m(
+    _ns_f_n_new, _ns_f_new_pm, _ns_steady_new, _DEF_OPEX, is_new=True
+) if _ns_f_n_new > 0 else (0, 0, None, 0)
+
+# ── Expansion 12-month cumulative revenue (linked to Forecaster inputs) ──
+_ns_expansion_12m = _ns_12m_same + _ns_12m_new  # ₹L, cumulative 12M
+_ns_total_new_clinics = _ns_n_same + _ns_f_n_new
+
+_ns_pills_html = f'<span class="ns-pill">{_ns_total_new_clinics} new clinics</span>'
+if _ns_n_same > 0:
+    _ns_pills_html += f' <span class="ns-pill">Same-City: {fmt_inr(_ns_12m_same * 1e5)} (12M)</span>'
+_ns_pills_html += f' <span class="ns-pill">New-City: {fmt_inr(_ns_12m_new * 1e5)} (12M)</span>'
+_ns_unique_1cx = int(ws_dual['unique_1cx'].sum()) if len(ws_dual) > 0 and 'unique_1cx' in ws_dual.columns else 0
+_ns_unique_clinic = int(ws_dual['unique_clinic_patients'].sum()) if len(ws_dual) > 0 and 'unique_clinic_patients' in ws_dual.columns else 0
+if _ns_unique_1cx > 0 or _ns_unique_clinic > 0:
+    _ns_demand_parts = []
+    if _ns_unique_1cx > 0:
+        _ns_demand_parts.append(f"{fmt_num(_ns_unique_1cx)} web 1Cx")
+    if _ns_unique_clinic > 0:
+        _ns_demand_parts.append(f"{fmt_num(_ns_unique_clinic)} clinic patients")
+    _ns_pills_html += f' <span class="ns-pill">{" · ".join(_ns_demand_parts)} (20+ km)</span>'
+else:
+    _ns_pills_html += f' <span class="ns-pill">{fmt_num(ws_dual["ntb_qty"].sum()) if len(ws_dual) > 0 else "0"} orders from 20+ km</span>'
+st.markdown(
+    f"""<div class="north-star">
+        <div class="ns-label">12-Month Expansion Revenue</div>
+        <div class="ns-value">{fmt_inr(_ns_expansion_12m * 1e5)}</div>
+        <div class="ns-pills">{_ns_pills_html}</div>
+    </div>""",
+    unsafe_allow_html=True
+)
+
+tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Same-City", "New Cities", "Forecaster"])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TAB 1: OVERVIEW — Glanceable in 3 seconds
+# ═══════════════════════════════════════════════════════════════════════════
 with tab1:
-    # Network health snapshot
     net_df = net.copy()
     net_df['month'] = pd.to_datetime(net_df['month'])
     net_df = net_df.sort_values('month')
     net_df = net_df[net_df['clinics_cr'] > 0]
-    
     latest_net = net_df.iloc[-1] if len(net_df) > 0 else {}
     prev_net = net_df.iloc[-2] if len(net_df) > 1 else {}
-    
-    # Last 12 months aggregate
     l12m = net_df.tail(12)
-    l12m_months = len(l12m)
     l12m_total_rev = l12m['clinics_cr'].sum()
-    l12m_avg_rev = l12m['clinics_cr'].mean()
-    l12m_total_1cx = l12m['clinics_1cx'].sum() if 'clinics_1cx' in l12m.columns else 0
-    l12m_avg_1cx = l12m['clinics_1cx'].mean() if 'clinics_1cx' in l12m.columns else 0
-    
-    # Clinic counts
-    active_clinics = (sales[latest_month] > 0).sum() if latest_month in sales.columns else 61
-    
-    # Hero KPIs — L12M Total
-    st.markdown("### Network Health")
-    st.markdown("**L12M Total**")
-    h1, h2, h3, h4, h5 = st.columns(5)
-    
-    with h1:
-        st.metric("Total Revenue", fmt_inr(l12m_total_rev * 1e7))
-    with h2:
-        st.metric("Active Clinics", f"{int(active_clinics)}", f"of {len(master)} total")
-    with h3:
-        avg_rev_per_clinic = l12m_total_rev / active_clinics if active_clinics > 0 else 0
-        st.metric("Total Rev/Clinic", fmt_inr(avg_rev_per_clinic * 1e7))
-    with h4:
-        st.metric("Total New Patients", fmt_num(l12m_total_1cx))
-    with h5:
-        if 'fy26_ebitda_pct' in data['pl'].columns:
-            avg_ebitda = data['pl']['fy26_ebitda_pct'].mean()
-            st.metric("Avg EBITDA %", pct(avg_ebitda))
-    
-    # Avg Monthly row
-    st.markdown("**Avg Monthly**")
-    a1, a2, a3, a4, a5 = st.columns(5)
-    with a1:
-        val = l12m_avg_rev
-        prev_val = prev_net.get('clinics_cr', 0)
-        delta = f"{((latest_net.get('clinics_cr',0)-prev_val)/prev_val*100):+.0f}% last MoM" if prev_val > 0 else ""
-        st.metric("Avg Monthly Revenue", fmt_inr(val * 1e7), delta)
-    with a2:
-        avg_active = l12m_months  # placeholder — clinics count is a point-in-time metric
-        st.metric("Months Covered", f"{l12m_months}")
-    with a3:
-        st.metric("Avg Rev/Clinic/Mo", fmt_inr(l12m_avg_rev / active_clinics * 1e7) if active_clinics > 0 else "—")
-    with a4:
-        st.metric("Avg Monthly New Patients", fmt_num(l12m_avg_1cx))
-    with a5:
-        latest_rev = latest_net.get('clinics_cr', 0)
-        vs_avg = ((latest_rev - l12m_avg_rev) / l12m_avg_rev * 100) if l12m_avg_rev > 0 else 0
-        st.metric("Latest vs Avg", f"{vs_avg:+.0f}%")
-    
-    st.markdown("---")
-    
-    # ── Composite Expansion Readiness ──
-    st.markdown("### Expansion Readiness Scorecard")
-    
-    # Calculate top-level scores
+    # Use clinic_1cx.csv as source of truth (network_monthly has duplicate rows + zero-month gaps)
+    _l12m_months = l12m['month'].dt.strftime('%Y-%m').tolist()
+    _cx1_cols = [c for c in cx1.columns if c not in ['area', 'code']]
+    _cx1_l12m = [c for c in _cx1_cols if c in _l12m_months]
+    l12m_total_1cx = cx1[_cx1_l12m].sum().sum() if _cx1_l12m else 0
+    active_clinics = (sales[latest_month] > 0).sum() if latest_month in sales.columns else len(master)
+    avg_ebitda = data['pl']['fy26_ebitda_pct'].mean() if 'fy26_ebitda_pct' in data['pl'].columns else 0
+
+    # ── Revenue trend (full-width) ──
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=net_df['month'], y=net_df['clinics_cr'],
+        marker_color=PALETTE[0], opacity=0.85, name='Clinic',
+    ))
+    if 'video_cr' in net_df.columns:
+        fig.add_trace(go.Bar(
+            x=net_df['month'], y=net_df['video_cr'],
+            marker_color=PALETTE[1], opacity=0.7, name='Video',
+        ))
+    _apply_layout(fig, height=280, barmode='stack',
+                  title="Monthly Revenue (Cr)",
+                  margin=dict(l=40, r=10, t=36, b=30),
+                  yaxis=dict(title="", showgrid=True, gridcolor='#f0f0f0', zeroline=False))
+    st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CFG)
+
+    # ── KPIs row ──
+    _k1, _k2, _k3 = st.columns(3)
+    _k1.metric("L12M Revenue", fmt_inr(l12m_total_rev * 1e7),
+              help="Total clinic network revenue for the last 12 months.")
+    _k2.metric("1Cx", fmt_num(l12m_total_1cx),
+              help="Total 1Cx (first-time customer) visits across all clinics in the last 12 months.")
+    _k3.metric("Active", f"{int(active_clinics)} clinics",
+              help="Number of clinics with non-zero revenue in the latest month.")
+
+    # ── TOP EXPANSION PICKS — the answer in 3 seconds ──
+    col_s, col_n = st.columns(2)
     top_same = same_city_scores.head(5)
-    top_new = new_city_scores.head(5)
-    avg_same_cei = same_city_scores['cei_same'].mean()
-    avg_new_cei = new_city_scores['cei_new'].mean()
-    
-    # Network momentum (are things trending up?)
-    if len(net_df) >= 4:
-        recent_3 = net_df.tail(3)['clinics_cr'].mean()
-        prior_3 = net_df.iloc[-6:-3]['clinics_cr'].mean() if len(net_df) >= 6 else net_df.head(3)['clinics_cr'].mean()
-        momentum = (recent_3 - prior_3) / prior_3 if prior_3 > 0 else 0
-    else:
-        momentum = 0
-    
-    sc1, sc2, sc3 = st.columns(3)
-    
-    with sc1:
-        score_class = "score-high" if avg_same_cei > 55 else "score-med" if avg_same_cei > 35 else "score-low"
-        st.markdown(f"""<div class="score-card {score_class}">
-            <h2>{avg_same_cei:.0f}</h2>
-            <p>Same-City Expansion Score</p>
-            <p>Top opportunity: <b>{top_same.iloc[0]['city_name']}</b></p>
-        </div>""", unsafe_allow_html=True)
-    
-    with sc2:
-        score_class = "score-high" if avg_new_cei > 40 else "score-med" if avg_new_cei > 25 else "score-low"
-        st.markdown(f"""<div class="score-card {score_class}">
-            <h2>{avg_new_cei:.0f}</h2>
-            <p>New-City Expansion Score</p>
-            <p>Top opportunity: <b>{top_new.iloc[0]['City'] if len(top_new) > 0 else 'N/A'}</b></p>
-        </div>""", unsafe_allow_html=True)
-    
-    with sc3:
-        mom_class = "score-high" if momentum > 0.05 else "score-med" if momentum > -0.05 else "score-negative"
-        st.markdown(f"""<div class="score-card {mom_class}">
-            <h2>{momentum*100:+.0f}%</h2>
-            <p>Revenue Momentum (L3M vs Prior)</p>
-            <p>{'Accelerating — expand' if momentum > 0.05 else 'Stable — selective expansion' if momentum > -0.05 else 'Decelerating — consolidate first'}</p>
-        </div>""", unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # ── Revenue & Growth Trend ──
-    col_trend1, col_trend2 = st.columns(2)
-    
-    with col_trend1:
-        fig = go.Figure()
-        fig.add_trace(go.Bar(x=net_df['month'], y=net_df['clinics_cr'],
-                             name='Clinic Revenue (₹Cr)', marker_color='#FF6B35', opacity=0.85))
-        if 'video_cr' in net_df.columns:
-            fig.add_trace(go.Bar(x=net_df['month'], y=net_df['video_cr'],
-                                 name='Video Revenue (₹Cr)', marker_color='#4ECDC4', opacity=0.85))
-        fig.update_layout(title="Monthly Revenue Trend", height=380, barmode='stack',
-                         margin=dict(l=40, r=20, t=70, b=30),
-                         legend=dict(orientation='h', y=1.02, x=0.5, xanchor='center'), yaxis_title="₹ Crores")
-        st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CFG)
-    
-    with col_trend2:
-        fig2 = go.Figure()
-        fig2.add_trace(go.Scatter(x=net_df['month'], y=net_df['clinics_1cx'], name='New (1Cx)',
-                                   mode='lines+markers', line=dict(color='#FF6B35', width=2.5)))
-        fig2.add_trace(go.Scatter(x=net_df['month'], y=net_df['clinics_rcx'], name='Repeat (rCx)',
-                                   mode='lines+markers', line=dict(color='#4ECDC4', width=2.5)))
-        fig2.update_layout(title="Patient Acquisition Trend", height=380,
-                          margin=dict(l=40, r=20, t=70, b=30),
-                          legend=dict(orientation='h', y=1.02, x=0.5, xanchor='center'), yaxis_title="Patients")
-        st.plotly_chart(fig2, use_container_width=True, config=PLOTLY_CFG)
-    
-    # ── Top Expansion Picks ──
-    st.markdown("### 🏆 Top 5 Expansion Opportunities")
-    
-    col_same, col_new = st.columns(2)
-    
-    with col_same:
-        st.markdown("**Same-City (Add Clinics)**")
+
+    with col_s:
+        st.markdown("##### 🏥 Add clinics in")
         for _, row in top_same.iterrows():
             cei = row['cei_same']
-            _ntb_c = row.get('ntb_per_clinic_month', 0)
-            badge = "🟢" if cei > 60 else "🟡" if cei > 40 else "🔴"
-            st.markdown(f"""
-            {badge} **{row['city_name']}** — CEI: **{cei:.0f}** · {int(row['clinics'])} clinics · 
-            **{_ntb_c:.0f}** NTB/clinic/mo · L3M Rev: {fmt_inr(row['l3m_rev_cr'] * 1e7)}
-            """)
-    
-    with col_new:
-        st.markdown("**New-City (Open First Clinic)**")
-        for _, row in top_new.head(5).iterrows():
-            cei = row['cei_new']
-            badge = "🟢" if cei > 60 else "🟡" if cei > 40 else "🔴"
-            st.markdown(f"""
-            {badge} **{row['City']}** — CEI: **{cei:.0f}** · 
-            Web Orders: {fmt_num(row['total_orders'])} · Revenue: {fmt_inr(row['total_revenue'])}
-            """)
-    
-    # ── Insights ──
-    st.markdown("---")
-    
-    # Auto-generated insights
-    high_growth_cities = same_city_scores[same_city_scores['growth_pct'] > 0.2]
-    at_capacity_cities = same_city_scores[same_city_scores['ntb_per_clinic_month'] >= ntb_benchmark]
-    high_cannibal = cannibal_matrix[cannibal_matrix['risk_level'].isin(['Critical', 'High'])] if len(cannibal_matrix) > 0 else pd.DataFrame()
-    
-    insights = []
-    if len(at_capacity_cities) > 0:
-        top_cap = at_capacity_cities.iloc[0]
-        insights.append(f"🔥 **{len(at_capacity_cities)} cities at or above {ntb_benchmark} NTB/clinic/month benchmark** — {top_cap['city_name']} leads at {top_cap['ntb_per_clinic_month']:.0f} NTB/clinic. Strong expansion candidates.")
-    if len(high_cannibal) > 0:
-        core_total = high_cannibal['core_shared'].sum()
-        insights.append(f"⚠️ **{len(high_cannibal)} clinic pairs** flagged Critical/High risk — {core_total} shared core pincodes detected. Review radius safeguard in Same-City tab.")
-    if len(high_growth_cities) > 0:
-        growth_list = ', '.join(high_growth_cities.head(3)['city_name'].tolist())
-        insights.append(f"📈 **{growth_list}** showing >20% revenue growth L3M — momentum cities for expansion.")
-    
-    top_unserved = new_city_scores.head(1)
-    if len(top_unserved) > 0:
-        insights.append(f"🌍 **{top_unserved.iloc[0]['City']}** leads new-city whitespace with {fmt_num(top_unserved.iloc[0]['total_orders'])} web orders and no clinic.")
-    
-    for insight in insights:
-        st.markdown(f'<div class="insight-box">{insight}</div>', unsafe_allow_html=True)
+            _cx1v = row.get('cx1_per_clinic_month', 0)
+            st.markdown(
+                f"<div style='padding:8px 0;border-bottom:1px solid #f0f0f0'>"
+                f"<span style='font-size:1.05rem;font-weight:700;color:#1a1a1a'>{row['city_name']}</span>"
+                f"<span style='float:right;font-size:0.82rem;color:#c0392b;font-weight:600'>CEI {cei:.0f}</span><br>"
+                f"<span style='font-size:0.78rem;color:#999'>{_cx1v:.0f} 1Cx/clinic/mo · {int(row['clinics'])} clinics</span>"
+                f"</div>", unsafe_allow_html=True
+            )
+
+    with col_n:
+        st.markdown("##### 🌐 Enter new cities")
+        # Use ws_new_cities (dual-signal whitespace) — sorted by E-score (CEI)
+        if len(ws_new_cities) > 0:
+            _ov_new = ws_new_cities.copy()
+            _ov_new['city'] = _ov_new['city'].fillna('').astype(str).str.strip()
+            _ov_bad = {'', 'nan', 'none', '?', '-', 'null', 'undefined', 'None', 'NaN'}
+            _ov_new = _ov_new[~_ov_new['city'].isin(_ov_bad)]
+            if 'cei_new' in _ov_new.columns:
+                _ov_new = _ov_new.sort_values('cei_new', ascending=False)
+            _ov_new = _ov_new.head(5)
+            for _, row in _ov_new.iterrows():
+                _ov_cei = int(round(row.get('cei_new', 0))) if pd.notna(row.get('cei_new', 0)) else 0
+                _ov_demand = int(row.get('total_ntb', 0)) + int(row.get('total_web', 0))
+                st.markdown(
+                    f"<div style='padding:8px 0;border-bottom:1px solid #f0f0f0'>"
+                    f"<span style='font-size:1.05rem;font-weight:700;color:#1a1a1a'>{row['city']}</span>"
+                    f"<span style='float:right;font-size:0.82rem;color:#f97316;font-weight:600'>CEI {_ov_cei}</span><br>"
+                    f"<span style='font-size:0.78rem;color:#999'>{fmt_num(_ov_demand)} demand (clinic + web)</span>"
+                    f"</div>", unsafe_allow_html=True
+                )
+        else:
+            for _, row in new_city_scores.head(5).iterrows():
+                st.markdown(
+                    f"<div style='padding:8px 0;border-bottom:1px solid #f0f0f0'>"
+                    f"<span style='font-size:1.05rem;font-weight:700;color:#1a1a1a'>{row['City']}</span>"
+                    f"<span style='float:right;font-size:0.82rem;color:#f97316;font-weight:600'>CEI {row['cei_new']:.0f}</span><br>"
+                    f"<span style='font-size:0.78rem;color:#999'>{fmt_num(row['total_orders'])} web orders</span>"
+                    f"</div>", unsafe_allow_html=True
+                )
+
+    # ── Clinic Leaderboard ──
+    _lb = data['clinic_lb']
+    if len(_lb) > 0:
+        with st.expander("Clinic Leaderboard"):
+            _lb_display = _lb.head(15).copy()
+            # Compute L12M Avg Sale (Lacs) from sales data
+            if 'Code' in _lb_display.columns and len(sales) > 0:
+                _lb_l12m_cols = active_months[-12:] if len(active_months) >= 12 else active_months
+                _lb_l12m_cols = [c for c in _lb_l12m_cols if c in sales.columns]
+                if _lb_l12m_cols:
+                    _sales_code = sales.copy()
+                    _sales_code['_l12m_avg_cr'] = _sales_code[_lb_l12m_cols].mean(axis=1)
+                    _sales_code['L12M Avg Sale (₹L)'] = (_sales_code['_l12m_avg_cr'] * 100).round(1)  # Cr → Lacs
+                    _code_avg = _sales_code[['code', 'L12M Avg Sale (₹L)']].copy()
+                    _code_avg['code'] = _code_avg['code'].astype(str)
+                    _lb_display['Code'] = _lb_display['Code'].astype(str)
+                    _lb_display = _lb_display.merge(_code_avg, left_on='Code', right_on='code', how='left').drop(columns=['code'], errors='ignore')
+            # Compute Avg Mo 1Cx from Total NTB Visits
+            _n_active_months = len(active_months) if len(active_months) > 0 else 12
+            if 'Total NTB Visits' in _lb_display.columns:
+                _lb_display['Avg Mo 1Cx'] = (_lb_display['Total NTB Visits'] / _n_active_months).apply(
+                    lambda x: f"{x:.0f}" if pd.notna(x) else "—")
+            _lb_cols = ['Clinic', 'City']
+            if 'L12M Avg Sale (₹L)' in _lb_display.columns:
+                _lb_cols.append('L12M Avg Sale (₹L)')
+            if 'Avg Mo 1Cx' in _lb_display.columns:
+                _lb_cols.append('Avg Mo 1Cx')
+            st.dataframe(
+                _lb_display[[c for c in _lb_cols if c in _lb_display.columns]],
+                use_container_width=True, height=350, hide_index=True,
+            )
 
 
-# ═══════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════
 # TAB 2: SAME-CITY EXPANSION
-# ═══════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════
 with tab2:
-    st.markdown("### Same-City Expansion Analysis")
-    st.markdown("*Where should we add clinics in cities we already operate in?*")
-    
-    # ── CEO Summary Row ──
-    _sc = same_city_scores
-    _sc_total_cities = len(_sc)
-    _sc_total_clinics = int(_sc['clinics'].sum())
-    _sc_total_cabins = int(_sc['total_cabins'].sum())
-    _sc_top = _sc.iloc[0]
-    _sc_above_bench = (_sc['ntb_per_clinic_month'] >= ntb_benchmark).sum()
-    _sc_avg_ntb = _sc['ntb_per_clinic_month'].mean()
-    _sc_total_underserved = _sc['underserved_ntb'].sum() + _sc['underserved_web'].sum()
-    _sc_underserved_rev = _sc['underserved_rev'].sum()
-    
-    sc_k1, sc_k2, sc_k3, sc_k4, sc_k5 = st.columns(5)
-    with sc_k1:
-        st.metric("Cities with Clinics", str(_sc_total_cities))
-        st.caption(f"{_sc_total_clinics} clinics · {_sc_total_cabins} cabins")
-    with sc_k2:
-        st.metric("Top Expansion Pick", f"{_sc_top['city_name']}")
-        st.caption(f"CEI Score: {_sc_top['cei_same']:.0f}")
-    with sc_k3:
-        st.metric(f"Cities ≥ {ntb_benchmark} NTB", f"{_sc_above_bench} of {_sc_total_cities}")
-        st.caption(f"Avg: {_sc_avg_ntb:.0f} NTB/clinic/month")
-    with sc_k4:
-        st.metric("Underserved Demand", fmt_num(_sc_total_underserved))
-        st.caption(f"NTB + Web from 20+ km")
-    with sc_k5:
-        st.metric("Underserved Revenue", fmt_inr(_sc_underserved_rev))
-        st.caption("Revenue from 20+ km pincodes")
-    
-    st.markdown("---")
-    
-    # ── CEI Ranking Table ──
-    st.markdown("#### Composite Expansion Index — Existing Cities")
-    st.caption(f"CEI v2: NTB Capacity vs {ntb_benchmark} benchmark + Underserved Demand (20+ km) + Secondary Signals · IVF Competition coming soon")
-    
-    display_same = same_city_scores.copy()
-    display_same['CEI'] = display_same['cei_same'].fillna(0).round(0).astype(int)
-    display_same['NTB/Clinic'] = display_same['ntb_per_clinic_month'].apply(lambda x: f"{x:.0f}")
-    display_same['vs Bench'] = display_same['ntb_pct_of_benchmark'].apply(lambda x: f"{x:.0f}%")
-    display_same['L3M Rev'] = display_same['l3m_rev_cr'].apply(lambda x: fmt_inr(x * 1e7))
-    display_same['Growth'] = display_same['growth_pct'].apply(lambda x: f"{x*100:+.0f}%")
-    display_same['20km NTB'] = display_same['underserved_ntb'].apply(lambda x: fmt_num(x))
-    display_same['20km Web'] = display_same['underserved_web'].apply(lambda x: fmt_num(x))
-    display_same['20km Rev'] = display_same['underserved_rev'].apply(lambda x: fmt_inr(x))
-    display_same['Web Orders'] = display_same['web_orders'].apply(lambda x: fmt_num(x))
-    display_same['EBITDA'] = display_same['avg_ebitda_pct'].apply(lambda x: pct(x))
-    
-    st.dataframe(
-        display_same[['city_name','clinics','CEI','NTB/Clinic','vs Bench','20km NTB','20km Web',
-                       '20km Rev','L3M Rev','Growth','Web Orders','EBITDA']].rename(columns={
-            'city_name':'City','clinics':'Clinics'
-        }),
-        use_container_width=True, height=400,
-        column_config={
-            'CEI': st.column_config.ProgressColumn("CEI Score", min_value=0, max_value=100, format="%d"),
-        }
-    )
-    
-    st.markdown("---")
-    
-    # ── CEI Dimension Radar for selected city ──
-    st.markdown("#### Deep-Dive: City Expansion Profile")
-    
+    with st.expander("⚙ D-score Weights & Safeguards", expanded=False):
+        st.caption("D-score dimensions (Same-City CEI)")
+        _wc1, _wc2, _wc3, _wc4, _wc5, _wc6 = st.columns(6)
+        _wc1.number_input("1Cx/Clinic", value=_DEF_W_CX1, step=1, min_value=0, max_value=100, key='w_cx1',
+                           help="Weight (%) — Patient load: are clinics overloaded?")
+        _wc2.number_input("Rev/Clinic", value=_DEF_W_REV_CLINIC, step=1, min_value=0, max_value=100, key='w_rev_clinic',
+                           help="Weight (%) — Is this city commercially proven?")
+        _wc3.number_input("Comb Demand", value=_DEF_W_COMB_DEMAND, step=1, min_value=0, max_value=100, key='w_comb_demand',
+                           help="Weight (%) — Total Gynoveda demand (clinic + web per lakh women).")
+        _wc4.number_input("Catch Breadth", value=_DEF_W_CATCHMENT_BREADTH, step=1, min_value=0, max_value=100, key='w_catchment_breadth',
+                           help="Weight (%) — How many pincodes are patients coming from?")
+        _wc5.number_input("Show Rate", value=_DEF_W_SHOW_RATE, step=1, min_value=0, max_value=100, key='w_show_rate',
+                           help="Weight (%) — Are patients showing up for appointments?")
+        _wc6.number_input("PCOS Heat", value=_DEF_W_PCOS, step=1, min_value=0, max_value=100, key='w_pcos',
+                           help="Weight (%) — Size of the addressable PCOS patient pool.")
+        st.caption("Safeguards")
+        _sg1, _sg2, _sg3 = st.columns(3)
+        _sg1.number_input("Metro (km)", value=_DEF_METRO_R, step=1.0, format="%.0f", key='sg_metro',
+                           help="Distance threshold for metro cities.")
+        _sg2.number_input("Tier-2 (km)", value=_DEF_T2_R, step=1.0, format="%.0f", key='sg_t2',
+                           help="Distance threshold for Tier-2 cities.")
+        _sg3.number_input("Whitespace", value=_DEF_WS_DIST, step=5.0, format="%.0f", key='sg_ws',
+                           help="Distance threshold for new-city whitespace detection.")
+
+    # ── City Deep-Dive ──
+    st.markdown("##### City Detail")
     city_options = same_city_scores['city_name'].tolist()
-    selected_city = st.selectbox("Select City", city_options, key='same_city_select')
+    selected_city = st.selectbox("City", city_options, key='same_city_select', label_visibility='collapsed',
+                                  help="Select a city where Gynoveda already operates. Ranked by CEI score (highest expansion potential first).")
     city_data = same_city_scores[same_city_scores['city_name'] == selected_city].iloc[0]
-    
-    col_radar, col_metrics = st.columns([1, 1])
-    
-    with col_radar:
-        _ntb_val = city_data.get('ntb_per_clinic_month', 0)
-        categories = [f'NTB/Clinic\nvs {ntb_benchmark}', 'Underserved\nDemand (20+ km)', 'Web Orders', 'Growth', 'EBITDA', 'O2O Conv.']
-        values = [city_data['d_capacity'], city_data['d_underserved'],
-                  city_data.get('d_sec_web', 0), city_data.get('d_sec_growth', 0),
-                  city_data.get('d_sec_ebitda', 0), city_data.get('d_sec_o2o', 0)]
-        
-        fig_radar = go.Figure(data=go.Scatterpolar(
-            r=values + [values[0]], theta=categories + [categories[0]],
-            fill='toself', fillcolor='rgba(255,107,53,0.2)',
-            line=dict(color='#FF6B35', width=2.5),
-            marker=dict(size=6)
+    _cx1_clinic = city_data.get('cx1_per_clinic_month', 0)
+
+    _cd_left, _cd_right = st.columns([1, 1])
+    with _cd_left:
+        _cd1, _cd2 = st.columns(2)
+        _cd1.metric("CEI Score", f"{city_data['cei_same']:.0f}/100",
+                  help="D-score (0–100). Weighted composite of 6 dimensions: 1Cx/Clinic, Rev/Clinic, Combined Demand, Catchment Breadth, Show Rate, and PCOS Heat.")
+        _cd2.metric("1Cx/Clinic/Mo", f"{_cx1_clinic:.0f}",
+                  help="Average first-time customer visits per clinic per month.")
+    with _cd_right:
+        # Radar chart — 6 D-score dimensions for selected city
+        _radar_dims = ['1Cx/Clinic', 'Rev/Clinic', 'Comb Demand', 'Catch Breadth', 'Show Rate', 'PCOS Heat']
+        _radar_vals = [
+            city_data.get('d_cx1', 50),
+            city_data.get('d_rev_clinic', 50),
+            city_data.get('d_comb_demand', 50),
+            city_data.get('d_catchment_breadth', 50),
+            city_data.get('d_show_rate', 50),
+            city_data.get('d_pcos', 50),
+        ]
+        _radar_vals_closed = _radar_vals + [_radar_vals[0]]
+        _radar_dims_closed = _radar_dims + [_radar_dims[0]]
+        fig_radar = go.Figure(go.Scatterpolar(
+            r=_radar_vals_closed, theta=_radar_dims_closed,
+            fill='toself', fillcolor='rgba(204,54,0,0.15)',
+            line=dict(color='#CC3600', width=2),
+            marker=dict(size=5, color='#CC3600'),
         ))
         fig_radar.update_layout(
-            polar=dict(radialaxis=dict(visible=True, range=[0, 100], showticklabels=False)),
-            title=f"CEI v2 Profile — {selected_city} ({_ntb_val:.0f} NTB/clinic/mo)", height=380,
-            margin=dict(l=60, r=60, t=50, b=30)
+            polar=dict(
+                radialaxis=dict(visible=True, range=[0, 100], showticklabels=False, gridcolor='#e5e7eb'),
+                angularaxis=dict(gridcolor='#e5e7eb', linecolor='#e5e7eb'),
+                bgcolor='rgba(0,0,0,0)',
+            ),
+            showlegend=False, margin=dict(l=40, r=40, t=20, b=20), height=240,
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
         )
         st.plotly_chart(fig_radar, use_container_width=True, config=PLOTLY_CFG)
-    
-    with col_metrics:
-        st.markdown(f"""<div class="kpi-hero">
-            <h3>Composite Expansion Index</h3>
-            <p>{city_data['cei_same']:.0f} / 100</p>
-            <span>{'✅ Strong expansion candidate' if city_data['cei_same'] > 55 else '⚠️ Moderate — validate before expanding' if city_data['cei_same'] > 35 else '❌ Weak — consolidate first'}</span>
-        </div>""", unsafe_allow_html=True)
-        
-        m1, m2 = st.columns(2)
-        m1.metric("Clinics", int(city_data['clinics']))
-        m2.metric("Cabins", int(city_data['total_cabins']))
-        m3, m4 = st.columns(2)
-        _ntb_clinic = city_data.get('ntb_per_clinic_month', 0)
-        _ntb_delta = _ntb_clinic - ntb_benchmark
-        m3.metric(f"NTB/Clinic/Month", f"{_ntb_clinic:.0f}", delta=f"{_ntb_delta:+.0f} vs {ntb_benchmark}")
-        m4.metric("Revenue Growth", f"{city_data['growth_pct']*100:+.0f}%")
-        m5, m6 = st.columns(2)
-        m5.metric("20+ km Patients", fmt_num(city_data.get('underserved_ntb', 0) + city_data.get('underserved_web', 0)))
-        m6.metric("20+ km Revenue", fmt_inr(city_data.get('underserved_rev', 0)))
-        m7, m8 = st.columns(2)
-        m7.metric("L3M Monthly Rev", fmt_inr(city_data['l3m_rev_cr'] * 1e7))
-        m8.metric("Web Orders", fmt_num(city_data['web_orders']))
-        
-        # Recommendation
-        _has_underserved = city_data.get('underserved_ntb', 0) + city_data.get('underserved_web', 0) > 100
-        _above_bench = city_data.get('ntb_per_clinic_month', 0) >= ntb_benchmark
-        if city_data['cei_same'] > 55 and _above_bench:
-            _reason = f"clinics running at {_ntb_clinic:.0f} NTB/month (above {ntb_benchmark} benchmark)"
-            if _has_underserved:
-                _reason += " + patients traveling 20+ km"
-            st.markdown(f'<div class="risk-low">✅ <b>Expand</b> — {_reason}. New clinic will capture incremental revenue.</div>', unsafe_allow_html=True)
-        elif city_data['cei_same'] > 35:
-            if _above_bench and _has_underserved:
-                st.markdown(f'<div class="insight-box">⚠️ <b>Strong signal — at capacity ({_ntb_clinic:.0f}/{ntb_benchmark} NTB) with underserved demand.</b> A peripheral clinic could capture 20+ km patients with lower cannibalization risk.</div>', unsafe_allow_html=True)
-            elif _has_underserved:
-                st.markdown(f'<div class="insight-box">⚠️ <b>Selective — underserved demand detected.</b> Clinics at {_ntb_clinic:.0f}/{ntb_benchmark} NTB — consider a peripheral clinic for 20+ km patients.</div>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div class="insight-box">⚠️ <b>Selective</b> — clinics at {_ntb_clinic:.0f}/{ntb_benchmark} NTB. Expand only if cannibalization analysis shows low overlap.</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="risk-high">❌ <b>Hold</b> — clinics averaging {_ntb_clinic:.0f} NTB/month (below {ntb_benchmark} benchmark). Fix operations before adding capacity.</div>', unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # ── NTB Funnel: Appointments → Show % → Show Nos ──
-    st.markdown("#### 📊 NTB Funnel — Appointments vs Show % vs Show Nos")
-    
-    _sel_city_code = same_city_scores[same_city_scores['city_name'] == selected_city]['city_code'].values[0]
-    
-    if len(ntb_show_data) > 0:
-        # Filter clinics in selected city
-        _city_ntb = ntb_show_data[ntb_show_data['city'] == _sel_city_code].copy()
-        
-        if len(_city_ntb) > 0:
-            # Aggregate monthly across all clinics in city
-            _monthly = _city_ntb.groupby('month').agg(
-                total_appt=('ntb_appt', 'sum'),
-                total_show=('ntb_show', 'sum'),
-                clinics=('code', 'nunique'),
-            ).reset_index().sort_values('month')
-            _monthly['show_pct'] = (_monthly['total_show'] / _monthly['total_appt'] * 100).round(1)
-            _monthly['show_pct'] = _monthly['show_pct'].clip(0, 100)
-            
-            # Dual-axis chart: bars for Appt & Show Nos, line for Show %
-            fig_funnel = make_subplots(specs=[[{"secondary_y": True}]])
-            
-            fig_funnel.add_trace(go.Bar(
-                x=_monthly['month'], y=_monthly['total_appt'],
-                name='NTB Appointments', marker_color='#C8D6E5', opacity=0.7
-            ), secondary_y=False)
-            
-            fig_funnel.add_trace(go.Bar(
-                x=_monthly['month'], y=_monthly['total_show'],
-                name='NTB Show (Visits)', marker_color='#FF6B35', opacity=0.9
-            ), secondary_y=False)
-            
-            fig_funnel.add_trace(go.Scatter(
-                x=_monthly['month'], y=_monthly['show_pct'],
-                name='Show %', mode='lines+markers+text',
-                text=_monthly['show_pct'].apply(lambda x: f"{x:.0f}%"),
-                textposition='top center', textfont=dict(size=10),
-                line=dict(color='#2ECC71', width=2.5, dash='dot'),
-                marker=dict(size=7)
-            ), secondary_y=True)
-            
-            # Add benchmark line
-            fig_funnel.add_hline(
-                y=ntb_benchmark * _monthly['clinics'].iloc[-1] if len(_monthly) > 0 else ntb_benchmark,
-                line_dash="dash", line_color="#E74C3C", line_width=1.5,
-                annotation_text=f"{ntb_benchmark} NTB/clinic × {_monthly['clinics'].iloc[-1]} clinics = {ntb_benchmark * _monthly['clinics'].iloc[-1]:.0f}",
-                annotation_position="top right",
-                secondary_y=False
-            )
-            
-            fig_funnel.update_layout(
-                title=f"NTB Funnel — {selected_city} ({_monthly['clinics'].iloc[-1]} clinics)",
-                height=420, barmode='group',
-                margin=dict(l=40, r=40, t=60, b=30),
-                legend=dict(orientation='h', y=1.08, x=0.5, xanchor='center'),
-                yaxis_title="Patients",
-            )
-            fig_funnel.update_yaxes(title_text="Show %", secondary_y=True, range=[0, 60])
-            
-            st.plotly_chart(fig_funnel, use_container_width=True, config=PLOTLY_CFG)
-            
-            # Per-clinic breakdown table
-            _clinic_l3m = _city_ntb[_city_ntb['month'].isin(sorted(_city_ntb['month'].unique())[-3:])]
-            _clinic_agg = _clinic_l3m.groupby(['area', 'code']).agg(
-                avg_appt=('ntb_appt', 'mean'),
-                avg_show=('ntb_show', 'mean'),
-                avg_pct=('show_pct', 'mean'),
-            ).reset_index().sort_values('avg_show', ascending=False)
-            _clinic_agg['avg_appt'] = _clinic_agg['avg_appt'].round(0).astype(int)
-            _clinic_agg['avg_show'] = _clinic_agg['avg_show'].round(0).astype(int)
-            _clinic_agg['avg_pct'] = (_clinic_agg['avg_pct'] * 100).round(1)
-            _clinic_agg.columns = ['Clinic', 'Code', 'L3M Avg Appt/mo', 'L3M Avg Show/mo', 'Show %']
-            
-            st.caption(f"Per-clinic L3M average (monthly) — benchmark: {ntb_benchmark} NTB Show/clinic/month")
-            st.dataframe(_clinic_agg, use_container_width=True, hide_index=True)
-        else:
-            st.info(f"No NTB Show data found for {selected_city}. Upload NTB_Show_Month_Wise.xlsx via sidebar.")
-    else:
-        st.info("Upload NTB_Show_Month_Wise.xlsx via sidebar to enable the NTB funnel chart.")
-    
-    st.markdown("---")
-    
-    # ── Cannibalization Risk with Radius Safeguard ──
-    st.markdown("#### 🛡️ Cannibalization & Radius Safeguard")
-    
+
+    # ── Cannibalization ──
     if len(cannibal_matrix) > 0:
         city_code = same_city_scores[same_city_scores['city_name'] == selected_city]['city_code'].values[0]
         city_cannibal = cannibal_matrix[cannibal_matrix['city_code'] == city_code].copy()
-        
         if len(city_cannibal) > 0:
-            # Show guide only when there's actual data to display
-            with st.expander("📖 How to Read This Chart", expanded=False):
-                st.markdown("""
-**What it shows:** Each bubble is a pair of clinics. The chart reveals which clinic pairs 
-are competing for the same patients (cannibalization risk).
+            st.markdown("---")
+            st.markdown("##### Cannibalization Risk")
 
-**Reading the axes:**
-- **X-axis (Distance):** How far apart the two clinics are in kilometers
-- **Y-axis (Volume Overlap):** What % of patient pincodes are shared between the pair
-- **Bubble size:** Number of shared core pincodes (bigger = more top-10 pincodes overlap)
-- **Red dashed line:** Your minimum safe radius — pairs left of this line are dangerously close
-
-**Color guide:**
-- 🔴 **Critical** — Core catchment collision (3+ shared top-10 pincodes) → active revenue cannibalization
-- 🟠 **High** — Close distance or shared core pins → high risk
-- 🟡 **Medium** — Moderate volume overlap → monitor closely
-- 🟢 **Low / Minimal** — Healthy separation → distinct catchments
-
-**What happens when you change the radius (sidebar):**
-
-| Radius | Effect | Best for |
-|--------|--------|----------|
-| **Smaller (3-4 km)** | More locations qualify, but higher cannibalization risk | Dense metros (Mumbai, Delhi) where 4 km = different demographics |
-| **Standard (5 km)** | Balanced protection — current default | Most metro cities |
-| **Larger (8-10 km)** | Maximum protection per clinic, but may leave demand gaps | Tier 2/3 cities with lower population density |
-
-**Action items:** If you see a 🔴 Critical pair, investigate whether one clinic should be 
-relocated, or whether the pair should be treated as a single market with shared marketing budget.
-The **CEI Penalty** slider (sidebar) automatically reduces expansion scores for cities with high cannibalization.
-            """)
-            
-            # Determine tier-based radius threshold for this city
             city_tier = master[master['city'] == city_code]['tier'].values
             is_metro = any(t in ['Metro', 'Tier-1'] for t in city_tier) if len(city_tier) > 0 else False
             radius_threshold = metro_radius if is_metro else tier2_radius
-            
-            # Distance & Core Overlap scatter
+
             dist_pairs = city_cannibal[city_cannibal['distance_km'].notna()].copy()
             if len(dist_pairs) > 0:
-                dist_pairs['label'] = dist_pairs['clinic_1'] + ' ↔ ' + dist_pairs['clinic_2']
-                dist_pairs['marker_size'] = dist_pairs['core_shared'].clip(lower=1) * 8
-                
-                risk_colors = {'Critical': '#C62828', 'High': '#E53935', 'Medium': '#FF8F00', 'Low': '#43A047', 'Minimal': '#66BB6A'}
-                dist_pairs['color'] = dist_pairs['risk_level'].map(risk_colors)
-                
-                fig_scatter = go.Figure()
-                for risk in ['Critical', 'High', 'Medium', 'Low', 'Minimal']:
-                    subset = dist_pairs[dist_pairs['risk_level'] == risk]
-                    if len(subset) > 0:
-                        fig_scatter.add_trace(go.Scatter(
-                            x=subset['distance_km'], y=subset['avg_vol_overlap'] * 100,
-                            mode='markers+text', name=risk,
-                            marker=dict(size=subset['marker_size'], color=risk_colors.get(risk, '#999'),
-                                        opacity=0.8, line=dict(width=1, color='white')),
-                            text=subset['label'], textposition='top center',
-                            textfont=dict(size=9),
-                            hovertemplate='<b>%{text}</b><br>Distance: %{x:.1f} km<br>Vol Overlap: %{y:.0f}%<br>Core Pins Shared: %{customdata}<extra></extra>',
-                            customdata=subset['core_shared']
-                        ))
-                
-                # Add radius threshold line
-                fig_scatter.add_vline(x=radius_threshold, line_dash="dash", line_color="#D32F2F", line_width=2,
-                                      annotation_text=f"Min Radius ({radius_threshold:.0f} km)",
-                                      annotation_position="top right",
-                                      annotation_font_color="#D32F2F")
-                
-                fig_scatter.update_layout(
-                    title=f"Distance vs Volume Overlap — {selected_city}",
-                    xaxis_title="Inter-Clinic Distance (km)", yaxis_title="Avg Volume Overlap (%)",
-                    height=420, margin=dict(l=20, r=20, t=50, b=20),
-                    legend=dict(orientation='h', y=-0.15),
-                    xaxis=dict(range=[0, max(dist_pairs['distance_km'].max() * 1.1, radius_threshold * 1.5)]),
-                    yaxis=dict(range=[0, 105])
+                def _risk_tier(r):
+                    if r in ('Critical', 'High'): return 'High'
+                    if r == 'Medium': return 'Medium'
+                    return 'Low'
+                dist_pairs['tier'] = dist_pairs['risk_level'].apply(_risk_tier)
+                dist_pairs = dist_pairs.sort_values('avg_vol_overlap', ascending=False)
+                _tier_badge = {'High': '#ef4444', 'Medium': '#f97316', 'Low': '#22c55e'}
+
+                # Clean card layout — one row per clinic pair
+                _rows_html = ""
+                for _, p in dist_pairs.iterrows():
+                    _ov = p['avg_vol_overlap'] * 100
+                    _d = p['distance_km']
+                    _t = p['tier']
+                    _c = _tier_badge[_t]
+                    _too_close = _d < radius_threshold
+                    _dist_warn = f"<span style='color:#ef4444;font-weight:600'>{_d:.1f} km ⚠</span>" if _too_close else f"{_d:.1f} km"
+                    _rows_html += (
+                        f"<div style='display:flex;align-items:center;padding:10px 0;border-bottom:1px solid #f0f0f0;gap:12px'>"
+                        f"  <span style='background:{_c};color:#fff;font-size:0.65rem;font-weight:600;"
+                        f"    padding:3px 10px;border-radius:10px;min-width:52px;text-align:center'>{_t}</span>"
+                        f"  <span style='flex:1;font-weight:600;font-size:0.92rem;color:#1a1a1a'>"
+                        f"    {p['clinic_1']} <span style='color:#bbb;font-weight:400'>↔</span> {p['clinic_2']}</span>"
+                        f"  <span style='font-size:0.82rem;color:#666;min-width:60px;text-align:right'>{_dist_warn}</span>"
+                        f"  <span style='font-size:0.82rem;color:#666;min-width:80px;text-align:right'>{_ov:.0f}% overlap</span>"
+                        f"  <span style='font-size:0.78rem;color:#999;min-width:70px;text-align:right'>{int(p['shared_pincodes'])} pins shared</span>"
+                        f"</div>"
+                    )
+                st.markdown(
+                    f"<div style='background:#fafafa;border-radius:8px;padding:4px 16px;border:1px solid #eee'>"
+                    f"{_rows_html}</div>",
+                    unsafe_allow_html=True
                 )
-                st.plotly_chart(fig_scatter, use_container_width=True, config=PLOTLY_CFG)
-            
-            # Risk cards for each pair
-            city_cannibal_sorted = city_cannibal.sort_values('risk_level',
-                key=lambda x: x.map({'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Minimal': 4}))
-            
-            for _, row in city_cannibal_sorted.iterrows():
-                risk = row['risk_level']
-                if risk == 'Critical':
-                    css_class = "risk-high"
-                    icon = "🔴"
-                elif risk == 'High':
-                    css_class = "risk-high"
-                    icon = "🟠"
-                elif risk == 'Medium':
-                    css_class = "insight-box"
-                    icon = "🟡"
+                # Summary line
+                _high_ct = (dist_pairs['tier'] == 'High').sum()
+                if _high_ct > 0:
+                    st.caption(f"⚠ {_high_ct} high-risk pair{'s' if _high_ct > 1 else ''} — consider territory rebalancing or consolidation")
+
+    # ── Competitor & Rent ──
+    _comp = data['competitor_prox']
+    _city_name_for_comp = selected_city
+    _sel_city_code = str(city_data.get('city_code', '')).upper()
+    _city_comp = _comp[_comp['City'].str.upper() == _sel_city_code]
+    if len(_city_comp) == 0:
+        _city_comp = _comp[_comp['City'].str.lower() == _city_name_for_comp.lower()]
+    _ivf = data['ivf_comp']
+    _city_ivf = _ivf[_ivf['Centre_City'].str.lower() == _city_name_for_comp.lower()] if len(_ivf) > 0 else pd.DataFrame()
+    _has_comp = len(_city_comp) > 0 or len(_city_ivf) > 0
+    if _has_comp:
+        st.markdown("---")
+        st.markdown("##### IVF Competitor Landscape")
+
+        # Classify IVF competitors: Branded (National Chain), Regional (Regional Chain + Hospital Chain), Non-Branded (Local/Regional Specialist)
+        _brand_map = {
+            'National Chain': 'Branded',
+            'Hospital Chain': 'Regional',
+            'Regional Chain': 'Regional',
+            'Local Specialist': 'Non-Branded',
+            'Regional Specialist': 'Non-Branded',
+        }
+        # Get threat info from competitor proximity data
+        _threat = str(_city_comp.iloc[0].get('Threat Level', 'N/A')).upper() if len(_city_comp) > 0 else 'N/A'
+        _threat_color = {'HIGH': '#ef4444', 'MEDIUM': '#f97316', 'LOW': '#22c55e'}.get(_threat, '#888')
+
+        if len(_city_ivf) > 0 and 'Brand_Type' in _city_ivf.columns:
+            _city_ivf_c = _city_ivf.copy()
+            _city_ivf_c['Category'] = _city_ivf_c['Brand_Type'].map(_brand_map).fillna('Non-Branded')
+            _branded = _city_ivf_c[_city_ivf_c['Category'] == 'Branded']
+            _regional = _city_ivf_c[_city_ivf_c['Category'] == 'Regional']
+            _nonbranded = _city_ivf_c[_city_ivf_c['Category'] == 'Non-Branded']
+
+            # Summary metrics — 3 columns
+            _mi1, _mi2, _mi3 = st.columns(3)
+            with _mi1:
+                st.metric("Branded (National)", len(_branded),
+                          help="National IVF chains (e.g. Indira IVF, Nova). High brand awareness — directly compete for patients. More branded competitors = tougher market to enter.")
+                if len(_branded) > 0:
+                    _top_branded = _branded['Chain_Name'].value_counts().head(3)
+                    st.caption(' · '.join(f"{n} ({c})" for n, c in _top_branded.items()))
+            with _mi2:
+                st.metric("Regional / Hospital", len(_regional),
+                          help="Hospital-attached and regional IVF chain centres. Less brand power than national chains but often have established patient trust through the parent hospital.")
+                if len(_regional) > 0:
+                    _top_regional = _regional['Chain_Name'].value_counts().head(3)
+                    st.caption(' · '.join(f"{n} ({c})" for n, c in _top_regional.items()))
+            with _mi3:
+                st.metric("Non-Branded (Local)", len(_nonbranded),
+                          help="Local specialist clinics and small independent IVF providers. Lower brand recognition — Gynoveda's Ayurvedic differentiation is strongest against these.")
+                if len(_nonbranded) > 0:
+                    _top_local = _nonbranded['Chain_Name'].value_counts().head(3)
+                    st.caption(' · '.join(f"{n} ({c})" for n, c in _top_local.items()))
+
+            # Threat badge
+            st.markdown(
+                f"<div style='margin:10px 0 6px'>"
+                f"<span style='background:{_threat_color};color:#fff;font-size:0.7rem;font-weight:600;"
+                f"padding:2px 10px;border-radius:10px'>{_threat} competition</span>"
+                f"<span style='margin-left:10px;font-size:0.8rem;color:#888'>"
+                f"{len(_city_ivf_c)} centres · {_city_ivf_c['Chain_Name'].nunique()} chains</span></div>",
+                unsafe_allow_html=True
+            )
+
+            # Detail table
+            with st.expander(f"All IVF centres in {selected_city} ({len(_city_ivf_c)})"):
+                _ivf_display = _city_ivf_c.copy()
+                if 'Proximity_to_Gynoveda_Clinic' in _ivf_display.columns:
+                    _ivf_display['Distance'] = _ivf_display['Proximity_to_Gynoveda_Clinic'].fillna('—')
+                _show_cols = ['Chain_Name', 'Category', 'Centre_Location', 'Distance']
+                _show_cols = [c for c in _show_cols if c in _ivf_display.columns]
+                st.dataframe(
+                    _ivf_display[_show_cols].rename(columns={
+                        'Chain_Name': 'Chain', 'Centre_Location': 'Location'
+                    }).sort_values('Category'),
+                    use_container_width=True, hide_index=True,
+                )
+        else:
+            # No IVF detail data — show summary from competitor proximity
+            _ivf_count = int(_city_comp.iloc[0].get('IVF Centres in City', 0)) if len(_city_comp) > 0 else 0
+            _chains = int(_city_comp.iloc[0].get('Chains Present', 0)) if len(_city_comp) > 0 else 0
+            if _ivf_count > 0:
+                st.metric("IVF Centres in City", _ivf_count,
+                          help="Total number of IVF centres operating in this city from the competitor proximity dataset. Higher count = more saturated market for fertility services.")
+                st.markdown(
+                    f"<span style='background:{_threat_color};color:#fff;font-size:0.7rem;font-weight:600;"
+                    f"padding:2px 10px;border-radius:10px'>{_threat} competition</span>"
+                    f"<span style='margin-left:10px;font-size:0.8rem;color:#888'>{_chains} chains</span>",
+                    unsafe_allow_html=True
+                )
+            else:
+                st.caption("No IVF competitor data available for this city")
+
+    # ── Ranked city table with D-Score ──
+    st.markdown("---")
+    st.markdown("##### City Rankings (D-score)")
+    # Bar chart
+    _sc_bar = same_city_scores[['city_name', 'cei_same']].copy()
+    _sc_bar['CEI'] = _sc_bar['cei_same'].round(0).astype(int)
+    _sc_bar = _sc_bar.sort_values('CEI', ascending=True)
+    fig_sc_bar = go.Figure(go.Bar(
+        x=_sc_bar['CEI'], y=_sc_bar['city_name'],
+        orientation='h', marker_color=PALETTE[0], opacity=0.85,
+        text=_sc_bar['CEI'], textposition='outside',
+    ))
+    _apply_layout(fig_sc_bar,
+        height=max(300, len(_sc_bar) * 28),
+        margin=dict(l=120, r=40, t=10, b=20),
+        xaxis=dict(title="D-Score (CEI)", showgrid=True, gridcolor='#f0f0f0', zeroline=False),
+        yaxis=dict(title="", showgrid=False, zeroline=False),
+    )
+    st.plotly_chart(fig_sc_bar, use_container_width=True, config=PLOTLY_CFG)
+    _sc_rank = same_city_scores[['city_name', 'clinics', 'cei_same']].copy()
+    _sc_rank['CEI'] = _sc_rank['cei_same'].round(0).astype(int)
+    _sc_rank = _sc_rank.sort_values('CEI', ascending=False).reset_index(drop=True)
+    _sc_rank.insert(0, 'Rank', range(1, len(_sc_rank) + 1))
+    _sc_rank = _sc_rank.rename(columns={'city_name': 'City', 'clinics': 'Clinics'})
+    st.dataframe(
+        _sc_rank[['Rank', 'City', 'Clinics', 'CEI']],
+        use_container_width=True, hide_index=True,
+        height=min(500, 35 + len(_sc_rank) * 35),
+    )
+
+    # ── Recommended Micro-Markets (Same-City) — from CEI Excel ──
+    st.markdown("---")
+    with st.expander("Prospect Micro-Markets (Same-City)", expanded=False):
+        st.caption("Micro-market expansion opportunities in served cities, ranked by Tier then D-Score. Source: CEI v3.1 model.")
+        _mm_xlsx = os.path.join('mis_data', 'Gynoveda_CEI_v31_MicroMarkets.xlsx')
+        if os.path.exists(_mm_xlsx):
+            try:
+                _mm_raw = pd.read_excel(_mm_xlsx, sheet_name='Micro-Market Revenue', header=4)
+                _mm_raw = _mm_raw[_mm_raw['#'].notna()].copy()
+                _mm_display_cols = []
+                if '#' in _mm_raw.columns:
+                    _mm_raw = _mm_raw.rename(columns={'#': 'Rank'})
+                    _mm_raw['Rank'] = _mm_raw['Rank'].astype(int)
+                    _mm_display_cols.append('Rank')
+                if 'Tier' in _mm_raw.columns:
+                    _mm_display_cols.append('Tier')
+                if 'City' in _mm_raw.columns:
+                    _mm_display_cols.append('City')
+                if 'Micro-Market Name' in _mm_raw.columns:
+                    _mm_display_cols.append('Micro-Market Name')
+                if 'Zone' in _mm_raw.columns:
+                    _mm_display_cols.append('Zone')
+                if 'D-Score' in _mm_raw.columns:
+                    _mm_raw['D-Score'] = _mm_raw['D-Score'].round(2)
+                    _mm_display_cols.append('D-Score')
+                if 'Broader Catchment Orders' in _mm_raw.columns:
+                    _mm_raw['Catchment Orders'] = _mm_raw['Broader Catchment Orders'].apply(lambda x: fmt_num(int(x)) if pd.notna(x) and x > 0 else '—')
+                    _mm_display_cols.append('Catchment Orders')
+                if 'Y1 Revenue (₹)' in _mm_raw.columns:
+                    _mm_raw['Y1 Rev (₹L)'] = (_mm_raw['Y1 Revenue (₹)'] / 1e5).round(1)
+                    _mm_display_cols.append('Y1 Rev (₹L)')
+                if 'Payback (months)' in _mm_raw.columns:
+                    _mm_raw['Payback (mo)'] = _mm_raw['Payback (months)'].round(1)
+                    _mm_display_cols.append('Payback (mo)')
+                if _mm_display_cols:
+                    st.dataframe(
+                        _mm_raw[_mm_display_cols],
+                        use_container_width=True, hide_index=True,
+                        height=min(700, 35 + len(_mm_raw) * 35),
+                    )
                 else:
-                    css_class = "risk-low"
-                    icon = "🟢"
-                
-                dist_str = f"{row['distance_km']:.0f} km" if pd.notna(row.get('distance_km')) else "N/A"
-                core_str = f"{row['core_shared']} shared" if row['core_shared'] > 0 else "None"
-                vol_str = f"{row['avg_vol_overlap']*100:.0f}%"
-                
-                # Radius violation flag
-                radius_flag = ""
-                if pd.notna(row.get('distance_km')) and row['distance_km'] < radius_threshold:
-                    radius_flag = f" · ⚠️ <b>Below {radius_threshold:.0f} km threshold</b>"
-                
-                st.markdown(f"""<div class="{css_class}">
-                    {icon} <b>{row['clinic_1']}</b> ↔ <b>{row['clinic_2']}</b> · 
-                    Distance: <b>{dist_str}</b> · 
-                    Vol Overlap: <b>{vol_str}</b> · 
-                    Core Pins: <b>{core_str}</b> ({row['core_pins']}) · 
-                    Pincode Overlap: {row['overlap_pct']*100:.0f}% ({row['shared_pincodes']}/{row['total_pincodes']}) · 
-                    Revenue at Risk: <b>{fmt_inr(row['overlap_revenue'])}</b> · 
-                    Risk: <b>{risk}</b>{radius_flag}
-                </div>""", unsafe_allow_html=True)
-            
-            # Summary insight
-            critical_high = city_cannibal[city_cannibal['risk_level'].isin(['Critical', 'High'])]
-            if len(critical_high) > 0:
-                total_core = critical_high['core_shared'].sum()
-                penalty = total_core * core_penalty_pct
-                st.markdown(f"""<div class="insight-box">
-                    📊 <b>Radius Safeguard Summary for {selected_city}:</b> 
-                    {len(critical_high)} pair(s) flagged Critical/High with {total_core} total shared core pincodes. 
-                    Recommended CEI penalty for new same-city clinic: <b>−{penalty}%</b> 
-                    (= {total_core} core pins × {core_penalty_pct}% per pin). 
-                    New clinic placement should maintain at least <b>{radius_threshold:.0f} km</b> from existing locations.
-                </div>""", unsafe_allow_html=True)
-            else:
-                st.markdown(f"""<div class="risk-low">
-                    ✅ <b>No Critical/High cannibalization risk detected in {selected_city}.</b> 
-                    All clinic pairs have distinct core catchments. New clinic placement should still maintain 
-                    <b>{radius_threshold:.0f} km</b> minimum distance from existing locations.
-                </div>""", unsafe_allow_html=True)
+                    st.caption("Micro-market data format not recognized.")
+            except Exception as _mm_err:
+                st.caption(f"Could not load micro-market data: {_mm_err}")
         else:
-            st.info(f"Only 1 clinic in {selected_city} — no cannibalization pairs to analyze.")
-    else:
-        st.info("No multi-clinic cities found for cannibalization analysis.")
-    
-    st.markdown("---")
-    
-    # ── Pincode Saturation Map ──
-    st.markdown("#### Pincode Demand Distribution")
-    
-    city_code_sel = same_city_scores[same_city_scores['city_name'] == selected_city]['city_code'].values[0]
-    city_clinics = master[master['city'] == city_code_sel]['area'].tolist()
-    city_pin_data = pin_demand[pin_demand['Clinic Loc'].isin(city_clinics)]
-    
-    if len(city_pin_data) > 0:
-        # Top pincodes by demand
-        top_pins = city_pin_data.groupby(['Zip','City','State']).agg(
-            total_qty=('qty','sum'), total_rev=('revenue','sum'), clinics_serving=('Clinic Loc','nunique')
-        ).reset_index().sort_values('total_qty', ascending=False).head(20)
-        
-        top_pins['Revenue'] = top_pins['total_rev'].apply(lambda x: fmt_inr(x))
-        top_pins['Multi-Clinic'] = top_pins['clinics_serving'].apply(lambda x: '⚠️ Yes' if x > 1 else '✅ No')
-        
-        st.dataframe(
-            top_pins[['Zip','City','total_qty','Revenue','clinics_serving','Multi-Clinic']].rename(columns={
-                'Zip':'Pincode','total_qty':'Demand (Qty)','clinics_serving':'Clinics Serving'
-            }),
-            use_container_width=True, height=400
-        )
-        
-        # Pincodes served by multiple clinics = saturation signal
-        multi_served = top_pins[top_pins['clinics_serving'] > 1]
-        if len(multi_served) > 0:
-            st.markdown(f'<div class="insight-box">⚠️ <b>{len(multi_served)} pincodes</b> are served by multiple clinics in {selected_city} — review if adding another clinic would increase saturation or target an underserved zone.</div>', unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # ═══════════════════════════════════════════════════════════════
-    # EXISTING-CITY UNDERSERVED ZONES (patients traveling 20+ km)
-    # ═══════════════════════════════════════════════════════════════
-    st.markdown("#### 🏙️ Existing-City Underserved Zones")
-    st.markdown(f"*Cities where you already operate, but significant demand comes from {whitespace_dist_km:.0f}+ km away — opportunity for a second/third clinic.*")
-    
-    if len(ws_existing_underserved) > 0:
-        display_eu = ws_existing_underserved.head(20).copy()
-        display_eu['NTB Visits'] = display_eu['total_ntb'].apply(lambda x: fmt_num(x))
-        display_eu['Web Orders'] = display_eu['total_web'].apply(lambda x: fmt_num(x))
-        display_eu['NTB Rev'] = display_eu['ntb_rev'].apply(lambda x: fmt_inr(x))
-        display_eu['Avg Dist'] = display_eu['avg_dist'].apply(lambda x: f"{x:.0f} km")
-        display_eu['Source Clinic'] = display_eu['source_clinic'].fillna('—')
-        display_eu['Top Underserved Areas'] = display_eu['top_micro_markets'].fillna('—')
-        
-        st.dataframe(
-            display_eu[['city','state','pincodes','NTB Visits','Web Orders','NTB Rev','Avg Dist','Source Clinic','Top Underserved Areas']].rename(columns={
-                'city':'City','state':'State','pincodes':'Pincodes'
-            }),
-            use_container_width=True, height=400,
-        )
-        
-        # Insight
-        top_eu = ws_existing_underserved.iloc[0] if len(ws_existing_underserved) > 0 else None
-        if top_eu is not None:
-            st.markdown(f"""<div class="insight-box">
-                📍 <b>{top_eu['city']}</b> leads with <b>{fmt_num(top_eu['total_ntb'])}</b> NTB visits + 
-                <b>{fmt_num(top_eu['total_web'])}</b> web orders from {int(top_eu['pincodes'])} pincodes averaging 
-                <b>{top_eu['avg_dist']:.0f} km</b> from nearest clinic — strong signal for an additional location 
-                in the periphery.
-            </div>""", unsafe_allow_html=True)
-    elif len(pin_geo) == 0:
-        st.info(f"Upload `pin_geocode.csv` to enable underserved zone analysis (requires lat/lon for distance computation).")
-    else:
-        st.info("No underserved zones detected at this distance threshold.")
+            st.caption("Place `Gynoveda_CEI_v31_MicroMarkets.xlsx` in `mis_data/` to see micro-market prospects.")
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# TAB 3: NEW-CITY WHITESPACE
-# ═══════════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TAB 3: NEW CITIES
+# ═══════════════════════════════════════════════════════════════════════════
 with tab3:
-    st.markdown("### New-City Whitespace Discovery")
-    st.markdown("*Cities where Gynoveda has zero clinics but proven patient demand — customers already buying online or traveling 20+ km to visit existing clinics.*")
-    
-    # ws_dual, ws_new_cities, ws_existing_underserved already computed before tabs
-    
+
     if len(ws_dual) > 0:
-        # ── CEO Summary Row ──
-        _ws_pins = len(ws_dual)
-        _ws_ntb = ws_dual['ntb_qty'].sum()
-        _ws_web = ws_dual['web_orders'].sum()
-        _ws_rev = ws_dual['ntb_rev'].sum()
-        _ws_cities = len(ws_new_cities)
-        _ws_top = ws_new_cities.iloc[0] if len(ws_new_cities) > 0 else None
-        
-        wk1, wk2, wk3, wk4, wk5 = st.columns(5)
-        with wk1:
-            st.metric("Proven Demand Pincodes", fmt_num(_ws_pins))
-            st.caption("Both web orders + clinic visits")
-        with wk2:
-            st.metric("Patients Traveling 20+ km", fmt_num(_ws_ntb))
-            st.caption("Underserved by current network")
-        with wk3:
-            st.metric("Unserved Web Orders", fmt_num(_ws_web))
-            st.caption("From areas with no clinic")
-        with wk4:
-            st.metric("Revenue from Unserved Areas", fmt_inr(_ws_rev))
-            st.caption("NTB revenue at 20+ km")
-        with wk5:
-            st.metric("New Cities Ready to Enter", str(_ws_cities))
-            if _ws_top is not None:
-                st.caption(f"Top: {_ws_top['city']} ({fmt_num(_ws_top['total_web'])} orders)")
-            else:
-                st.caption("Dual-signal demand confirmed")
-        
-        st.markdown("---")
-        
-        # ═══════════════════════════════════════════════════════════════
-        # SECTION A: NEW CITY WHITESPACE (no clinic exists)
-        # ═══════════════════════════════════════════════════════════════
-        st.markdown("#### 🆕 New-City Whitespace — No Clinic, Dual-Signal Demand")
-        st.markdown(f"*Cities where patients already travel {whitespace_dist_km:.0f}+ km to reach a Gynoveda clinic AND order online — strongest expansion signal.*")
-        
-        if len(ws_new_cities) > 0:
-            display_ws = ws_new_cities.head(30).copy()
-            display_ws['NTB Visits'] = display_ws['total_ntb'].apply(lambda x: fmt_num(x))
-            display_ws['Web Orders'] = display_ws['total_web'].apply(lambda x: fmt_num(x))
-            display_ws['NTB Rev'] = display_ws['ntb_rev'].apply(lambda x: fmt_inr(x))
-            display_ws['Avg Dist'] = display_ws['avg_dist'].apply(lambda x: f"{x:.0f} km")
-            display_ws['Source Clinic'] = display_ws['source_clinic'].fillna('—')
-            display_ws['Top Underserved Areas'] = display_ws['top_micro_markets'].fillna('—')
-            
-            # O2O projected monthly NTB
-            display_ws['Proj Monthly NTB'] = ((display_ws['total_web'] * (o2o_conversion / 100)) / 12).astype(int)
-            display_ws['Proj Rev (₹L/mo)'] = (display_ws['Proj Monthly NTB'] * rev_per_ntb * 1000 / 1e5).round(1)
-            
-            st.dataframe(
-                display_ws[['city','state','pincodes','NTB Visits','Web Orders','NTB Rev',
-                            'Avg Dist','Source Clinic','Top Underserved Areas','Proj Monthly NTB','Proj Rev (₹L/mo)']].rename(columns={
-                    'city':'City','state':'State','pincodes':'Pincodes'
-                }),
-                use_container_width=True, height=500,
-            )
-            
-            # Bar chart — dual signal
-            chart_ws = ws_new_cities.head(20).copy()
-            fig_ws = go.Figure()
-            fig_ws.add_trace(go.Bar(
-                y=chart_ws['city'], x=chart_ws['total_ntb'],
-                name='Clinic NTB (20+km)', orientation='h',
-                marker_color='#FF6B35', opacity=0.85
-            ))
-            fig_ws.add_trace(go.Bar(
-                y=chart_ws['city'], x=chart_ws['total_web'],
-                name='Website Orders', orientation='h',
-                marker_color='#4ECDC4', opacity=0.85
-            ))
-            fig_ws.update_layout(
-                title=f"Top 20 New Cities — Dual-Signal Demand (>{whitespace_dist_km:.0f} km from clinic)",
-                height=550, barmode='group',
-                margin=dict(l=140, r=40, t=50, b=20),
-                yaxis=dict(autorange='reversed'),
-                xaxis_title="Volume", legend=dict(orientation='h', y=-0.1)
-            )
-            st.plotly_chart(fig_ws, use_container_width=True, config=PLOTLY_CFG)
+        # ── Prepare clean data (used across all sections) ──
+        _ws_dual_cities = ws_new_cities[(ws_new_cities['total_ntb'] > 0) & (ws_new_cities['total_web'] > 0)].copy()
+        _ws_dual_cities = _ws_dual_cities[
+            _ws_dual_cities['state'].str.strip().str.lower().isin(_INDIAN_STATES)
+        ]
+        if 'avg_dist' in _ws_dual_cities.columns:
+            _ws_dual_cities = _ws_dual_cities[_ws_dual_cities['avg_dist'] >= 10]
+        _ws_top100 = _ws_dual_cities.head(100)
+        _ws_cities = len(_ws_top100)
+
+        _ws_clean = _ws_top100.copy()
+        _ws_clean['city'] = _ws_clean['city'].fillna('').astype(str).str.strip()
+        _bad = {'', 'nan', 'none', '?', '-', 'null', 'undefined', 'None', 'NaN'}
+        _ws_clean = _ws_clean[~_ws_clean['city'].isin(_bad)]
+        _ws_clean['total_ntb'] = pd.to_numeric(_ws_clean['total_ntb'], errors='coerce').fillna(0).astype(int)
+        _ws_clean['total_web'] = pd.to_numeric(_ws_clean['total_web'], errors='coerce').fillna(0).astype(int)
+        _has_uniq = 'unique_clinic_patients' in _ws_clean.columns and 'unique_1cx' in _ws_clean.columns and _ws_clean['unique_clinic_patients'].sum() > 0
+        if _has_uniq:
+            _ws_clean['_bar_clinic'] = pd.to_numeric(_ws_clean['unique_clinic_patients'], errors='coerce').fillna(0).astype(int)
+            _ws_clean['_bar_web'] = pd.to_numeric(_ws_clean['unique_1cx'], errors='coerce').fillna(0).astype(int)
         else:
-            st.info("No new-city whitespace detected at this distance threshold.")
-        
-        st.markdown("---")
-    
-    else:
-        if len(pin_geo) == 0:
-            st.warning("⚠️ Pin geocode data not found. Upload `pin_geocode.csv` to the `mis_data/` folder to enable dual-signal whitespace analysis.")
-            st.markdown("*This file maps Indian pincodes to lat/lon coordinates for distance computation.*")
-            if _geo_debug:
-                st.caption(f"Debug: {_geo_debug}")
+            _ws_clean['_bar_clinic'] = _ws_clean['total_ntb']
+            _ws_clean['_bar_web'] = _ws_clean['total_web']
+        _ws_clean['combined'] = _ws_clean['_bar_clinic'] + _ws_clean['_bar_web']
+        if 'cei_new' in _ws_clean.columns:
+            _ws_clean = _ws_clean.sort_values('cei_new', ascending=False)
         else:
-            st.info(f"ℹ️ Pin geocode loaded ({len(pin_geo):,} pincodes) but dual-signal analysis returned no results. Check Streamlit logs for errors.")
-    
-    st.markdown("---")
-    
-    # ═══════════════════════════════════════════════════════════════
-    # SECTION C: ORIGINAL CEI-BASED WHITESPACE (web-only signal)
-    # ═══════════════════════════════════════════════════════════════
-    with st.expander("📊 CEI-Based Whitespace Scoring (Web Orders Only)", expanded=False):
-        st.markdown("*Original scoring based purely on web order volume and growth trends.*")
-        
-        # ── Whitespace Scoring Table ──
-        display_new = new_city_scores.head(30).copy()
-        display_new['CEI'] = display_new['cei_new'].fillna(0).round(0).astype(int)
-        display_new['Orders'] = display_new['total_orders'].apply(lambda x: fmt_num(x))
-        display_new['Revenue'] = display_new['total_revenue'].apply(lambda x: fmt_inr(x))
-        display_new['Growth'] = display_new['trend_growth'].apply(lambda x: f"{x*100:+.0f}%")
-        
-        # O2O projected patients
-        display_new['Projected Monthly NTB'] = (display_new['total_orders'] * (o2o_conversion / 100) / 12).fillna(0).astype(int)
-        display_new['Projected Monthly Rev'] = display_new['Projected Monthly NTB'] * rev_per_ntb * 1000
-        display_new['Proj. Rev (₹L/mo)'] = (display_new['Projected Monthly Rev'] / 1e5).round(1)
-        
-        # Breakeven check
-        _be_raw = np.where(
-            display_new['Proj. Rev (₹L/mo)'] > 0,
-            np.ceil(monthly_opex / display_new['Proj. Rev (₹L/mo)'].replace(0, np.nan) * 3),
-            99
-        )
-        display_new['Months to OpEx BE'] = pd.Series(_be_raw).fillna(99).clip(upper=99).astype(int).values
-        
-        st.dataframe(
-            display_new[['City','CEI','Orders','Revenue','Growth','Projected Monthly NTB',
-                          'Proj. Rev (₹L/mo)','Months to OpEx BE']].rename(columns={'City':'City'}),
-            use_container_width=True, height=500,
-            column_config={
-                'CEI': st.column_config.ProgressColumn("CEI Score", min_value=0, max_value=100, format="%d"),
-            }
-        )
-        
-        st.markdown("---")
-        
-        # ── Demand Heatmap ──
-        st.markdown("#### Online Demand Heatmap")
-        
-        fig_bar = go.Figure(go.Bar(
-            y=display_new.head(20)['City'],
-            x=display_new.head(20)['total_orders'],
-            orientation='h',
-            marker=dict(color=display_new.head(20)['cei_new'],
-                        colorscale='YlOrRd', showscale=True,
-                        colorbar=dict(title="CEI")),
-            text=display_new.head(20)['Orders'],
-            textposition='outside'
-        ))
-        fig_bar.update_layout(title="Top 20 Unserved Cities by Web Demand", height=550,
-                             margin=dict(l=120, r=60, t=40, b=20),
-                             xaxis_title="Total Web Orders", yaxis=dict(autorange='reversed'))
-        st.plotly_chart(fig_bar, use_container_width=True, config=PLOTLY_CFG)
-        
-        st.markdown("---")
-        
-        # ── O2O Conversion Projection ──
-        st.markdown("#### Online-to-Offline Conversion Projections")
-        st.markdown(f"*Based on **{o2o_conversion}%** conversion rate from web orders to clinic NTB patients (adjustable in sidebar)*")
-        
-        existing_o2o = same_city_scores[same_city_scores['web_orders'] > 100].copy()
-        existing_o2o['actual_o2o'] = existing_o2o['clinic_demand'] / existing_o2o['web_orders']
-        
-        if len(existing_o2o) > 0:
-            avg_o2o = existing_o2o['actual_o2o'].median()
-            
-            col_o2o1, col_o2o2 = st.columns(2)
-            
-            with col_o2o1:
-                fig_o2o = go.Figure(go.Bar(
-                    y=existing_o2o.sort_values('actual_o2o', ascending=True)['city_name'],
-                    x=existing_o2o.sort_values('actual_o2o', ascending=True)['actual_o2o'],
-                    orientation='h', marker_color='#4ECDC4',
-                    text=[f"{x:.1f}x" for x in existing_o2o.sort_values('actual_o2o', ascending=True)['actual_o2o']],
-                    textposition='outside'
+            _ws_clean = _ws_clean.sort_values('combined', ascending=False)
+        _ws_clean['CEI'] = _ws_clean['cei_new'].fillna(0).round(0).astype(int) if 'cei_new' in _ws_clean.columns else 0
+
+        if len(_ws_clean) > 0:
+            # ── E-score Weights & Safeguards (collapsed expander) ──
+            with st.expander("⚙ E-score Weights & Safeguards", expanded=False):
+                st.caption("E-score dimensions (New-City CEI)")
+                _ec1, _ec2, _ec3, _ec4, _ec5 = st.columns(5)
+                _ec1.number_input("Spillover", value=_DEF_W_SPILLOVER, step=5, min_value=0, max_value=100, key='w_spillover',
+                                   help="Weight (%) for spillover demand — patients traveling to other cities for care.")
+                _ec2.number_input("Combined Demand", value=_DEF_W_NC_DEMAND, step=5, min_value=0, max_value=100, key='w_nc_demand',
+                                   help="Weight (%) for combined web + clinic demand signal.")
+                _ec3.number_input("PCOS Heat", value=_DEF_W_NC_PCOS, step=5, min_value=0, max_value=100, key='w_nc_pcos',
+                                   help="Weight (%) for PCOS Heat Index — addressable patient pool size.")
+                _ec4.number_input("Comp Whitespace", value=_DEF_W_COMP_WS, step=5, min_value=0, max_value=100, key='w_comp_ws',
+                                   help="Weight (%) for competitive whitespace — fewer IVF clinics = easier entry.")
+                _ec5.number_input("Catchment", value=_DEF_W_NC_CATCHMENT, step=5, min_value=0, max_value=100, key='w_nc_catchment',
+                                   help="Weight (%) for catchment density — existing Gynoveda demand per lakh women.")
+
+            # ── 5. City Detail — selectbox + placard + radar ──
+            st.markdown("##### City Detail")
+            _nc_city_options = _ws_clean['city'].tolist()
+            _nc_selected = st.selectbox("City", _nc_city_options, key='new_city_select', label_visibility='collapsed',
+                                         help="Select a new-city candidate. Ranked by E-score (highest expansion potential first).")
+            _nc_sel_data = _ws_clean[_ws_clean['city'] == _nc_selected].iloc[0] if _nc_selected in _ws_clean['city'].values else _ws_clean.iloc[0]
+
+            _nc_left, _nc_right = st.columns([1, 1])
+            with _nc_left:
+                _nc_d1, _nc_d2 = st.columns(2)
+                _nc_d1.metric("E-score", f"{int(_nc_sel_data.get('CEI', 0))}/100",
+                              help="E-score (0–100). Weighted composite of Spillover, Combined Demand, PCOS Heat Index, Competitive Whitespace, and Catchment Density.")
+                _nc_demand_total = int(_nc_sel_data.get('combined', 0))
+                _nc_d2.metric("Total Demand", fmt_num(_nc_demand_total),
+                              help="Combined clinic patients (20+ km) and web 1Cx orders from this city.")
+                _nc_d3, _nc_d4 = st.columns(2)
+                _nc_rev = _nc_sel_data.get('ntb_rev', 0) + _nc_sel_data.get('web_rev', 0)
+                _nc_d3.metric("Revenue Signal", fmt_inr(_nc_rev),
+                              help="Total revenue from clinic patients traveling 20+ km + web orders.")
+                _nc_pins = int(_nc_sel_data.get('pincodes', 0))
+                _nc_d4.metric("Pincodes", fmt_num(_nc_pins),
+                              help="Number of unique pincodes with demand signal in this city.")
+
+            with _nc_right:
+                # Radar chart — E-score dimensions for selected city
+                _nc_radar_dims = ['Spillover', 'Comb Demand', 'PCOS Heat', 'Comp WS', 'Catchment']
+                _nc_radar_vals = [
+                    _nc_sel_data.get('e_spillover', 50),
+                    _nc_sel_data.get('e_demand', 50),
+                    _nc_sel_data.get('e_pcos', 50),
+                    _nc_sel_data.get('e_comp_ws', 50),
+                    _nc_sel_data.get('e_catchment', 50),
+                ]
+                _nc_radar_vals_closed = _nc_radar_vals + [_nc_radar_vals[0]]
+                _nc_radar_dims_closed = _nc_radar_dims + [_nc_radar_dims[0]]
+                fig_nc_radar = go.Figure(go.Scatterpolar(
+                    r=_nc_radar_vals_closed, theta=_nc_radar_dims_closed,
+                    fill='toself', fillcolor='rgba(249,115,22,0.15)',
+                    line=dict(color='#f97316', width=2),
+                    marker=dict(size=5, color='#f97316'),
                 ))
-                fig_o2o.update_layout(title="Actual O2O Multiplier (Clinic Demand / Web Orders)",
-                                     height=400, margin=dict(l=100, r=40, t=40, b=20),
-                                     xaxis_title="O2O Ratio")
-                st.plotly_chart(fig_o2o, use_container_width=True, config=PLOTLY_CFG)
-            
-            with col_o2o2:
-                st.markdown(f"""<div class="insight-box">
-                    <b>Benchmark:</b> Existing cities show a median O2O multiplier of <b>{avg_o2o:.1f}x</b> — 
-                    meaning for every 1 web order, clinics generate {avg_o2o:.1f} patient transactions on average. 
-                    This validates the online-to-offline flywheel. New-city projections use a conservative 
-                    <b>{o2o_conversion}%</b> first-year conversion rate, ramping up as the clinic matures.
-                </div>""", unsafe_allow_html=True)
-                
-                st.markdown("**Top 5 New-City Revenue Projections (Year 1)**")
-                for _, row in display_new.head(5).iterrows():
-                    y1_rev = row['Proj. Rev (₹L/mo)'] * 12
-                    y1_profit = y1_rev * (target_ebitda / 100) - monthly_opex * 12
-                    color = "🟢" if y1_profit > 0 else "🔴"
-                    st.markdown(f"{color} **{row['City']}**: {row['Projected Monthly NTB']} NTB/mo → "
-                               f"₹{row['Proj. Rev (₹L/mo)']:.1f}L/mo → Year 1: {fmt_inr(y1_rev * 1e5)} revenue, "
-                               f"{fmt_inr(y1_profit * 1e5)} {'profit' if y1_profit > 0 else 'loss'}")
-        
-        # ── YoY Web Demand Trend ──
-        st.markdown("---")
-        st.markdown("#### Web Demand Trend (All Cities)")
-        
-        yoy = web_pin.groupby('year')['orders'].sum().reset_index()
-        yoy = yoy[yoy['year'] >= 2020]
-        fig_yoy = go.Figure(go.Bar(x=yoy['year'].astype(str), y=yoy['orders'],
-                                    marker_color='#FF6B35',
-                                    text=yoy['orders'].apply(lambda x: fmt_num(x)),
-                                    textposition='outside'))
-        fig_yoy.update_layout(title="National Web Orders by Year", height=300,
-                             margin=dict(l=20, r=20, t=40, b=20), yaxis_title="Orders")
-        st.plotly_chart(fig_yoy, use_container_width=True, config=PLOTLY_CFG)
+                fig_nc_radar.update_layout(
+                    polar=dict(
+                        radialaxis=dict(visible=True, range=[0, 100], showticklabels=False, gridcolor='#e5e7eb'),
+                        angularaxis=dict(gridcolor='#e5e7eb', linecolor='#e5e7eb'),
+                        bgcolor='rgba(0,0,0,0)',
+                    ),
+                    showlegend=False, margin=dict(l=40, r=40, t=20, b=20), height=240,
+                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                )
+                st.plotly_chart(fig_nc_radar, use_container_width=True, config=PLOTLY_CFG)
+
+            # ── Ranked city table with CEI ──
+            st.markdown("---")
+            st.markdown("##### City Rankings (E-score)")
+            # Bar chart — top 25
+            _nc_bar = _ws_clean[['city', 'CEI']].copy()
+            _nc_bar = _nc_bar.sort_values('CEI', ascending=False).head(25)
+            _nc_bar = _nc_bar.sort_values('CEI', ascending=True)
+            fig_nc_bar = go.Figure(go.Bar(
+                x=_nc_bar['CEI'], y=_nc_bar['city'],
+                orientation='h', marker_color=PALETTE[1], opacity=0.85,
+                text=_nc_bar['CEI'], textposition='outside',
+            ))
+            _apply_layout(fig_nc_bar,
+                height=max(300, len(_nc_bar) * 28),
+                margin=dict(l=140, r=40, t=10, b=20),
+                xaxis=dict(title="E-Score (CEI)", showgrid=True, gridcolor='#f0f0f0', zeroline=False),
+                yaxis=dict(title="", showgrid=False, zeroline=False),
+            )
+            st.plotly_chart(fig_nc_bar, use_container_width=True, config=PLOTLY_CFG)
+            _rank_df = _ws_clean[['city', 'CEI']].copy()
+            if 'state' in _ws_clean.columns:
+                _rank_df.insert(1, 'State', _ws_clean['state'])
+            if 'combined' in _ws_clean.columns:
+                _rank_df['Demand'] = _ws_clean['combined'].apply(lambda x: fmt_num(x) if x > 0 else '—')
+            if 'pincodes' in _ws_clean.columns:
+                _rank_df['Pincodes'] = _ws_clean['pincodes'].astype(int)
+            _rank_df = _rank_df.sort_values('CEI', ascending=False).reset_index(drop=True)
+            _rank_df.insert(0, 'Rank', range(1, len(_rank_df) + 1))
+            _rank_df = _rank_df.rename(columns={'city': 'City'})
+            st.dataframe(
+                _rank_df, use_container_width=True, hide_index=True,
+                height=min(500, 35 + len(_rank_df) * 35),
+            )
+
+            # ── 7. 50 Prospect Locations (New Cities) ──
+            if 'top_micro_markets' in _ws_clean.columns:
+                st.markdown("---")
+                with st.expander("50 Prospect Locations (New Cities)", expanded=False):
+                    st.caption("Top 50 localities across all expansion-ready cities, ranked by E-score (CEI) then demand.")
+                    import re as _re
+                    _nc_micro_rows = []
+                    for _, _nc_row in _ws_clean.iterrows():
+                        _nc_city = str(_nc_row.get('city', ''))
+                        _nc_state = str(_nc_row.get('state', ''))
+                        _nc_cei = round(_nc_row.get('cei_new', 0)) if pd.notna(_nc_row.get('cei_new', 0)) else 0
+                        _nc_areas = str(_nc_row.get('top_micro_markets', ''))
+                        if _nc_areas and _nc_areas not in ('', 'nan'):
+                            for _area_part in _nc_areas.split(','):
+                                _area_part = _area_part.strip()
+                                if _area_part:
+                                    _m = _re.match(r'^(.+?)\s*\((\d+)\)$', _area_part)
+                                    if _m:
+                                        _nc_micro_rows.append({
+                                            'City': _nc_city, 'State': _nc_state, 'CEI': int(_nc_cei),
+                                            'Locality': _m.group(1).strip(),
+                                            'Demand': int(_m.group(2)),
+                                        })
+                                    else:
+                                        _nc_micro_rows.append({
+                                            'City': _nc_city, 'State': _nc_state, 'CEI': int(_nc_cei),
+                                            'Locality': _area_part, 'Demand': 0,
+                                        })
+                    if _nc_micro_rows:
+                        _nc_micro_df = pd.DataFrame(_nc_micro_rows).sort_values(['CEI', 'Demand'], ascending=[False, False]).head(50)
+                        _nc_micro_df['Rank'] = range(1, len(_nc_micro_df) + 1)
+                        _nc_micro_df['Demand'] = _nc_micro_df['Demand'].apply(lambda x: fmt_num(x) if x > 0 else '—')
+                        st.dataframe(
+                            _nc_micro_df[['Rank', 'City', 'State', 'CEI', 'Locality', 'Demand']],
+                            use_container_width=True, hide_index=True, height=min(700, 35 + len(_nc_micro_df) * 35),
+                        )
+
+    elif len(pin_geo) == 0:
+        st.info("Upload `pin_geocode.csv` to `mis_data/` to enable new-city analysis.")
+    else:
+        st.info("No new-city whitespace detected at current distance threshold.")
 
 
-# ═══════════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════════════
 # TAB 4: REVENUE FORECASTER
-# ═══════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════
 with tab4:
-    st.markdown("### Revenue Ramp Forecaster")
-    st.markdown("*Project revenue for new clinics using actual ramp curves from your 61-clinic network.*")
-    
-    # ── Actual Ramp Curves (M0→M12) ──
-    ramp_s12 = ramp_s[ramp_s['month_num'] <= 12]
-    ramp_c12 = ramp_c[ramp_c['month_num'] <= 12]
-    rc1, rc2 = st.columns(2)
-    
-    with rc1:
-        fig_ramp = go.Figure()
-        fig_ramp.add_trace(go.Scatter(x=ramp_s12['month_num'], y=ramp_s12['avg_sales_l'],
-                                       mode='lines+markers', name='Avg Sales (₹L/mo)',
-                                       line=dict(color='#FF6B35', width=3), marker=dict(size=5)))
-        # Add envelope: use clinics count as confidence
-        fig_ramp.add_hline(y=monthly_opex, line_dash="dash", line_color="#dc3545",
-                          annotation_text=f"OpEx BE (₹{monthly_opex}L)",
-                          annotation_position="top right",
-                          annotation_font_size=11)
-        total_monthly = monthly_opex + (capex_per_clinic / 24)  # 24-month amortization
-        fig_ramp.add_hline(y=total_monthly, line_dash="dot", line_color="#FFA000",
-                          annotation_text=f"Full BE (₹{total_monthly:.1f}L)",
-                          annotation_position="bottom right",
-                          annotation_font_size=11)
-        fig_ramp.update_layout(title="Average Clinic Sales Ramp (M0→M12)", height=380,
-                              margin=dict(l=40, r=20, t=50, b=30),
-                              xaxis_title="Month Since Launch", yaxis_title="₹ Lakhs/month")
-        st.plotly_chart(fig_ramp, use_container_width=True, config=PLOTLY_CFG)
-    
-    with rc2:
-        fig_ramp2 = go.Figure()
-        fig_ramp2.add_trace(go.Scatter(x=ramp_c12['month_num'], y=ramp_c12['avg_1cx'],
-                                        mode='lines+markers', name='Avg New Patients',
-                                        line=dict(color='#4ECDC4', width=3), marker=dict(size=5)))
-        fig_ramp2.update_layout(title="Average New Patient Ramp (M0→M12)", height=380,
-                               margin=dict(l=20, r=20, t=40, b=20),
-                               xaxis_title="Month Since Launch", yaxis_title="New Patients/month")
-        st.plotly_chart(fig_ramp2, use_container_width=True, config=PLOTLY_CFG)
-    
-    st.markdown("---")
-    
-    # ── Scenario Simulator ──
-    st.markdown("### Scenario Simulator")
-    
-    sim1, sim2, sim3 = st.columns(3)
-    with sim1:
-        n_clinics = st.number_input("New Clinics to Open", value=20, step=5, min_value=1, max_value=200, key='n_sim')
-        scenario = st.radio("Scenario", ["Conservative (0.85x)", "Base Case (1.0x)", "Optimistic (1.15x)"], index=1)
-    with sim2:
-        steady_month = st.number_input("Months to Steady State", value=12, step=1, min_value=3, max_value=36, key='ss_month')
-        steady_sales = st.number_input("Steady-State Sales (₹L/clinic/mo)", 
-                                        value=round(ramp_s['avg_sales_l'].iloc[-1], 1) if len(ramp_s) > 0 else 20.0,
-                                        step=1.0, format="%.1f", key='ss_val')
-    with sim3:
-        clinics_per_month = st.number_input("Clinics Launched per Month", value=2, step=1, min_value=1, max_value=20, key='cpm_v2')
-        launch_gap = st.number_input("Gap Between Batches (months)", value=1, step=1, min_value=1, max_value=6, key='gap_v2')
-    
-    scenario_mult = {'Conservative (0.85x)': 0.85, 'Base Case (1.0x)': 1.0, 'Optimistic (1.15x)': 1.15}[scenario]
-    
-    # Build launch schedule — staggered rollout
-    launch_schedule = []  # list of (launch_month, num_clinics)
-    remaining = n_clinics
-    launch_month = 0
-    while remaining > 0:
-        batch = min(clinics_per_month, remaining)
-        launch_schedule.append((launch_month, batch))
-        remaining -= batch
-        launch_month += launch_gap
-    
-    # Show launch schedule summary
-    total_launch_months = launch_schedule[-1][0] if launch_schedule else 0
-    st.caption(f"📅 Launch plan: {len(launch_schedule)} batches over {total_launch_months} months · "
-               f"First clinic M0 → Last batch M{total_launch_months}")
-    
-    # Build 24-month projection with staggered launches
-    proj_data = []
-    cum_rev = 0
-    cum_opex = 0
-    cum_ebitda = 0
-    
-    for m in range(24):
-        total_rev = 0
-        active = 0
-        
-        # Each batch contributes based on its age (months since its launch)
-        for batch_launch, batch_size in launch_schedule:
-            age = m - batch_launch  # how many months since this batch launched
-            if age < 0:
-                continue  # batch not yet launched
-            active += batch_size
-            if age < len(ramp_s):
-                total_rev += ramp_s.iloc[age]['avg_sales_l'] * scenario_mult * batch_size
+
+    # No @st.fragment — widget changes must trigger full page rerun
+    # so that North Star banner + New Cities card update in sync
+    def _forecaster():
+        st.markdown("##### Revenue Forecaster")
+        st.caption("Model the 12-month financial impact of clinic expansion. "
+                   f"Assumptions: Capex ₹{_DEF_CAPEX:.0f}L · OpEx ₹{_DEF_OPEX:.0f}L/mo (rent + staff + electricity + misc) · "
+                   f"Mature rev ₹40L/mo (same-city) · ₹30L/mo (new-city).")
+
+        # ── Fixed assumptions (not user-configurable) ──
+        bill_value_k = _DEF_BILL_VALUE
+        cx1_conv_pct = _DEF_1CX_CONV
+        capex_same = capex_new = _DEF_CAPEX
+        same_opex = new_opex = _DEF_OPEX
+
+        # ── Scenario Toggle ──
+        _scenario_options = {"Conservative (0.8×)": 0.8, "Base (1.0×)": 1.0, "Aggressive (1.2×)": 1.2}
+        _scenario_choice = st.radio("Scenario", list(_scenario_options.keys()), index=1,
+                                     horizontal=True, key='scenario_toggle',
+                                     help="Conservative: 20% revenue haircut. Base: as-is. Aggressive: 20% revenue uplift.")
+        scenario_mult_same = scenario_mult_new = _scenario_options[_scenario_choice]
+
+        # ── Compute ramp shape (0→1 normalized) from historical data ──
+        _ramp_raw = ramp_s[ramp_s['month_num'] <= 11].copy() if len(ramp_s) > 0 else pd.DataFrame()
+        _ramp_peak = _ramp_raw['avg_sales_l'].max() if len(_ramp_raw) > 0 else 1.0
+        _ramp_shape = (_ramp_raw['avg_sales_l'] / _ramp_peak).tolist() if len(_ramp_raw) > 0 else []
+
+        same_steady = 40.0   # Mature same-city clinic rev (₹L/mo)
+        new_steady = 30.0   # Mature new-city clinic rev (₹L/mo)
+
+        # Read input widgets from session_state (widgets rendered below chart)
+        n_same = st.session_state.get('n_same', 0)
+        same_per_mo = st.session_state.get('same_pm', 1)
+        n_new = st.session_state.get('n_new', 30)
+        new_per_mo = st.session_state.get('new_pm', 3)
+
+        # ── Build launch schedules ──
+        def _build_schedule(n, per_mo):
+            """Generate list of (launch_month, batch_size). Starts at month 1, capped at month 11."""
+            sched = []
+            rem = n; lm = 1
+            while rem > 0 and lm < 12:
+                batch = min(per_mo, rem)
+                sched.append((lm, batch))
+                rem -= batch; lm += 1
+            return sched
+
+        sched_same = _build_schedule(n_same, same_per_mo)
+        sched_new = _build_schedule(n_new, new_per_mo)
+
+        # New-city ramp penalty: starts at 60%, converges to 100% by month 12
+        def _new_ramp_penalty(age):
+            return min(0.6 + (age / 12) * 0.4, 1.0)
+
+        # ── Revenue for a single clinic at a given age ──
+        def _clinic_rev(age, steady, is_new=False, sc_mult=1.0):
+            """Use historical ramp SHAPE scaled to user's steady-rev target.
+            Month 0 of a clinic (opening month) capped at 10% — realistic first-month revenue."""
+            if age < len(_ramp_shape):
+                shape_val = _ramp_shape[age]
+                if age == 0:
+                    shape_val = min(shape_val, 0.10)
+                base = shape_val * steady
             else:
-                total_rev += steady_sales * scenario_mult * batch_size
-        
-        total_opex = monthly_opex * active
-        monthly_ebitda = total_rev - total_opex
-        
-        cum_rev += total_rev
-        cum_opex += total_opex
-        cum_ebitda += monthly_ebitda
-        
-        proj_data.append({
-            'month': m,
-            'active_clinics': active,
-            'monthly_rev_l': total_rev,
-            'monthly_opex_l': total_opex,
-            'monthly_ebitda_l': monthly_ebitda,
-            'cum_rev_l': cum_rev,
-            'cum_opex_l': cum_opex,
-            'cum_ebitda_l': cum_ebitda
-        })
-    
-    df_proj = pd.DataFrame(proj_data)
-    total_capex = capex_per_clinic * n_clinics
-    
-    # Results KPIs
-    st.markdown("---")
-    
-    r1, r2, r3, r4, r5 = st.columns(5)
-    r1.metric("Total Capex", fmt_inr(total_capex * 1e5))
-    
-    y1_rev = df_proj[df_proj['month'] < 12]['monthly_rev_l'].sum()
-    r2.metric("Year 1 Revenue", fmt_inr(y1_rev * 1e5))
-    
-    # OpEx breakeven month
-    opex_be = df_proj[df_proj['monthly_ebitda_l'] > 0]
-    opex_be_month = int(opex_be.iloc[0]['month']) if len(opex_be) > 0 else 'N/A'
-    r3.metric("OpEx Breakeven", f"M{opex_be_month}" if isinstance(opex_be_month, int) else opex_be_month)
-    
-    # Capex payback
-    capex_payback = df_proj[df_proj['cum_ebitda_l'] >= total_capex]
-    payback = int(capex_payback.iloc[0]['month']) if len(capex_payback) > 0 else 'N/A'
-    r4.metric("Capex Payback", f"M{payback}" if isinstance(payback, int) else "24+ months")
-    
-    y2_ebitda = df_proj.iloc[-1]['cum_ebitda_l'] - total_capex
-    r5.metric("Net 24M Return", fmt_inr(y2_ebitda * 1e5))
-    
-    # Projection chart — redesigned for clarity
-    fig_proj = make_subplots(
-        rows=2, cols=1, shared_xaxes=True,
-        row_heights=[0.55, 0.45], vertical_spacing=0.08,
-        subplot_titles=(
-            f"Monthly P&L — {n_clinics} Clinics, {clinics_per_month}/month ({scenario})",
-            "Cumulative EBITDA vs Capex Recovery"
+                base = steady
+            penalty = _new_ramp_penalty(age) if is_new else 1.0
+            return base * penalty * sc_mult
+
+        # ── 12-month projection ──
+        proj = []
+        cum_rev = cum_opex = cum_ebitda = 0
+        for m in range(12):
+            s_rev = s_act = 0
+            for launch_m, batch in sched_same:
+                age = m - launch_m
+                if age < 0: continue
+                s_act += batch
+                s_rev += _clinic_rev(age, same_steady, sc_mult=scenario_mult_same) * batch
+
+            n_rev = n_act = 0
+            for launch_m, batch in sched_new:
+                age = m - launch_m
+                if age < 0: continue
+                n_act += batch
+                n_rev += _clinic_rev(age, new_steady, is_new=True, sc_mult=scenario_mult_new) * batch
+
+            t_rev = s_rev + n_rev
+            t_opex = (same_opex * s_act) + (new_opex * n_act)
+            ebitda = t_rev - t_opex
+            cum_rev += t_rev; cum_opex += t_opex; cum_ebitda += ebitda
+
+            proj.append({
+                'month': m + 1, 'same_rev': round(s_rev, 1), 'new_rev': round(n_rev, 1),
+                'total_rev': round(t_rev, 1), 'total_opex': round(t_opex, 1),
+                'ebitda': round(ebitda, 1), 'cum_ebitda': round(cum_ebitda, 1),
+                'same_active': s_act, 'new_active': n_act,
+            })
+
+        df = pd.DataFrame(proj)
+        total_n = n_same + n_new
+        total_capex = capex_same * n_same + capex_new * n_new
+
+        # ── Key answers ──
+        _be_rows = df[df['ebitda'] > 0]
+        be_month = int(_be_rows.iloc[0]['month']) if len(_be_rows) > 0 else None
+        _payback_rows = df[df['cum_ebitda'] >= total_capex]
+        payback_month = int(_payback_rows.iloc[0]['month']) if len(_payback_rows) > 0 else None
+        rev_12m = df['total_rev'].sum()
+        opex_12m = df['total_opex'].sum()
+        ebitda_12m = df['ebitda'].sum()
+        same_12m = df['same_rev'].sum()
+        new_12m = df['new_rev'].sum()
+
+        # ── 1Cx bridge calculation ──
+        _mature_rev_same_rs = same_steady * 1e5
+        _1cx_per_patient = bill_value_k * 1000
+        _1cx_needed_same = int(_mature_rev_same_rs / _1cx_per_patient) if _1cx_per_patient > 0 else 0
+        _mature_rev_new_rs = new_steady * 1e5
+        _1cx_needed_new = int(_mature_rev_new_rs / _1cx_per_patient) if _1cx_per_patient > 0 else 0
+
+        # ── Summary strip (TOP — revenue breakdown) ──
+        _ebitda_color = '#10b981' if ebitda_12m >= 0 else '#ef4444'
+        _same_pct = (same_12m / rev_12m * 100) if rev_12m > 0 else 0
+        _new_pct = 100 - _same_pct
+
+        _c1, _c2, _c3, _c4 = st.columns(4)
+        _c1.metric("Same-City (12M)", fmt_inr(same_12m * 1e5), f"{_same_pct:.0f}% of total",
+                   help="Total revenue from same-city expansion clinics over 12 months. These clinics ramp faster because of existing brand recognition in the city.")
+        _c2.metric("New-City (12M)", fmt_inr(new_12m * 1e5), f"{_new_pct:.0f}% of total",
+                   help="Total revenue from new-city expansion clinics over 12 months. Ramps slower (60% penalty in opening month, converging to 100% by Month 12) due to brand-building in unfamiliar markets.")
+        _c3.metric("Total OpEx (12M)", fmt_inr(opex_12m * 1e5),
+                   help="Total operating expenses for all expansion clinics over 12 months. ₹3L/mo per clinic (same for both city types). Includes rent, staff, electricity, misc.")
+        _c4.metric("Net EBITDA (12M)", fmt_inr(ebitda_12m * 1e5),
+                    delta_color="normal" if ebitda_12m >= 0 else "inverse",
+                    help="Total Revenue minus Total OpEx over the 12-month period. Positive = expansion is cash-flow positive overall. Negative = expansion requires ongoing investment beyond Capex.")
+
+        # ── Metric cards ──
+        st.markdown("---")
+        _m1, _m2, _m3 = st.columns(3)
+        _capex_detail = f"{n_same}×₹{capex_same:.0f}L + {n_new}×₹{capex_new:.0f}L" if n_same > 0 else f"{n_new} clinics × ₹{capex_new:.0f}L"
+        _m1.metric("Total Capex", fmt_inr(total_capex * 1e5), _capex_detail,
+                   help=f"One-time setup cost at ₹{_DEF_CAPEX:.0f}L per clinic.")
+        _m2.metric("12M Revenue", fmt_inr(rev_12m * 1e5),
+                   help="Total projected revenue across all clinics over the 12-month forecast period.")
+        _m3.metric("Capex Recovered", f"Month {payback_month}" if payback_month else "Beyond 12",
+                   help="Month when cumulative EBITDA equals total Capex invested.")
+
+        # ── MAIN CHART — clean bar chart (revenue vs opex) ──
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=df['month'], y=df['same_rev'],
+            name='Same-City Rev', marker_color=PALETTE[0], opacity=0.85,
+        ))
+        fig.add_trace(go.Bar(
+            x=df['month'], y=df['new_rev'],
+            name='New-City Rev', marker_color=PALETTE[1], opacity=0.85,
+        ))
+        fig.add_trace(go.Scatter(
+            x=df['month'], y=df['total_opex'],
+            name='Total OpEx', mode='lines+markers',
+            line=dict(color='#374151', width=2.5), marker=dict(size=5, symbol='diamond'),
+        ))
+        if be_month:
+            fig.add_vline(x=be_month, line_dash="dash", line_color=PALETTE[2], line_width=1.5,
+                          annotation_text=f"Break-even M{be_month}",
+                          annotation_font=dict(size=11, color=PALETTE[2]),
+                          annotation_position="top right")
+
+        _apply_layout(fig, height=420, barmode='stack',
+                      margin=dict(l=50, r=20, t=30, b=50),
+                      xaxis=dict(title="Month", dtick=1, tickvals=list(range(1, 13)),
+                                 showgrid=False, zeroline=False),
+                      yaxis=dict(title="₹ Lakhs / month", showgrid=True, gridcolor='#f0f0f0',
+                                 zeroline=True, zerolinecolor='#ddd'))
+        st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CFG)
+        st.caption("Bars = Revenue (red=same-city, orange=new-city stacked). Dark line = Total OpEx. When bars exceed the line → profitable month.")
+
+        # ── Same-City | New-City input widgets (below chart, above funnel) ──
+        st.markdown("---")
+        _col_same, _col_div, _col_new = st.columns([10, 1, 10])
+
+        with _col_same:
+            st.markdown(
+                "<div style='background:#fff;border-radius:10px;padding:16px 20px;"
+                "box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:3px solid #c0392b'>"
+                "<span style='font-weight:700;font-size:0.95rem;color:#c0392b'>Same-City Expansion</span><br>"
+                "<span style='font-size:0.75rem;color:#888'>Cities where Gynoveda already operates</span>"
+                "</div>", unsafe_allow_html=True
+            )
+            _s1, _s2 = st.columns(2)
+            _s1.number_input("Clinics to add", value=0, step=1, min_value=0, max_value=100, key='n_same',
+                             help="New clinics in cities where Gynoveda already operates. Faster patient ramp due to existing brand awareness.")
+            _s2.number_input("Open per month", value=1, step=1, min_value=1, max_value=10, key='same_pm',
+                             help="Clinics launched per month. Start from Month 1.")
+
+        with _col_div:
+            st.markdown("<div style='border-left:1px solid #e5e7eb;height:160px;margin:0 auto'></div>",
+                        unsafe_allow_html=True)
+
+        with _col_new:
+            st.markdown(
+                "<div style='background:#fff;border-radius:10px;padding:16px 20px;"
+                "box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:3px solid #f97316'>"
+                "<span style='font-weight:700;font-size:0.95rem;color:#f97316'>New-City Expansion</span><br>"
+                "<span style='font-size:0.75rem;color:#888'>Cities with no Gynoveda clinic — slower ramp</span>"
+                "</div>", unsafe_allow_html=True
+            )
+            _n1, _n2 = st.columns(2)
+            _n1.number_input("Clinics to add", value=30, step=1, min_value=0, max_value=100, key='n_new',
+                             help="New clinics in cities with no Gynoveda presence. Slower ramp (60% penalty Month 1) due to brand-building.")
+            _n2.number_input("Open per month", value=3, step=1, min_value=1, max_value=10, key='new_pm',
+                             help="Clinics launched per month. Start from Month 1.")
+
+        # ── Patient Funnel Bridge — shows what each clinic needs ──
+        st.markdown(
+            f"""<div style='background:linear-gradient(135deg,#fef3c7,#fff7ed);border-radius:8px;padding:14px 18px;margin:8px 0;border-left:3px solid #f59e0b'>
+            <span style='font-weight:600;font-size:0.85rem;color:#92400e'>📐 Patient Funnel Bridge</span>
+            <table style='width:100%;margin-top:6px;font-size:0.8rem;color:#78350f;border-collapse:collapse'>
+            <tr style='border-bottom:1px solid #fde68a'>
+                <td style='padding:4px 0'></td>
+                <td style='font-weight:600;padding:4px 8px'>1Cx Needed</td>
+                <td style='padding:4px 0'>× ₹{bill_value_k:.0f}K =</td>
+                <td style='font-weight:700;padding:4px 8px'>Revenue</td>
+            </tr>
+            <tr>
+                <td style='color:#c0392b;font-weight:600;padding:4px 0'>Same-City</td>
+                <td style='font-weight:700;padding:4px 8px'>{_1cx_needed_same}/mo</td>
+                <td></td>
+                <td style='font-weight:700;padding:4px 8px'>₹{same_steady:.0f}L/mo</td>
+            </tr>
+            <tr>
+                <td style='color:#f97316;font-weight:600;padding:4px 0'>New-City</td>
+                <td style='font-weight:700;padding:4px 8px'>{_1cx_needed_new}/mo</td>
+                <td></td>
+                <td style='font-weight:700;padding:4px 8px'>₹{new_steady:.0f}L/mo</td>
+            </tr>
+            </table>
+            <span style='font-size:0.72rem;color:#a16207;margin-top:4px;display:block'>Based on MIS patterns: 1AoV ≈ ₹{bill_value_k:.0f}K</span>
+            </div>""",
+            unsafe_allow_html=True
         )
-    )
-    
-    # ── TOP CHART: Monthly Revenue vs OpEx vs EBITDA ──
-    fig_proj.add_trace(go.Bar(
-        x=df_proj['month'], y=df_proj['monthly_rev_l'],
-        name='Revenue', marker_color='#4ECDC4', opacity=0.75,
-        text=[f"<b>₹{v:.0f}L</b><br>({int(a)} clinics)" if i % 3 == 0 else "" 
-              for i, (v, a) in enumerate(zip(df_proj['monthly_rev_l'], df_proj['active_clinics']))],
-        textposition='outside', textfont=dict(size=9, color='#1a1a1a'),
-        hovertemplate='Month %{x}<br>Revenue: <b>₹%{y:.0f}L</b><extra></extra>'
-    ), row=1, col=1)
-    
-    fig_proj.add_trace(go.Bar(
-        x=df_proj['month'], y=df_proj['monthly_opex_l'],
-        name='OpEx', marker_color='#FF6B35', opacity=0.55,
-        hovertemplate='Month %{x}<br>OpEx: <b>₹%{y:.1f}L</b><extra></extra>'
-    ), row=1, col=1)
-    
-    # EBITDA line on top chart
-    ebitda_colors = ['#28a745' if v >= 0 else '#dc3545' for v in df_proj['monthly_ebitda_l']]
-    fig_proj.add_trace(go.Scatter(
-        x=df_proj['month'], y=df_proj['monthly_ebitda_l'],
-        name='EBITDA', mode='lines+markers',
-        line=dict(color='#1B5E20', width=2.5, dash='dot'),
-        marker=dict(size=6, color=ebitda_colors),
-        hovertemplate='Month %{x}<br>EBITDA: <b>₹%{y:.1f}L</b><extra></extra>'
-    ), row=1, col=1)
-    
-    # ── BOTTOM CHART: Cumulative EBITDA vs Capex ──
-    fig_proj.add_trace(go.Scatter(
-        x=df_proj['month'], y=df_proj['cum_ebitda_l'],
-        name='Cum. EBITDA', mode='lines',
-        line=dict(color='#28a745', width=3),
-        fill='tozeroy', fillcolor='rgba(40, 167, 69, 0.12)',
-        hovertemplate='Month %{x}<br>Cum. EBITDA: <b>₹%{y:,.0f}L</b><extra></extra>'
-    ), row=2, col=1)
-    
-    # Capex recovery line
-    fig_proj.add_hline(
-        y=total_capex, line_dash="dash", line_color="#5E35B1", line_width=2,
-        annotation_text=f"Capex Recovery (₹{total_capex:.0f}L)",
-        annotation_position="top left", annotation_font_size=11,
-        row=2, col=1
-    )
-    
-    # Mark payback month with vertical line if within 24 months
-    if isinstance(payback, int) and payback <= 24:
-        fig_proj.add_vline(
-            x=payback, line_dash="dot", line_color="#5E35B1", line_width=1.5,
-            annotation_text=f"Payback M{payback}", annotation_position="top right",
-            annotation_font_size=10, row=2, col=1
-        )
-    
-    # Mark OpEx breakeven month on top chart
-    if isinstance(opex_be_month, int):
-        fig_proj.add_vline(
-            x=opex_be_month, line_dash="dot", line_color="#28a745", line_width=1.5,
-            annotation_text=f"OpEx BE M{opex_be_month}", annotation_position="top left",
-            annotation_font_size=10, row=1, col=1
-        )
-    
-    fig_proj.update_layout(
-        height=600, margin=dict(l=45, r=30, t=50, b=30),
-        legend=dict(orientation='h', y=1.02, x=0.5, xanchor='center'),
-        barmode='overlay', showlegend=True
-    )
-    fig_proj.update_yaxes(title_text="₹ Lakhs/month", row=1, col=1)
-    fig_proj.update_yaxes(title_text="Cumulative ₹ Lakhs", row=2, col=1)
-    fig_proj.update_xaxes(title_text="Month", row=2, col=1)
-    st.plotly_chart(fig_proj, use_container_width=True, config=PLOTLY_CFG)
-    
-    # ── Tier-wise Breakdown ──
-    with st.expander("📊 Existing Network P&L by Tier"):
-        pl_data = data['pl']
-        if len(pl_data) > 0:
-            pl_m = pl_data.merge(master[['code','tier','zone','city']], on='code', how='left')
-            
-            tier_summary = pl_m.groupby('tier').agg(
-                clinics=('code', 'count'),
-                avg_ebitda=('fy26_ebitda_pct', 'mean')
-            ).reset_index()
-            
-            if 'fy26_sales_l' in pl_m.columns:
-                tier_sales = pl_m.groupby('tier')['fy26_sales_l'].sum().reset_index()
-                tier_summary = tier_summary.merge(tier_sales, on='tier', how='left')
-                tier_summary['total_sales'] = tier_summary['fy26_sales_l'].apply(lambda x: fmt_inr(x * 1e5) if pd.notna(x) else '-')
-            
-            tier_summary['avg_ebitda'] = tier_summary['avg_ebitda'].apply(lambda x: pct(x))
-            
-            display_cols = ['tier', 'clinics', 'avg_ebitda']
-            col_rename = {'tier': 'Tier', 'clinics': 'Clinics', 'avg_ebitda': 'Avg EBITDA%'}
-            if 'total_sales' in tier_summary.columns:
-                display_cols.append('total_sales')
-                col_rename['total_sales'] = 'FY26 Sales'
-            
-            st.dataframe(tier_summary[display_cols].rename(columns=col_rename), use_container_width=True)
+
+        # ── Per-clinic unit economics reference ──
+        with st.expander("📊 Per-Clinic Ramp Curve"):
+            st.caption("How revenue ramps for a single clinic — shape from historical data, scaled to your Mature Rev targets. Month 0 capped at 10%.")
+            _months_range = list(range(min(12, len(_ramp_shape) + 2)))
+            def _capped_shape(i):
+                if i < len(_ramp_shape):
+                    return min(_ramp_shape[i], 0.10) if i == 0 else _ramp_shape[i]
+                return 1.0
+            _same_curve = [_capped_shape(i) * same_steady * scenario_mult_same for i in _months_range]
+            _new_curve = [_capped_shape(i) * new_steady * _new_ramp_penalty(i) * scenario_mult_new for i in _months_range]
+
+            fig_r = go.Figure()
+            fig_r.add_trace(go.Scatter(
+                x=_months_range, y=_same_curve,
+                mode='lines+markers', name=f'Same-City → ₹{same_steady:.0f}L',
+                line=dict(color=PALETTE[0], width=2.5), marker=dict(size=5),
+            ))
+            fig_r.add_trace(go.Scatter(
+                x=_months_range, y=_new_curve,
+                mode='lines+markers', name=f'New-City → ₹{new_steady:.0f}L',
+                line=dict(color=PALETTE[1], width=2.5), marker=dict(size=5),
+            ))
+            # OpEx reference lines
+            fig_r.add_hline(y=same_opex, line_dash="dash", line_color=PALETTE[0], line_width=1,
+                            annotation_text=f"Same OpEx ₹{same_opex:.1f}L",
+                            annotation_font=dict(size=10, color=PALETTE[0]))
+            fig_r.add_hline(y=new_opex, line_dash="dash", line_color=PALETTE[1], line_width=1,
+                            annotation_text=f"New OpEx ₹{new_opex:.1f}L",
+                            annotation_font=dict(size=10, color=PALETTE[1]))
+            _apply_layout(fig_r, height=280,
+                          margin=dict(l=45, r=20, t=10, b=40),
+                          xaxis=dict(title="Month since opening", showgrid=False, zeroline=False),
+                          yaxis=dict(title="₹L/mo per clinic", showgrid=True, gridcolor='#f0f0f0', zeroline=False))
+            st.plotly_chart(fig_r, use_container_width=True, config=PLOTLY_CFG)
+            st.caption("When the revenue curve crosses its OpEx line → that clinic type becomes individually profitable.")
+
+        # ── Monthly breakdown — collapsed ──
+        with st.expander("📋 Monthly Breakdown"):
+            _tbl = df.copy()
+            _tbl['Same Rev'] = _tbl['same_rev'].apply(lambda x: f"₹{x:.1f}L")
+            _tbl['New Rev'] = _tbl['new_rev'].apply(lambda x: f"₹{x:.1f}L")
+            _tbl['Total Rev'] = _tbl['total_rev'].apply(lambda x: f"₹{x:.1f}L")
+            _tbl['OpEx'] = _tbl['total_opex'].apply(lambda x: f"₹{x:.1f}L")
+            _tbl['EBITDA'] = _tbl['ebitda'].apply(lambda x: f"₹{x:+.1f}L")
+            _tbl['Cum EBITDA'] = _tbl['cum_ebitda'].apply(lambda x: f"₹{x:+.1f}L")
+            _tbl['Clinics'] = _tbl['same_active'] + _tbl['new_active']
+            st.dataframe(
+                _tbl[['month', 'Clinics', 'Same Rev', 'New Rev', 'Total Rev', 'OpEx', 'EBITDA', 'Cum EBITDA']].rename(
+                    columns={'month': 'Month'}
+                ),
+                use_container_width=True, height=350, hide_index=True,
+            )
+
+    _forecaster()
 
 
-# ── Footer ──────────────────────────────────────────────────────────────
-st.markdown("---")
-st.caption(f"Gynoveda Expansion Intelligence · {active_months[0]} to {active_months[-1]} · {len(master)} clinics · CEI Engine v1.1 (Radius Safeguard)")
+# ── Footer ──
+st.caption(f"Data: {active_months[0]} → {active_months[-1]}  ·  {len(master)} clinics  ·  CEI v2")

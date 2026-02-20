@@ -1,0 +1,63 @@
+City,State,Tier,Micro_Market,Property_Type,Avg_Rent_PSF_Month_INR,Rent_Range_Low_PSF,Rent_Range_High_PSF,Typical_Clinic_Size_SqFt,Monthly_Rent_Estimate_Low,Monthly_Rent_Estimate_High,CAM_Charges_PSF,Deposit_Months,Escalation_Pct_Annual,Gynoveda_Clinic_Present,Data_Source,Notes
+Mumbai,Maharashtra,Metro,Malad West - SV Road,High Street Retail,150,120,200,600,72000,120000,25,6,10,Yes,Web research 2025,Gynoveda clinic area; high foot traffic
+Mumbai,Maharashtra,Metro,Dadar West,High Street Retail,180,140,250,600,84000,150000,30,6,10,Yes,Web research 2025,Premium locality; dense catchment
+Mumbai,Maharashtra,Metro,Thane - Pokhran Rd,Upper Floor Commercial,80,60,110,600,36000,66000,15,6,8,Yes,Web research 2025,Growing suburban hub
+Mumbai,Maharashtra,Metro,Mira Road,Upper Floor Commercial,55,40,75,600,24000,45000,10,6,8,Yes,Web research 2025,Affordable suburban market
+Mumbai,Maharashtra,Metro,Virar,Ground Floor Retail,40,30,55,600,18000,33000,8,3,7,Yes,Web research 2025,Budget suburban market
+Mumbai,Maharashtra,Metro,Kalyan-Dombivli,Upper Floor Commercial,50,35,65,600,21000,39000,10,6,8,Yes,Web research 2025,Large suburban population
+Mumbai,Maharashtra,Metro,Kharghar - Navi Mumbai,Upper Floor Commercial,70,55,90,600,33000,54000,15,6,8,Yes,Web research 2025,Planned city; growing demand
+Mumbai,Maharashtra,Metro,Andheri West,High Street Retail,200,150,300,600,90000,180000,30,6,10,No,Web research 2025,Premium; potential expansion area
+Mumbai,Maharashtra,Metro,Bandra West,Premium Retail,300,200,500,600,120000,300000,40,12,12,No,Web research 2025,Most expensive; brand positioning
+Mumbai,Maharashtra,Metro,Borivali,High Street Retail,100,80,140,600,48000,84000,20,6,8,No,Web research 2025,Dense residential; expansion target
+Delhi,Delhi,Metro,Lajpat Nagar,High Street Retail,200,150,300,500,75000,150000,30,6,10,Yes,Web research 2025,Premium south Delhi market
+Delhi,Delhi,Metro,Rajouri Garden,High Street Retail,150,100,200,500,50000,100000,25,6,10,Yes,Web research 2025,West Delhi commercial hub
+Noida,Uttar Pradesh,Metro,Sector 51,Upper Floor Commercial,60,45,80,500,22500,40000,12,6,8,Yes,Web research 2025,IT corridor; growing market
+Ghaziabad,Uttar Pradesh,Metro,Raj Nagar,Upper Floor Commercial,50,35,65,500,17500,32500,10,3,7,Yes,Web research 2025,Dense NCR suburb
+Gurgaon,Haryana,Metro,Sector 46,Upper Floor Commercial,80,60,110,500,30000,55000,15,6,10,Yes,Web research 2025,Corporate hub; high spending
+Faridabad,Haryana,Metro,Faridabad,Upper Floor Commercial,45,30,60,500,15000,30000,8,3,7,Yes,Web research 2025,Affordable NCR suburb
+Bengaluru,Karnataka,Metro,JP Nagar,Upper Floor Commercial,70,50,100,500,25000,50000,15,10,8,Yes,Web research 2025,Established residential area
+Bengaluru,Karnataka,Metro,Whitefield,Upper Floor Commercial,65,45,85,500,22500,42500,12,10,8,Yes,Web research 2025,IT hub; young demographics
+Bengaluru,Karnataka,Metro,Kalyan Nagar,Upper Floor Commercial,55,40,75,500,20000,37500,12,10,8,Yes,Web research 2025,Growing north Bangalore
+Bengaluru,Karnataka,Metro,Basaveshwara Nagar,Upper Floor Commercial,60,45,80,500,22500,40000,12,10,8,Yes,Web research 2025,Central location
+Bengaluru,Karnataka,Metro,Koramangala,High Street Retail,120,80,160,500,40000,80000,20,10,10,No,Web research 2025,Premium; startup hub
+Bengaluru,Karnataka,Metro,Indiranagar,High Street Retail,130,90,180,500,45000,90000,20,10,10,No,Web research 2025,Premium; high footfall
+Hyderabad,Telangana,Tier-1,Madhapur,Upper Floor Commercial,72,55,90,500,27500,45000,12,6,8,Yes,Knight Frank 2025,IT corridor; young couples
+Hyderabad,Telangana,Tier-1,Kalasiguda/Secunderabad,High Street Retail,60,45,80,500,22500,40000,12,6,7,Yes,Web research 2025,Old city commercial area
+Hyderabad,Telangana,Tier-1,Gachibowli,Upper Floor Commercial,75,60,95,500,30000,47500,15,6,8,No,Web research 2025,Premium IT hub
+Pune,Maharashtra,Tier-1,Viman Nagar,Upper Floor Commercial,65,50,85,500,25000,42500,12,6,8,Yes,Web research 2025,Airport road; IT professionals
+Pune,Maharashtra,Tier-1,PCMC - Pimpri Chinchwad,Upper Floor Commercial,45,30,60,500,15000,30000,10,6,7,Yes,Web research 2025,Industrial belt; large population
+Pune,Maharashtra,Tier-1,Kondhwa,Upper Floor Commercial,50,35,65,500,17500,32500,10,6,7,Yes,Web research 2025,Growing residential area
+Pune,Maharashtra,Tier-1,Baner/Balewadi,Upper Floor Commercial,70,55,90,500,27500,45000,15,6,8,No,Web research 2025,Premium IT corridor
+Pune,Maharashtra,Tier-1,Kothrud,High Street Retail,80,60,100,500,30000,50000,15,6,8,No,Web research 2025,Established residential hub
+Kolkata,West Bengal,Metro,Ballygunge,High Street Retail,80,60,110,400,24000,44000,12,6,7,Yes,Web research 2025,Premium south Kolkata
+Kolkata,West Bengal,Metro,New Town,Upper Floor Commercial,40,30,55,400,12000,22000,8,6,6,Yes,Web research 2025,Planned township; IT hub
+Kolkata,West Bengal,Metro,Howrah,Upper Floor Commercial,35,25,50,400,10000,20000,8,3,6,Yes,Web research 2025,Dense population; affordable
+Ahmedabad,Gujarat,Tier-1,Badakdev/Satellite,Upper Floor Commercial,55,40,75,500,20000,37500,10,6,7,Yes,Web research 2025,Premium west Ahmedabad
+Ahmedabad,Gujarat,Tier-1,Nikol,Upper Floor Commercial,30,20,40,500,10000,20000,6,3,6,Yes,Web research 2025,Affordable east side
+Surat,Gujarat,Tier-2,Vesu,Upper Floor Commercial,40,30,55,500,15000,27500,8,6,7,Yes,Web research 2025,Affluent area
+Surat,Gujarat,Tier-2,Adajan,Upper Floor Commercial,45,35,60,500,17500,30000,8,6,7,Yes,Web research 2025,Commercial hub
+Vadodara,Gujarat,Tier-3,Alkapuri,High Street Retail,50,35,65,500,17500,32500,8,6,7,Yes,Web research 2025,Premium Vadodara market
+Rajkot,Gujarat,Tier-3,Ring Road,Upper Floor Commercial,30,20,40,500,10000,20000,5,3,6,Yes,Web research 2025,Growing commercial area
+Chennai,Tamil Nadu,Metro,Anna Nagar,Upper Floor Commercial,68,50,90,500,25000,45000,12,10,8,Yes,Knight Frank 2025,Premium residential area
+Jaipur,Rajasthan,Tier-1,LalKothi/C-Scheme,High Street Retail,60,45,80,500,22500,40000,10,6,7,Yes,Web research 2025,Premium central Jaipur
+Lucknow,Uttar Pradesh,Tier-1,Gomati Nagar,Upper Floor Commercial,40,30,55,500,15000,27500,8,6,7,Yes,Web research 2025,Modern commercial area
+Lucknow,Uttar Pradesh,Tier-1,Alambagh,Upper Floor Commercial,35,25,45,500,12500,22500,6,3,6,Yes,Web research 2025,Traditional commercial belt
+Varanasi,Uttar Pradesh,Tier-2,Mahmoorganj,Upper Floor Commercial,30,20,40,400,8000,16000,5,3,6,Yes,Web research 2025,Limited quality supply
+Agra,Uttar Pradesh,Tier-3,Civil Lines,Upper Floor Commercial,30,20,40,400,8000,16000,5,3,6,Yes,Web research 2025,Tourist city; limited CRE
+Kanpur,Uttar Pradesh,Tier-2,Model Town,Upper Floor Commercial,25,18,35,400,7200,14000,5,3,5,Yes,Web research 2025,Industrial city
+Indore,Madhya Pradesh,Tier-2,AB Road/Scheme 54,Upper Floor Commercial,40,30,55,500,15000,27500,8,6,7,Yes,Web research 2025,Fast-growing commercial area
+Bhopal,Madhya Pradesh,Tier-3,Arera Colony,Upper Floor Commercial,30,22,40,400,8800,16000,6,3,6,Yes,Web research 2025,State capital; limited supply
+Patna,Bihar,Tier-2,KankarBagh,Upper Floor Commercial,30,20,40,400,8000,16000,5,3,6,Yes,Web research 2025,Dense residential area
+Ranchi,Jharkhand,Tier-2,Main Road/Kanka,Upper Floor Commercial,25,18,35,400,7200,14000,5,3,5,Yes,Web research 2025,State capital; growing market
+Bhubaneswar,Odisha,Tier-2,Janpath/Saheed Nagar,Upper Floor Commercial,35,25,45,400,10000,18000,6,3,6,Yes,Web research 2025,Planned city; IT growth
+Guwahati,Assam,Tier-2,GS Road/ABC Point,Upper Floor Commercial,35,25,50,400,10000,20000,6,3,6,Yes,Web research 2025,Northeast gateway city
+Chandigarh,Punjab,Tier-1,Sector 35,Upper Floor Commercial,50,40,65,500,20000,32500,10,6,7,Yes,Web research 2025,Planned city; affluent
+Amritsar,Punjab,Tier-2,Mall Road,High Street Retail,40,30,55,400,12000,22000,8,3,6,Yes,Web research 2025,Tourist + residential
+Dehradun,Uttarakhand,Tier-2,Ballupur Rd,Upper Floor Commercial,35,25,50,400,10000,20000,6,3,6,Yes,Web research 2025,Growing hill city
+Nashik,Maharashtra,Tier-2,Canada Corner/College Rd,High Street Retail,45,30,60,500,15000,30000,8,6,7,Yes,Web research 2025,Growing wine capital
+Nagpur,Maharashtra,Tier-2,Dharampeth,High Street Retail,40,30,55,500,15000,27500,8,6,7,Yes,Web research 2025,Central India hub
+Aurangabad,Maharashtra,Tier-3,Kailash Nagar,Upper Floor Commercial,30,20,40,400,8000,16000,5,3,6,Yes,Web research 2025,Industrial city
+Solapur,Maharashtra,Tier-2,Kondhwa,Upper Floor Commercial,25,18,35,400,7200,14000,5,3,5,Yes,Web research 2025,Smaller market
+Goa,Goa,Tier-1,Margao,High Street Retail,60,45,80,400,18000,32000,10,6,8,Yes,Web research 2025,Tourist + expat demand
+Mysuru,Karnataka,Tier-2,Jayalakshmipuram,Upper Floor Commercial,35,25,50,400,10000,20000,6,6,6,Yes,Web research 2025,Heritage city; stable market
+Raipur,Chhattisgarh,Tier-2,Shankar Nagar,Upper Floor Commercial,30,22,40,400,8800,16000,6,3,6,Yes,Web research 2025,State capital; limited supply

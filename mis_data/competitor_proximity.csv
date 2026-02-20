@@ -1,0 +1,62 @@
+Clinic,City,IVF Centres in City,Chains Present,Chain Names,Same-Locality Threats,Threat Level
+Dadar,Mumbai,20,11,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Bloom IVF, Gaudium IVF",2,HIGH
+Malad,Mumbai,20,11,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Bloom IVF, Gaudium IVF",1,HIGH
+Mira Rd,Mumbai,20,11,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Bloom IVF, Gaudium IVF",1,HIGH
+Thane,Mumbai,20,11,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Bloom IVF, Gaudium IVF",1,HIGH
+Virar,Mumbai,20,11,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Bloom IVF, Gaudium IVF",0,MEDIUM
+Basaveshwar,Bengaluru,8,5,"Indira IVF, Nova IVF Fertility, Gaudium IVF, Apollo Fertility, Cloudnine Fertility",0,MEDIUM
+JP Ng,Bengaluru,8,5,"Indira IVF, Nova IVF Fertility, Gaudium IVF, Apollo Fertility, Cloudnine Fertility",1,HIGH
+Kalyan Ng,Bengaluru,8,5,"Indira IVF, Nova IVF Fertility, Gaudium IVF, Apollo Fertility, Cloudnine Fertility",1,HIGH
+Lajpat,Delhi,8,5,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Gaudium IVF, Apollo Fertility",1,HIGH
+Rajouri,Delhi,8,5,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Gaudium IVF, Apollo Fertility",1,HIGH
+Whitefield,Bengaluru,8,5,"Indira IVF, Nova IVF Fertility, Gaudium IVF, Apollo Fertility, Cloudnine Fertility",0,MEDIUM
+Ballygunge,Kolkata,6,4,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Apollo Fertility",0,MEDIUM
+Howrah,Kolkata,6,4,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Apollo Fertility",1,HIGH
+New Town,Kolkata,6,4,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Apollo Fertility",1,HIGH
+Kalasiguda,Hyderabad,5,4,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Apollo Fertility",0,MEDIUM
+Madhapur,Hyderabad,5,4,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Apollo Fertility",1,HIGH
+Anna Ng,Chennai,4,4,"Indira IVF, Nova IVF Fertility, Apollo Fertility, Cloudnine Fertility",2,HIGH
+Kankarbagh,Patna,4,4,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF, Gaudium IVF",0,MEDIUM
+Kondhwa,Pune,4,3,"Indira IVF, Nova IVF Fertility, Cloudnine Fertility",0,MEDIUM
+PCMC,Pune,4,3,"Indira IVF, Nova IVF Fertility, Cloudnine Fertility",0,MEDIUM
+Viman,Pune,4,3,"Indira IVF, Nova IVF Fertility, Cloudnine Fertility",0,MEDIUM
+Alambagh,Lucknow,3,3,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF",0,LOW
+Badakdev,Ahmedabad,3,3,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF",0,LOW
+Gomati,Lucknow,3,3,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF",0,LOW
+Nikol,Ahmedabad,3,3,"Indira IVF, Nova IVF Fertility, Birla Fertility & IVF",0,LOW
+AB Rd,Indore,2,2,"Indira IVF, Nova IVF Fertility",1,HIGH
+Adajan,Surat,2,2,"Indira IVF, Nova IVF Fertility",0,LOW
+Arera Cly,Bhopal,2,2,"Indira IVF, Nova IVF Fertility",0,LOW
+Kanka,Ranchi,2,2,"Indira IVF, Nova IVF Fertility",0,LOW
+LalKothi,Jaipur,2,2,"Indira IVF, Nova IVF Fertility",0,LOW
+Vesu,Surat,2,2,"Indira IVF, Nova IVF Fertility",0,LOW
+ABCPoint,Guwahati,1,1,Indira IVF,0,LOW
+Begambagh,Moradabad,1,1,Indira IVF,0,LOW
+Canada,Nashik,1,1,Indira IVF,0,LOW
+Civil Lines,Agra,1,1,Birla Fertility & IVF,1,HIGH
+Dharam,Nagpur,1,1,Birla Fertility & IVF,0,LOW
+Elegin Rd,Prayagraj,1,1,Birla Fertility & IVF,0,LOW
+Gurudev Ng,Ludhiana,1,1,Gaudium IVF,0,LOW
+Janpath,Bhubaneswar,1,1,Birla Fertility & IVF,0,LOW
+Mahmoorganj,Varanasi,1,1,Indira IVF,0,LOW
+Sec-46,Gurgaon,1,1,Birla Fertility & IVF,0,LOW
+Sevoke Rd,Siliguri,1,1,Nova IVF Fertility,0,LOW
+Shankar Ng,Raipur,1,1,Nova IVF Fertility,0,LOW
+Alkapuri,Vadodara,0,0,,0,LOW
+Ballupur Rd,Dehradun,0,0,,0,LOW
+Dimapur,Dimapur,0,0,,0,LOW
+Faridabad,Faridabad,0,0,,0,LOW
+Itanagar,Itanagar,0,0,,0,LOW
+Jalandhar,Jalandhar,0,0,,0,LOW
+Jayalakshmipuram,Mysuru,0,0,,0,LOW
+Kailash Ng,Solapur,0,0,,0,LOW
+Khadakpada,Kalyan,0,0,,0,LOW
+Kharghar,Navi Mumbai,0,0,,0,LOW
+Mall Rd,Amritsar,0,0,,0,LOW
+Margao,Goa,0,0,,0,LOW
+Model Town,Kanpur,0,0,,0,LOW
+Raj Ng,Ghaziabad,0,0,,0,LOW
+Ring Rd,Rajkot,0,0,,0,LOW
+Sec-35,Chandigarh,0,0,,0,LOW
+Sec-51,Noida,0,0,,0,LOW
+Ushagram,Asansol,0,0,,0,LOW
