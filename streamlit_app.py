@@ -662,11 +662,27 @@ with st.sidebar:
             for e in errors:
                 st.error(e)
 
+    if st.button("🔄 Refresh data", use_container_width=True, help="Re-read all CSV files from disk"):
+        st.session_state['_data_ver'] = st.session_state.get('_data_ver', 0) + 1
+        st.cache_data.clear()
+        st.rerun()
+
 
 # ── Load CSVs ────────────────────────────────────────────────────────────
-@st.cache_data(ttl=600, show_spinner=False)
-def load_all(_ver=0):
-    """Load all CSVs. _ver param busts cache when data is re-uploaded."""
+def _csv_fingerprint():
+    """Return combined mtime of all CSV files so cache busts when any file changes."""
+    total = 0
+    for f in os.listdir(DATA):
+        if f.endswith('.csv'):
+            try:
+                total += int(os.path.getmtime(os.path.join(DATA, f)))
+            except OSError:
+                pass
+    return total
+
+@st.cache_data(ttl=120, show_spinner=False)
+def load_all(_ver=0, _fp=0):
+    """Load all CSVs. _ver busts on upload, _fp busts on file change."""
     d = {}
     d['master'] = pd.read_csv(f'{DATA}/clinic_master.csv')
     d['sales'] = pd.read_csv(f'{DATA}/clinic_sales_mtd.csv')
@@ -701,7 +717,7 @@ def load_all(_ver=0):
     d['ivf_comp'] = _safe_csv('ivf_competitors.csv', ['Chain_Name','Centre_City','Centre_Location','Approx_Lat','Approx_Lon','IVF_Cost_INR_Low','IVF_Cost_INR_High'])
     return d
 
-data = load_all(_ver=st.session_state.get('_data_ver', 0))
+data = load_all(_ver=st.session_state.get('_data_ver', 0), _fp=_csv_fingerprint())
 master = data['master']
 sales = data['sales']
 cx1 = data['cx1']
@@ -730,7 +746,7 @@ l3m = active_months[-3:] if len(active_months) >= 3 else active_months
 l6m = active_months[-6:] if len(active_months) >= 6 else active_months
 
 # ── SCORING ENGINE (unchanged logic) ─────────────────────────────────────
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False)
 def build_city_scores(_ver=0):
     web_demand = web_city.copy()
     web_demand['City_lower'] = web_demand['City'].str.lower().str.strip()
@@ -928,7 +944,7 @@ def build_city_scores(_ver=0):
     return df_city.sort_values('cei_same', ascending=False), new_cities.sort_values('cei_new', ascending=False)
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False)
 def build_cannibalization_matrix(_ver=0):
     multi_clinic_cities = master.groupby('city').filter(lambda x: len(x) >= 2)['city'].unique()
     results = []
@@ -991,7 +1007,7 @@ new_city_scores = _new_cached.copy()
 cannibal_matrix = build_cannibalization_matrix(_ver=st.session_state.get('_data_ver', 0))
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False)
 def build_whitespace_dual_signal(dist_threshold_km=20, _ver=0):
     if len(pin_geo) == 0:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
