@@ -1495,32 +1495,7 @@ with tab2:
         st.dataframe(
             _sc_rank[['Rank', 'City', 'Clinics', 'CEI']],
             use_container_width=True, hide_index=True,
-            height=min(500, 35 + len(_sc_rank) * 35),
         )
-
-    with st.expander("⚙ CEI Weights & Safeguards", expanded=False):
-        st.caption("CEI dimensions (Same-City)")
-        _wc1, _wc2, _wc3, _wc4, _wc5, _wc6 = st.columns(6)
-        _wc1.number_input("1Cx/Clinic", value=_DEF_W_CX1, step=1, min_value=0, max_value=100, key='w_cx1',
-                           help="Weight (%) — Patient load: are clinics overloaded?")
-        _wc2.number_input("Rev/Clinic", value=_DEF_W_REV_CLINIC, step=1, min_value=0, max_value=100, key='w_rev_clinic',
-                           help="Weight (%) — Is this city commercially proven?")
-        _wc3.number_input("Comb Demand", value=_DEF_W_COMB_DEMAND, step=1, min_value=0, max_value=100, key='w_comb_demand',
-                           help="Weight (%) — Total Gynoveda demand (clinic + web per lakh women).")
-        _wc4.number_input("Catch Breadth", value=_DEF_W_CATCHMENT_BREADTH, step=1, min_value=0, max_value=100, key='w_catchment_breadth',
-                           help="Weight (%) — How many pincodes are patients coming from?")
-        _wc5.number_input("Show Rate", value=_DEF_W_SHOW_RATE, step=1, min_value=0, max_value=100, key='w_show_rate',
-                           help="Weight (%) — Are patients showing up for appointments?")
-        _wc6.number_input("PCOS Heat", value=_DEF_W_PCOS, step=1, min_value=0, max_value=100, key='w_pcos',
-                           help="Weight (%) — Size of the addressable PCOS patient pool.")
-        st.caption("Safeguards")
-        _sg1, _sg2, _sg3 = st.columns(3)
-        _sg1.number_input("Metro (km)", value=_DEF_METRO_R, step=1.0, format="%.0f", key='sg_metro',
-                           help="Distance threshold for metro cities.")
-        _sg2.number_input("Tier-2 (km)", value=_DEF_T2_R, step=1.0, format="%.0f", key='sg_t2',
-                           help="Distance threshold for Tier-2 cities.")
-        _sg3.number_input("Whitespace", value=_DEF_WS_DIST, step=5.0, format="%.0f", key='sg_ws',
-                           help="Distance threshold for new-city whitespace detection.")
 
     # ── City Deep-Dive ──
     st.markdown("##### City Detail")
@@ -1712,6 +1687,31 @@ with tab2:
             else:
                 st.caption("No IVF competitor data available for this city")
 
+    # ── CEI Weights & Safeguards ──
+    with st.expander("⚙ CEI Weights & Safeguards", expanded=False):
+        st.caption("CEI dimensions (Same-City)")
+        _wc1, _wc2, _wc3, _wc4, _wc5, _wc6 = st.columns(6)
+        _wc1.number_input("1Cx/Clinic", value=_DEF_W_CX1, step=1, min_value=0, max_value=100, key='w_cx1',
+                           help="Weight (%) — Patient load: are clinics overloaded?")
+        _wc2.number_input("Rev/Clinic", value=_DEF_W_REV_CLINIC, step=1, min_value=0, max_value=100, key='w_rev_clinic',
+                           help="Weight (%) — Is this city commercially proven?")
+        _wc3.number_input("Comb Demand", value=_DEF_W_COMB_DEMAND, step=1, min_value=0, max_value=100, key='w_comb_demand',
+                           help="Weight (%) — Total Gynoveda demand (clinic + web per lakh women).")
+        _wc4.number_input("Catch Breadth", value=_DEF_W_CATCHMENT_BREADTH, step=1, min_value=0, max_value=100, key='w_catchment_breadth',
+                           help="Weight (%) — How many pincodes are patients coming from?")
+        _wc5.number_input("Show Rate", value=_DEF_W_SHOW_RATE, step=1, min_value=0, max_value=100, key='w_show_rate',
+                           help="Weight (%) — Are patients showing up for appointments?")
+        _wc6.number_input("PCOS Heat", value=_DEF_W_PCOS, step=1, min_value=0, max_value=100, key='w_pcos',
+                           help="Weight (%) — Size of the addressable PCOS patient pool.")
+        st.caption("Safeguards")
+        _sg1, _sg2, _sg3 = st.columns(3)
+        _sg1.number_input("Metro (km)", value=_DEF_METRO_R, step=1.0, format="%.0f", key='sg_metro',
+                           help="Distance threshold for metro cities.")
+        _sg2.number_input("Tier-2 (km)", value=_DEF_T2_R, step=1.0, format="%.0f", key='sg_t2',
+                           help="Distance threshold for Tier-2 cities.")
+        _sg3.number_input("Whitespace", value=_DEF_WS_DIST, step=5.0, format="%.0f", key='sg_ws',
+                           help="Distance threshold for new-city whitespace detection.")
+
     # ── Recommended Micro-Markets (Same-City) — from CEI Excel ──
     st.markdown("---")
     with st.expander("Prospect Micro-Markets (Same-City)", expanded=False):
@@ -1721,6 +1721,10 @@ with tab2:
             try:
                 _mm_raw = pd.read_excel(_mm_xlsx, sheet_name='Micro-Market Revenue', header=4)
                 _mm_raw = _mm_raw[_mm_raw['#'].notna()].copy()
+                # Filter out micro-markets where Gynoveda already has a clinic
+                _existing_areas = set(master['area'].str.strip().str.lower())
+                if 'Micro-Market Name' in _mm_raw.columns:
+                    _mm_raw = _mm_raw[~_mm_raw['Micro-Market Name'].str.strip().str.lower().isin(_existing_areas)]
                 _mm_display_cols = []
                 if '#' in _mm_raw.columns:
                     _mm_raw = _mm_raw.rename(columns={'#': 'Rank'})
@@ -1821,23 +1825,7 @@ with tab3:
                 _rank_df = _rank_df.rename(columns={'city': 'City'})
                 st.dataframe(
                     _rank_df, use_container_width=True, hide_index=True,
-                    height=min(500, 35 + len(_rank_df) * 35),
                 )
-
-            # ── CEI Weights & Safeguards (collapsed expander) ──
-            with st.expander("⚙ CEI Weights & Safeguards", expanded=False):
-                st.caption("CEI dimensions (New-City)")
-                _ec1, _ec2, _ec3, _ec4, _ec5 = st.columns(5)
-                _ec1.number_input("Spillover", value=_DEF_W_SPILLOVER, step=5, min_value=0, max_value=100, key='w_spillover',
-                                   help="Weight (%) for spillover demand — patients traveling to other cities for care.")
-                _ec2.number_input("Combined Demand", value=_DEF_W_NC_DEMAND, step=5, min_value=0, max_value=100, key='w_nc_demand',
-                                   help="Weight (%) for combined web + clinic demand signal.")
-                _ec3.number_input("PCOS Heat", value=_DEF_W_NC_PCOS, step=5, min_value=0, max_value=100, key='w_nc_pcos',
-                                   help="Weight (%) for PCOS Heat Index — addressable patient pool size.")
-                _ec4.number_input("Comp Whitespace", value=_DEF_W_COMP_WS, step=5, min_value=0, max_value=100, key='w_comp_ws',
-                                   help="Weight (%) for competitive whitespace — fewer IVF clinics = easier entry.")
-                _ec5.number_input("Catchment", value=_DEF_W_NC_CATCHMENT, step=5, min_value=0, max_value=100, key='w_nc_catchment',
-                                   help="Weight (%) for catchment density — existing Gynoveda demand per lakh women.")
 
             # ── 5. City Detail — selectbox + placard + radar ──
             st.markdown("##### City Detail")
@@ -1890,6 +1878,21 @@ with tab3:
                     paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
                 )
                 st.plotly_chart(fig_nc_radar, use_container_width=True, config=PLOTLY_CFG)
+
+            # ── CEI Weights & Safeguards (collapsed expander) ──
+            with st.expander("⚙ CEI Weights & Safeguards", expanded=False):
+                st.caption("CEI dimensions (New-City)")
+                _ec1, _ec2, _ec3, _ec4, _ec5 = st.columns(5)
+                _ec1.number_input("Spillover", value=_DEF_W_SPILLOVER, step=5, min_value=0, max_value=100, key='w_spillover',
+                                   help="Weight (%) for spillover demand — patients traveling to other cities for care.")
+                _ec2.number_input("Combined Demand", value=_DEF_W_NC_DEMAND, step=5, min_value=0, max_value=100, key='w_nc_demand',
+                                   help="Weight (%) for combined web + clinic demand signal.")
+                _ec3.number_input("PCOS Heat", value=_DEF_W_NC_PCOS, step=5, min_value=0, max_value=100, key='w_nc_pcos',
+                                   help="Weight (%) for PCOS Heat Index — addressable patient pool size.")
+                _ec4.number_input("Comp Whitespace", value=_DEF_W_COMP_WS, step=5, min_value=0, max_value=100, key='w_comp_ws',
+                                   help="Weight (%) for competitive whitespace — fewer IVF clinics = easier entry.")
+                _ec5.number_input("Catchment", value=_DEF_W_NC_CATCHMENT, step=5, min_value=0, max_value=100, key='w_nc_catchment',
+                                   help="Weight (%) for catchment density — existing Gynoveda demand per lakh women.")
 
             # ── 7. 50 Prospect Locations (New Cities) ──
             if 'top_micro_markets' in _ws_clean.columns:
