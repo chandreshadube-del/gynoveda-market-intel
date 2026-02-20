@@ -1867,7 +1867,7 @@ with tab3:
             st.markdown("---")
             st.markdown("##### City Rankings (E-score)")
             # Bar chart — top 25
-            _nc_bar = _ws_clean[['city', 'CEI']].copy()
+            _nc_bar = _ws_clean[['city', 'CEI']].drop_duplicates(subset='city', keep='first').copy()
             _nc_bar = _nc_bar.sort_values('CEI', ascending=False).head(25)
             _nc_bar = _nc_bar.sort_values('CEI', ascending=True)
             fig_nc_bar = go.Figure(go.Bar(
