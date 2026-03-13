@@ -1,6 +1,6 @@
 """
 Gynoveda Expansion Intelligence - Advanced Master Edition
-Featuring Demographic Penetration, Phased Forecaster, Unified GIS & Smoothed O2O Engine
+Featuring Auto-Healing Data Uploader, Demographic Penetration, Unified GIS & Smoothed O2O Engine
 """
 
 import streamlit as st
@@ -293,7 +293,8 @@ with tab2:
                     fig_map.add_trace(go.Scattermapbox(
                         lat=ivf_df['Latitude'], lon=ivf_df['Longitude'], mode='markers',
                         marker=dict(size=8, color='#64748b'), name='IVF Competitors',
-                        text="<b>" + ivf_df.get('Clinic_Name', 'IVF Center').astype(str) + "</b>", hoverinfo='text'
+                        # 🔥 FIXED SAFE TEXT EXTRACTION
+                        text="<b>" + (ivf_df['Clinic_Name'].astype(str) if 'Clinic_Name' in ivf_df.columns else "IVF Center") + "</b>", hoverinfo='text'
                     ))
 
             # --- Active Clinics Layer ---
@@ -303,7 +304,9 @@ with tab2:
                     fig_map.add_trace(go.Scattermapbox(
                         lat=valid_clinics['Latitude'], lon=valid_clinics['Longitude'], mode='markers+text',
                         marker=dict(size=18, color='#1a1f36'), name='Our Clinics',
-                        text=valid_clinics.get('Clinic Code', 'Clinic').astype(str), textposition="bottom center", hoverinfo='text'
+                        # 🔥 FIXED SAFE TEXT EXTRACTION
+                        text=valid_clinics['Clinic Code'].astype(str) if 'Clinic Code' in valid_clinics.columns else "Clinic", 
+                        textposition="bottom center", hoverinfo='text'
                     ))
                     center_lat = valid_clinics['Latitude'].mean()
                     center_lon = valid_clinics['Longitude'].mean()
@@ -461,7 +464,8 @@ with tab3:
                     fig_new_map.add_trace(go.Scattermapbox(
                         lat=ivf_df_new['Latitude'], lon=ivf_df_new['Longitude'], mode='markers',
                         marker=dict(size=8, color='#64748b'), name='IVF Competitors',
-                        text="<b>" + ivf_df_new.get('Clinic_Name', 'IVF Center').astype(str) + "</b>", hoverinfo='text'
+                        # 🔥 FIXED SAFE TEXT EXTRACTION
+                        text="<b>" + (ivf_df_new['Clinic_Name'].astype(str) if 'Clinic_Name' in ivf_df_new.columns else "IVF Center") + "</b>", hoverinfo='text'
                     ))
                     lat_list.extend(ivf_df_new['Latitude'].tolist())
                     lon_list.extend(ivf_df_new['Longitude'].tolist())
@@ -597,7 +601,6 @@ with tab5:
         st.markdown("#### 1. Proven O2O Multipliers (Served Clusters)")
         st.info("The engine isolates the specific web demand in the exact local SubCity where a clinic was launched, calculating a highly accurate Apples-to-Apples O2O Multiplier for that local cluster.")
         
-        # Parse data safely
         df_c = data['demand_clinic'].copy()
         df_w = data['demand_web'].copy()
         df_c['Total'] = pd.to_numeric(df_c['Total'], errors='coerce')
@@ -606,10 +609,8 @@ with tab5:
         df_w['Date'] = pd.to_datetime(df_w['Date'], errors='coerce')
         df_w['Zip'] = pd.to_numeric(df_w['Zip'], errors='coerce')
         
-        # 1. Map Clinic Loc to its primary physical SubCity (Cluster)
         clinic_subcity_map = df_c.groupby('Clinic Loc')['SubCity'].agg(lambda x: x.mode().iloc[0] if len(x.mode())>0 else None).reset_index()
         
-        # 2. Calculate Actual Clinic Revenue
         clinic_rev = df_c.groupby('Clinic Loc').agg(
             Total_Clinic_Rev=('Total', 'sum'),
             Min_Date=('Date', 'min'),
@@ -620,7 +621,6 @@ with tab5:
         
         served_clusters = pd.merge(clinic_rev, clinic_subcity_map, on='Clinic Loc', how='inner').dropna(subset=['SubCity'])
         
-        # 3. Calculate Web Demand for ALL SubCities
         web_subcity = df_w.groupby('SubCity').agg(
             Total_Web_Rev=('Total', 'sum'),
             Web_Unique_Patients=('Customer ID', 'nunique'),
@@ -631,13 +631,11 @@ with tab5:
         web_subcity['Avg_Mo_Web_Rev'] = web_subcity['Total_Web_Rev'] / web_subcity['Months_Active']
         web_subcity['Avg_Mo_Web_Patients'] = web_subcity['Web_Unique_Patients'] / web_subcity['Months_Active']
         
-        # 4. Merge Served Clinics with their specific Web SubCity Demand
         o2o_clusters = pd.merge(served_clusters, web_subcity[['SubCity', 'Avg_Mo_Web_Rev', 'Avg_Mo_Web_Patients']], on='SubCity', how='inner')
         o2o_clusters = o2o_clusters[(o2o_clusters['Avg_Mo_Web_Rev'] > 0) & (o2o_clusters['Avg_Mo_Web_Patients'] > 0)]
         o2o_clusters['O2O_Multiplier'] = o2o_clusters['Avg_Mo_Clinic_Rev'] / o2o_clusters['Avg_Mo_Web_Rev']
         o2o_clusters = o2o_clusters.sort_values('Avg_Mo_Clinic_Rev', ascending=False)
         
-        # Display top clusters chart
         plot_df = o2o_clusters.head(15) 
         fig_o2o_proof = make_subplots(specs=[[{"secondary_y": True}]])
         fig_o2o_proof.add_trace(go.Bar(x=plot_df['Clinic Loc'], y=plot_df['Avg_Mo_Web_Rev']/100000, name='Local Web Rev (₹L)', marker_color='#3b82f6'), secondary_y=False)
@@ -660,7 +658,6 @@ with tab5:
         st.caption("Select an unserved Pincode. The engine finds the 3 'Served Clinic Clusters' with the closest matching historical Unique Web Patients to apply a blended, safe O2O multiplier (extreme anomalies >75X are automatically removed).")
         
         if 'Zip' in df_w.columns:
-            # Group unserved web demand by Zip Code
             unserved_pins = df_w.groupby('Zip').agg(
                 Total_Web_Rev=('Total', 'sum'),
                 Web_Unique_Patients=('Customer ID', 'nunique'),
@@ -668,7 +665,6 @@ with tab5:
                 SubCity=('SubCity', 'first')
             ).reset_index()
             
-            # Using 60 months as standard timeline for website
             unserved_pins['Avg_Mo_Web_Rev'] = unserved_pins['Total_Web_Rev'] / 60 
             unserved_pins['Avg_Mo_Web_Patients'] = unserved_pins['Web_Unique_Patients'] / 60
             
@@ -682,7 +678,6 @@ with tab5:
             else:
                 unserved_pins['Population'] = np.nan
             
-            # Remove zips that fall inside already served SubCities
             active_subcities = set(o2o_clusters['SubCity'].unique())
             unserved_pins = unserved_pins[~unserved_pins['SubCity'].isin(active_subcities)].copy()
             unserved_pins = unserved_pins[unserved_pins['Avg_Mo_Web_Patients'] >= 0.5].sort_values('Avg_Mo_Web_Patients', ascending=False)
@@ -690,25 +685,17 @@ with tab5:
             if not unserved_pins.empty:
                 
                 # --- The FIXED Core Matchmaking Function ---
-                # 1. Filter out extreme outliers (e.g., > 75X multiplier)
                 safe_o2o_clusters = o2o_clusters[o2o_clusters['O2O_Multiplier'] <= 75].copy()
                 
                 def find_lookalike_smoothed(web_patients):
                     if safe_o2o_clusters.empty: 
                         return "None", 0, 1.0
                     
-                    # 2. Absolute differences in patient counts
                     diffs = np.abs(safe_o2o_clusters['Avg_Mo_Web_Patients'] - web_patients)
-                    
-                    # 3. Get the indices of the 3 closest matching clinics (K-Nearest Neighbors)
                     closest_3_idx = diffs.nsmallest(3).index
-                    
-                    # 4. Data for these 3 closest clinics
                     closest_clinics = safe_o2o_clusters.loc[closest_3_idx]
                     
-                    # 5. Blend (Average) their multipliers
                     blended_multiplier = closest_clinics['O2O_Multiplier'].mean()
-                    
                     primary_match_name = closest_clinics.iloc[0]['Clinic Loc']
                     primary_match_pts = closest_clinics.iloc[0]['Avg_Mo_Web_Patients']
                     
@@ -725,7 +712,6 @@ with tab5:
                     base_web_rev = cluster_data['Avg_Mo_Web_Rev']
                     base_web_patients = cluster_data['Avg_Mo_Web_Patients']
                     
-                    # Apply the new Smoothed Look-Alike Match
                     sim_clinic, sim_clinic_pts, blended_mult = find_lookalike_smoothed(base_web_patients)
                     projected_offline_sales = base_web_rev * blended_mult
                     
@@ -752,11 +738,9 @@ with tab5:
                     st.plotly_chart(fig_o2o, use_container_width=True, config=PLOTLY_CFG)
                     
                 with st.expander("View Top 100 Pincode Hotspots & Look-Alike Projections"):
-                    # Vectorized applying function for the table
                     unserved_pins[['LookAlike_Clinic', 'LookAlike_Web_Pts', 'Applied_Multiplier']] = unserved_pins['Avg_Mo_Web_Patients'].apply(lambda x: pd.Series(find_lookalike_smoothed(x)))
                     unserved_pins['Projected_Clinic_Rev'] = unserved_pins['Avg_Mo_Web_Rev'] * unserved_pins['Applied_Multiplier']
                     
-                    # Include Penetration calculation if population data was successfully mapped
                     if 'Population' in unserved_pins.columns and unserved_pins['Population'].notna().any():
                         unserved_pins['Penetration (pts/100k)'] = (unserved_pins['Avg_Mo_Web_Patients'] / unserved_pins['Population']) * 100000
                         disp_cols = ['Zip', 'City', 'SubCity', 'Avg_Mo_Web_Patients', 'Population', 'Penetration (pts/100k)', 'LookAlike_Clinic', 'Projected_Clinic_Rev']
