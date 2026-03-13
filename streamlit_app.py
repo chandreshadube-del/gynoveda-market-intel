@@ -1,6 +1,6 @@
 """
 Gynoveda Expansion Intelligence - Advanced Master Edition
-Featuring Sidebar Data Upload, Phased Forecaster, Unified GIS & Smoothed Look-Alike O2O Engine
+Featuring Bulletproof File Upload, Phased Forecaster, Unified GIS & Smoothed Look-Alike O2O Engine
 """
 
 import streamlit as st
@@ -75,18 +75,22 @@ with st.sidebar:
                 for file in uploaded_files:
                     fname = file.name.lower()
                     
+                    # 🔥 FIXED: Bulletproof logic to catch singular "clinic", "latitude", "lon", etc.
                     if 'ivf' in fname or 'geotier' in fname:
                         std_name = 'std_ivf_comp.csv'
-                    elif 'lat log' in fname or ('clinics' in fname and 'lat' in fname):
-                        std_name = 'std_clinics.csv'
-                    elif 'clinic' in fname and ('first time' in fname or 'customer' in fname):
-                        std_name = 'std_demand_clinic.csv'
-                    elif 'website' in fname or ('web' in fname and 'first time' in fname):
+                    elif 'first time' in fname or 'customer' in fname:
+                        if 'clinic' in fname:
+                            std_name = 'std_demand_clinic.csv'
+                        else:
+                            std_name = 'std_demand_web.csv'
+                    elif 'website' in fname or 'web' in fname:
                         std_name = 'std_demand_web.csv'
                     elif 'show' in fname:
                         std_name = 'std_show_rate.csv'
                     elif 'pin' in fname or 'geocode' in fname:
                         std_name = 'std_pin_geo.csv'
+                    elif 'lat' in fname or 'lon' in fname or 'log' in fname or 'clinic' in fname:
+                        std_name = 'std_clinics.csv'
                     else:
                         std_name = f"std_unknown_{file.name}.csv"
                     
@@ -117,7 +121,11 @@ def load_all_data():
     d = {}
     def _safe_load(filename):
         path = f"{DATA}/{filename}"
-        if os.path.exists(path): return pd.read_csv(path)
+        if os.path.exists(path): 
+            df = pd.read_csv(path)
+            # 🔥 FIXED: Strip hidden spaces from column names (e.g. "City " -> "City")
+            df.columns = df.columns.str.strip() 
+            return df
         return pd.DataFrame()
 
     d['clinics'] = _safe_load("std_clinics.csv")
@@ -336,7 +344,6 @@ with tab4:
     n_months_proj = 12
     months_labels = pd.date_range(start="2026-04-01", periods=n_months_proj, freq='MS').strftime("%b '%y").tolist()
     
-    # 🔥 FIXED: Session State prevents the table from resetting when edited!
     if "launch_schedule" not in st.session_state:
         default_launches = [0, 0, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2]
         st.session_state["launch_schedule"] = pd.DataFrame({
@@ -351,14 +358,13 @@ with tab4:
         edited_schedule = st.data_editor(
             st.session_state["launch_schedule"],
             column_config={
-                "Month": st.column_config.Column(disabled=True), # Lock the month names
+                "Month": st.column_config.Column(disabled=True),
                 "Clinics to Launch": st.column_config.NumberColumn(min_value=0, max_value=20, step=1)
             },
             hide_index=True, height=450, use_container_width=True,
-            key="launch_grid_editor" # Ties to Streamlit's internal memory
+            key="launch_grid_editor"
         )
         
-        # Save back to session state so edits persist
         st.session_state["launch_schedule"] = edited_schedule
         launches = edited_schedule["Clinics to Launch"].values
         
@@ -422,7 +428,6 @@ with tab5:
         st.markdown("#### 1. Proven O2O Multipliers (Served Clusters)")
         st.info("The engine isolates the specific web demand in the exact local SubCity where a clinic was launched, calculating a highly accurate Apples-to-Apples O2O Multiplier for that local cluster.")
         
-        # Parse data safely
         df_c = data['demand_clinic'].copy()
         df_w = data['demand_web'].copy()
         df_c['Total'] = pd.to_numeric(df_c['Total'], errors='coerce')
@@ -431,10 +436,8 @@ with tab5:
         df_w['Date'] = pd.to_datetime(df_w['Date'], errors='coerce')
         df_w['Zip'] = pd.to_numeric(df_w['Zip'], errors='coerce')
         
-        # 1. Map Clinic Loc to its primary physical SubCity (Cluster)
         clinic_subcity_map = df_c.groupby('Clinic Loc')['SubCity'].agg(lambda x: x.mode().iloc[0] if len(x.mode())>0 else None).reset_index()
         
-        # 2. Calculate Actual Clinic Revenue
         clinic_rev = df_c.groupby('Clinic Loc').agg(
             Total_Clinic_Rev=('Total', 'sum'),
             Min_Date=('Date', 'min'),
@@ -445,7 +448,6 @@ with tab5:
         
         served_clusters = pd.merge(clinic_rev, clinic_subcity_map, on='Clinic Loc', how='inner').dropna(subset=['SubCity'])
         
-        # 3. Calculate Web Demand for ALL SubCities
         web_subcity = df_w.groupby('SubCity').agg(
             Total_Web_Rev=('Total', 'sum'),
             Web_Unique_Patients=('Customer ID', 'nunique'),
@@ -456,13 +458,11 @@ with tab5:
         web_subcity['Avg_Mo_Web_Rev'] = web_subcity['Total_Web_Rev'] / web_subcity['Months_Active']
         web_subcity['Avg_Mo_Web_Patients'] = web_subcity['Web_Unique_Patients'] / web_subcity['Months_Active']
         
-        # 4. Merge Served Clinics with their specific Web SubCity Demand
         o2o_clusters = pd.merge(served_clusters, web_subcity[['SubCity', 'Avg_Mo_Web_Rev', 'Avg_Mo_Web_Patients']], on='SubCity', how='inner')
         o2o_clusters = o2o_clusters[(o2o_clusters['Avg_Mo_Web_Rev'] > 0) & (o2o_clusters['Avg_Mo_Web_Patients'] > 0)]
         o2o_clusters['O2O_Multiplier'] = o2o_clusters['Avg_Mo_Clinic_Rev'] / o2o_clusters['Avg_Mo_Web_Rev']
         o2o_clusters = o2o_clusters.sort_values('Avg_Mo_Clinic_Rev', ascending=False)
         
-        # Display top clusters chart
         plot_df = o2o_clusters.head(15) 
         fig_o2o_proof = make_subplots(specs=[[{"secondary_y": True}]])
         fig_o2o_proof.add_trace(go.Bar(x=plot_df['Clinic Loc'], y=plot_df['Avg_Mo_Web_Rev']/100000, name='Local Web Rev (₹L)', marker_color='#3b82f6'), secondary_y=False)
@@ -485,7 +485,6 @@ with tab5:
         st.caption("Select an unserved Pincode. The engine finds the 3 'Served Clinic Clusters' with the closest matching historical Unique Web Patients to apply a blended, safe O2O multiplier (extreme anomalies >75X are automatically removed).")
         
         if 'Zip' in df_w.columns:
-            # Group unserved web demand by Zip Code
             unserved_pins = df_w.groupby('Zip').agg(
                 Total_Web_Rev=('Total', 'sum'),
                 Web_Unique_Patients=('Customer ID', 'nunique'),
@@ -493,18 +492,15 @@ with tab5:
                 SubCity=('SubCity', 'first')
             ).reset_index()
             
-            # Using 60 months as standard timeline for website
             unserved_pins['Avg_Mo_Web_Rev'] = unserved_pins['Total_Web_Rev'] / 60 
             unserved_pins['Avg_Mo_Web_Patients'] = unserved_pins['Web_Unique_Patients'] / 60
             
-            # Remove zips that fall inside already served SubCities
             active_subcities = set(o2o_clusters['SubCity'].unique())
             unserved_pins = unserved_pins[~unserved_pins['SubCity'].isin(active_subcities)].copy()
             unserved_pins = unserved_pins[unserved_pins['Avg_Mo_Web_Patients'] >= 0.5].sort_values('Avg_Mo_Web_Patients', ascending=False)
             
             if not unserved_pins.empty:
                 
-                # --- The FIXED Core Matchmaking Function ---
                 safe_o2o_clusters = o2o_clusters[o2o_clusters['O2O_Multiplier'] <= 75].copy()
                 
                 def find_lookalike_smoothed(web_patients):
@@ -532,7 +528,6 @@ with tab5:
                     base_web_rev = cluster_data['Avg_Mo_Web_Rev']
                     base_web_patients = cluster_data['Avg_Mo_Web_Patients']
                     
-                    # Apply the new Smoothed Look-Alike Match
                     sim_clinic, sim_clinic_pts, blended_mult = find_lookalike_smoothed(base_web_patients)
                     projected_offline_sales = base_web_rev * blended_mult
                     
@@ -585,7 +580,7 @@ with tab5:
 
 # ── FOOTER ─────────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
-st.sidebar.caption("v7.5-Advanced Edition | System Active")
+st.sidebar.caption("v8.0-Advanced Edition | System Active")
 if st.sidebar.button("Force Global Re-Scan"):
     st.cache_data.clear()
     st.rerun()
