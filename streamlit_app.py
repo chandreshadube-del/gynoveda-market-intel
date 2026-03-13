@@ -57,44 +57,66 @@ def load_core_data():
         # 4. NTB Show Rate (from NTBShow%)
         df_show = pd.read_csv("Copy of (Vg) Clinic Location - Monthly MIS.xlsx - NTBShow%.csv", header=1)
         df_show = df_show.rename(columns={"Area": "Clinic"})
-        show_col = [c for c in df_show.columns if 'All' in c][-1] # Grabs the percentage column
+        show_col = [c for c in df_show.columns if 'All' in c][-1] 
         df_show["NTB_Show_Rate_Pct"] = pd.to_numeric(df_show[show_col], errors='coerce') * 100
         df_main = df_main.merge(df_show[["Clinic", "NTB_Show_Rate_Pct"]], on="Clinic", how="left")
         
-        # 5. 1Cx Conversion (from 1Conv)
+        # 5. 1Cx Conversion % (from 1Conv)
         df_conv = pd.read_csv("Copy of (Vg) Clinic Location - Monthly MIS.xlsx - 1Conv.csv", header=0)
         df_conv = df_conv.rename(columns={"Area": "Clinic", "All": "Conversion_1Cx_Pct"})
         df_conv["Conversion_1Cx_Pct"] = pd.to_numeric(df_conv["Conversion_1Cx_Pct"], errors='coerce') * 100
         df_main = df_main.merge(df_conv[["Clinic", "Conversion_1Cx_Pct"]], on="Clinic", how="left")
         
+        # 6. Absolute Appointments (Last 12 Months Avg)
+        df_appt = pd.read_csv("Copy of (Vg) Clinic Location - Monthly MIS.xlsx - NTBAppointment.csv", header=1)
+        df_appt = df_appt.rename(columns={"Area": "Clinic"})
+        date_cols = [c for c in df_appt.columns if '202' in str(c)]
+        last_12_dates = date_cols[-12:] if len(date_cols) >= 12 else date_cols
+        df_appt[last_12_dates] = df_appt[last_12_dates].apply(pd.to_numeric, errors='coerce')
+        df_appt["Avg_Monthly_Appointments"] = df_appt[last_12_dates].mean(axis=1)
+        df_main = df_main.merge(df_appt[["Clinic", "Avg_Monthly_Appointments"]], on="Clinic", how="left")
+        
+        # 7. Absolute 1Cx Conversions (Unique Customer IDs / 12 Months)
+        df_1cx = pd.read_csv("First Time customer - Clinic ( 2023 to 2025).csv")
+        df_1cx['Date'] = pd.to_datetime(df_1cx['Date'], errors='coerce', dayfirst=True)
+        max_date = df_1cx['Date'].max()
+        if pd.notnull(max_date):
+            cutoff_date = max_date - pd.DateOffset(months=12)
+            df_1cx = df_1cx[df_1cx['Date'] >= cutoff_date]
+        df_1cx_grp = df_1cx.groupby("Clinic Loc")["Customer ID"].nunique().reset_index()
+        df_1cx_grp = df_1cx_grp.rename(columns={"Clinic Loc": "Clinic", "Customer ID": "Avg_Monthly_1Cx"})
+        df_1cx_grp["Avg_Monthly_1Cx"] = df_1cx_grp["Avg_Monthly_1Cx"] / 12
+        df_main = df_main.merge(df_1cx_grp[["Clinic", "Avg_Monthly_1Cx"]], on="Clinic", how="left")
+        
+        # 8. Calculate Absolute Shows
+        df_main["Avg_Monthly_Shows"] = df_main["Avg_Monthly_Appointments"] * (df_main["NTB_Show_Rate_Pct"] / 100)
+
         # Format and Clean the Stitched Data
         df_main = df_main.rename(columns={"Age": "Age_Months"})
         df_main = df_main.fillna(0)
         
-        numeric_cols = ["Sales_MTD_Lacs", "Age_Months", "NTB_Show_Rate_Pct", "Conversion_1Cx_Pct", "EBITDA_Margin_Pct"]
+        numeric_cols = ["Sales_MTD_Lacs", "Age_Months", "NTB_Show_Rate_Pct", "Conversion_1Cx_Pct", 
+                        "EBITDA_Margin_Pct", "Avg_Monthly_Appointments", "Avg_Monthly_Shows", "Avg_Monthly_1Cx"]
         for col in numeric_cols:
             df_main[col] = pd.to_numeric(df_main[col], errors='coerce').fillna(0)
             
-        return df_main[df_main["Lat"] != 0] # Ensures only physical clinics render on the map
+        return df_main[df_main["Lat"] != 0]
         
     except Exception as e:
-        st.error(f"🚨 VG MIS Parse Error: Ensure all CSV files are uploaded to GitHub exactly as named. Details: {e}")
+        st.error(f"🚨 Data Pipeline Error: Ensure all CSV files are uploaded exactly as named. Details: {e}")
         return pd.DataFrame()
 
 @st.cache_data
 def load_predictive_data():
     try:
-        # Parses the 5-year D2C website history to find the Top 30 Cities
         df_web = pd.read_csv("First Time customer - website  (2020 - 2025).csv")
         df_web['Total'] = pd.to_numeric(df_web['Total'], errors='coerce').fillna(0)
         
-        # Group sales by City
         df_pred = df_web.groupby(["City", "State"]).agg(
             Online_1Cx_Volume=("Customer ID", "nunique"),
             Est_Online_Revenue_Lacs=("Total", lambda x: x.sum() / 100000)
         ).reset_index()
         
-        # Rank the Top 30
         df_pred = df_pred.sort_values(by="Est_Online_Revenue_Lacs", ascending=False).head(30)
         return df_pred
         
@@ -144,22 +166,29 @@ if app_mode == "1. Portfolio Health (CapEx ROI)":
 
 # --- MODULE 2: FUNNEL LEAKAGE ---
 elif app_mode == "2. Funnel Leakage Analytics":
-    st.title("🔻 Patient Acquisition Funnel")
-    st.markdown("Identify operational friction from Appointment → Show → Conversion.")
+    st.title("🔻 Patient Acquisition Funnel (Absolute Numbers)")
+    st.markdown("Visualizing the exact patient volume drop-off (Monthly Averages over the Last 12 Months).")
     
     if not df_main.empty:
-        fig2 = go.Figure()
-        fig2.add_trace(go.Bar(x=df_main['Clinic'], y=df_main['NTB_Show_Rate_Pct'], name='Show Rate (%)', marker_color='#1f77b4'))
-        fig2.add_trace(go.Bar(x=df_main['Clinic'], y=df_main['Conversion_1Cx_Pct'], name='1Cx Conversion (%)', marker_color='#2ca02c'))
+        # Sort by most appointments to make the chart readable
+        df_funnel = df_main.sort_values(by="Avg_Monthly_Appointments", ascending=False)
         
-        fig2.update_layout(barmode='group', height=500, xaxis_title="Clinic Location", yaxis_title="Percentage (%)")
+        fig2 = go.Figure()
+        fig2.add_trace(go.Bar(x=df_funnel['Clinic'], y=df_funnel['Avg_Monthly_Appointments'], name='Appointments', marker_color='#1f77b4'))
+        fig2.add_trace(go.Bar(x=df_funnel['Clinic'], y=df_funnel['Avg_Monthly_Shows'], name='Shows (Walk-ins)', marker_color='#ff7f0e'))
+        fig2.add_trace(go.Bar(x=df_funnel['Clinic'], y=df_funnel['Avg_Monthly_1Cx'], name='1Cx Conversions', marker_color='#2ca02c'))
+        
+        fig2.update_layout(barmode='group', height=500, xaxis_title="Clinic Location", yaxis_title="Average Patients / Month")
         st.plotly_chart(fig2, use_container_width=True)
         
         st.subheader("🚨 Priority Action Required")
-        low_show = df_main[(df_main['NTB_Show_Rate_Pct'] < 35) & (df_main['NTB_Show_Rate_Pct'] > 0)]
-        if not low_show.empty:
-            st.error("**Pre-Visit Friction:** The following clinics have severe drop-offs before the patient even arrives. Audit parking, visibility, and reminder calls.")
-            st.dataframe(low_show[['Clinic', 'Region', 'NTB_Show_Rate_Pct', 'Conversion_1Cx_Pct']], hide_index=True)
+        # Identify clinics where the drop off from Appointment to Show is massive in absolute numbers (>100 lost patients/month)
+        df_main["Lost_Pre_Visit"] = df_main["Avg_Monthly_Appointments"] - df_main["Avg_Monthly_Shows"]
+        high_dropoff = df_main[df_main["Lost_Pre_Visit"] > 100].sort_values(by="Lost_Pre_Visit", ascending=False)
+        
+        if not high_dropoff.empty:
+            st.error("**Massive Pre-Visit Friction:** The following clinics are losing over 100 booked patients per month before they even arrive. Fix the physical access or the reminder call process immediately.")
+            st.dataframe(high_dropoff[['Clinic', 'Region', 'Avg_Monthly_Appointments', 'Avg_Monthly_Shows', 'Lost_Pre_Visit']].style.format({"Avg_Monthly_Appointments": "{:.0f}", "Avg_Monthly_Shows": "{:.0f}", "Lost_Pre_Visit": "{:.0f}"}), hide_index=True)
 
 # --- MODULE 3: GEOSPATIAL NETWORK MAP ---
 elif app_mode == "3. Geospatial Network Map":
