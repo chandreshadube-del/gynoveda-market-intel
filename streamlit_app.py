@@ -336,18 +336,30 @@ with tab4:
     n_months_proj = 12
     months_labels = pd.date_range(start="2026-04-01", periods=n_months_proj, freq='MS').strftime("%b '%y").tolist()
     
-    default_launches = [0, 0, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2]
-    schedule_df = pd.DataFrame({"Month": months_labels, "Clinics to Launch": default_launches})
+    # 🔥 FIXED: Session State prevents the table from resetting when edited!
+    if "launch_schedule" not in st.session_state:
+        default_launches = [0, 0, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2]
+        st.session_state["launch_schedule"] = pd.DataFrame({
+            "Month": months_labels,
+            "Clinics to Launch": default_launches
+        })
     
     c_sched, c_metrics = st.columns([1, 3])
     
     with c_sched:
-        st.caption("Edit launches per month:")
+        st.caption("Edit launches per month (Double click to edit):")
         edited_schedule = st.data_editor(
-            schedule_df,
-            column_config={"Clinics to Launch": st.column_config.NumberColumn(min_value=0, max_value=20, step=1)},
-            hide_index=True, height=400, use_container_width=True
+            st.session_state["launch_schedule"],
+            column_config={
+                "Month": st.column_config.Column(disabled=True), # Lock the month names
+                "Clinics to Launch": st.column_config.NumberColumn(min_value=0, max_value=20, step=1)
+            },
+            hide_index=True, height=450, use_container_width=True,
+            key="launch_grid_editor" # Ties to Streamlit's internal memory
         )
+        
+        # Save back to session state so edits persist
+        st.session_state["launch_schedule"] = edited_schedule
         launches = edited_schedule["Clinics to Launch"].values
         
     with c_metrics:
@@ -493,26 +505,17 @@ with tab5:
             if not unserved_pins.empty:
                 
                 # --- The FIXED Core Matchmaking Function ---
-                # 1. Filter out extreme outliers (e.g., > 75X multiplier) from the reference pool
                 safe_o2o_clusters = o2o_clusters[o2o_clusters['O2O_Multiplier'] <= 75].copy()
                 
                 def find_lookalike_smoothed(web_patients):
-                    if safe_o2o_clusters.empty: # Fallback safeguard
+                    if safe_o2o_clusters.empty: 
                         return "None", 0, 1.0
                     
-                    # 2. Find the absolute differences in patient counts
                     diffs = np.abs(safe_o2o_clusters['Avg_Mo_Web_Patients'] - web_patients)
-                    
-                    # 3. Get the indices of the 3 closest matching clinics (K-Nearest Neighbors)
                     closest_3_idx = diffs.nsmallest(3).index
-                    
-                    # 4. Get the data for these 3 closest clinics
                     closest_clinics = safe_o2o_clusters.loc[closest_3_idx]
                     
-                    # 5. Blend (Average) their multipliers for a smoothed, realistic projection
                     blended_multiplier = closest_clinics['O2O_Multiplier'].mean()
-                    
-                    # Return the name of the absolute closest clinic, but output the blended multiplier
                     primary_match_name = closest_clinics.iloc[0]['Clinic Loc']
                     primary_match_pts = closest_clinics.iloc[0]['Avg_Mo_Web_Patients']
                     
@@ -556,7 +559,6 @@ with tab5:
                     st.plotly_chart(fig_o2o, use_container_width=True, config=PLOTLY_CFG)
                     
                 with st.expander("View Top 100 Pincode Hotspots & Look-Alike Projections"):
-                    # Vectorized applying function for the table
                     unserved_pins[['LookAlike_Clinic', 'LookAlike_Web_Pts', 'Applied_Multiplier']] = unserved_pins['Avg_Mo_Web_Patients'].apply(lambda x: pd.Series(find_lookalike_smoothed(x)))
                     unserved_pins['Projected_Clinic_Rev'] = unserved_pins['Avg_Mo_Web_Rev'] * unserved_pins['Applied_Multiplier']
                     
@@ -583,7 +585,7 @@ with tab5:
 
 # ── FOOTER ─────────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
-st.sidebar.caption("v7.0-Advanced Edition | System Active")
+st.sidebar.caption("v7.5-Advanced Edition | System Active")
 if st.sidebar.button("Force Global Re-Scan"):
     st.cache_data.clear()
     st.rerun()
