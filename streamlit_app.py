@@ -1,6 +1,6 @@
 """
 Gynoveda Expansion Intelligence - Advanced Master Edition
-Featuring Auto-Healing Data Uploader, Phased Forecaster & Unified GIS
+Featuring Auto-Healing Data Uploader, Population Penetration Engine, Unified GIS & Smoothed O2O Engine
 """
 
 import streamlit as st
@@ -89,6 +89,8 @@ with st.sidebar:
                         std_name = 'std_show_rate.csv'
                     elif 'pin' in fname or 'geocode' in fname:
                         std_name = 'std_pin_geo.csv'
+                    elif 'pop' in fname or 'demographic' in fname: # 🔥 NEW: Population Data Detection
+                        std_name = 'std_population.csv'
                     elif 'lat' in fname or 'lon' in fname or 'log' in fname or 'clinic' in fname:
                         std_name = 'std_clinics.csv'
                     else:
@@ -140,6 +142,7 @@ def load_all_data():
                 df.columns = df.columns.str.strip()
                 col_lower = {str(c).lower().strip(): c for c in df.columns}
                 
+                # Auto-correct column names so the app never breaks
                 for v in ['city', 'city name', 'clinic city']:
                     if v in col_lower and 'City' not in df.columns:
                         df.rename(columns={col_lower[v]: 'City'}, inplace=True); break
@@ -152,6 +155,9 @@ def load_all_data():
                 for v in ['clinic code', 'code']:
                     if v in col_lower and 'Clinic Code' not in df.columns:
                         df.rename(columns={col_lower[v]: 'Clinic Code'}, inplace=True); break
+                for v in ['population', 'pop', 'total population']: # Auto-catch Population column
+                    if v in col_lower and 'Population' not in df.columns:
+                        df.rename(columns={col_lower[v]: 'Population'}, inplace=True); break
                         
                 return df
             except Exception:
@@ -164,6 +170,7 @@ def load_all_data():
     d['demand_web'] = _safe_load("std_demand_web.csv")
     d['show_rate'] = _safe_load("std_show_rate.csv")
     d['pin_geo'] = _safe_load("std_pin_geo.csv")
+    d['population'] = _safe_load("std_population.csv") # 🔥 NEW: Population Data
     
     return d
 
@@ -173,15 +180,16 @@ data = load_all_data()
 st.markdown(
     """<div class="hero-banner">
         <div class="hero-title">Gynoveda Expansion Intelligence v2</div>
-        <div class="hero-sub">Geospatial Demand Clustering, Cannibalization Risk & Financial Forecaster</div>
+        <div class="hero-sub">Geospatial Demand Clustering, Demographic Penetration & Financial Forecaster</div>
     </div>""", unsafe_allow_html=True
 )
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Network Pulse", 
     "🌆 Same-City Expansion", 
-    "🗺️ Unified GIS Map", 
-    "📈 Phased ROI Forecaster"
+    "🚀 New-City Expansion", 
+    "📈 Phased ROI Forecaster",
+    "🔄 Pincode Look-Alike O2O"
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -210,152 +218,278 @@ with tab1:
     c4.metric("IVF Competitors", f"{total_competitors:,.0f}", "Threat Landscape")
 
     st.markdown("---")
-    st.info("💡 **Insights Engine:** To properly evaluate expansion, the engine looks at **Digital Demand** (Web Orders) overlapping with **Geospatial distances** from current clinics (>20km whitespace) and **Competitor Density**.")
+    st.info("💡 **Insights Engine:** To properly evaluate expansion, the engine looks at **Digital Demand** (Web Orders) overlapping with **Geospatial distances** from current clinics (>20km whitespace), **Competitor Density**, and **Demographic Penetration**.")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TAB 2: SAME-CITY EXPANSION (DEEPENING)
 # ═══════════════════════════════════════════════════════════════════════════
 with tab2:
     st.markdown("### Same-City Catchment & Cannibalization Risk")
-    st.caption("Identify where adding clinics in an existing city will eat into current revenue vs capturing new local demand.")
+    st.caption("Evaluate local catchment areas and competitor density before adding a new clinic to an existing market.")
     
     if not data['clinics'].empty and 'City' in data['clinics'].columns:
+        data['clinics']['City'] = data['clinics']['City'].astype(str).str.title().str.strip()
         cities = data['clinics']['City'].dropna().unique().tolist()
+        
         if len(cities) > 0:
             sel_city = st.selectbox("Select Target City for Deepening", sorted(cities))
+            city_clinics = data['clinics'][data['clinics']['City'] == sel_city].copy()
             
-            city_clinics = data['clinics'][data['clinics']['City'] == sel_city]
-            st.write(f"**Current Clinics in {sel_city}: {len(city_clinics)}**")
-            
+            st.write(f"**Active Clinics in {sel_city}: {len(city_clinics)}**")
             show_cols = [c for c in ['Clinic Code', 'Clinic Address', 'Latitude', 'Longitude'] if c in city_clinics.columns]
             st.dataframe(city_clinics[show_cols], use_container_width=True, hide_index=True)
+            
+            st.markdown("---")
+            st.markdown(f"#### 🗺️ Local Map: {sel_city}")
+            
+            t1, t2 = st.columns(2)
+            show_demand = t1.toggle("🔥 Show Pincode Demand", value=True)
+            show_comp = t2.toggle("🏥 Show IVF Competitors", value=True)
+            
+            fig_map = go.Figure()
+            
+            # --- Same-City Demand Layer ---
+            if show_demand and not data['pin_geo'].empty:
+                w_df = pd.DataFrame()
+                c_df = pd.DataFrame()
+                
+                if not data['demand_web'].empty and 'City' in data['demand_web'].columns:
+                    w_df = data['demand_web'][data['demand_web']['City'].astype(str).str.title().str.strip() == sel_city].copy()
+                if not data['demand_clinic'].empty and 'City' in data['demand_clinic'].columns:
+                    c_df = data['demand_clinic'][data['demand_clinic']['City'].astype(str).str.title().str.strip() == sel_city].copy()
+                    
+                w_agg = w_df.groupby('Zip')['Customer ID'].nunique().reset_index().rename(columns={'Customer ID': 'Web_1Cx'}) if not w_df.empty else pd.DataFrame(columns=['Zip', 'Web_1Cx'])
+                c_agg = c_df.groupby('Zip')['Customer ID'].nunique().reset_index().rename(columns={'Customer ID': 'Clinic_1Cx'}) if not c_df.empty else pd.DataFrame(columns=['Zip', 'Clinic_1Cx'])
+                
+                w_agg['Zip'] = pd.to_numeric(w_agg['Zip'], errors='coerce')
+                c_agg['Zip'] = pd.to_numeric(c_agg['Zip'], errors='coerce')
+                
+                demand_pin = pd.merge(w_agg, c_agg, on='Zip', how='outer').fillna(0)
+                demand_pin['Total_1Cx'] = demand_pin['Web_1Cx'] + demand_pin['Clinic_1Cx']
+                
+                if not demand_pin.empty:
+                    pin_geo = data['pin_geo'].copy()
+                    map_df = demand_pin.merge(pin_geo, left_on='Zip', right_on='pincode', how='inner')
+                    
+                    if not map_df.empty:
+                        sizeref = 2.0 * map_df['Total_1Cx'].max() / (35.**2) if map_df['Total_1Cx'].max() > 0 else 1
+                        fig_map.add_trace(go.Scattermapbox(
+                            lat=map_df["lat"], lon=map_df["lon"], mode='markers',
+                            marker=dict(size=map_df["Total_1Cx"], sizemode='area', sizeref=sizeref, sizemin=4,
+                                        color=map_df["Total_1Cx"], colorscale="OrRd", showscale=True,
+                                        colorbar=dict(title="Local 1Cx", x=0.02, y=0.5, len=0.7)),
+                            text="<b>Zip: " + map_df["Zip"].astype(int).astype(str) + "</b><br>Total 1Cx: " + map_df["Total_1Cx"].astype(int).astype(str),
+                            name='Patient Demand', hoverinfo='text'
+                        ))
+
+            # --- Same-City Competitor Layer ---
+            if show_comp and not data['ivf_comp'].empty and 'City' in data['ivf_comp'].columns:
+                ivf_df = data['ivf_comp'][data['ivf_comp']['City'].astype(str).str.title().str.strip() == sel_city].dropna(subset=['Latitude', 'Longitude'])
+                if not ivf_df.empty:
+                    fig_map.add_trace(go.Scattermapbox(
+                        lat=ivf_df['Latitude'], lon=ivf_df['Longitude'], mode='markers',
+                        marker=dict(size=8, color='#64748b'), name='IVF Competitors',
+                        text="<b>" + ivf_df.get('Clinic_Name', 'IVF Center').astype(str) + "</b>", hoverinfo='text'
+                    ))
+
+            # --- Active Clinics Layer ---
+            if 'Latitude' in city_clinics.columns and 'Longitude' in city_clinics.columns:
+                valid_clinics = city_clinics.dropna(subset=['Latitude', 'Longitude'])
+                if not valid_clinics.empty:
+                    fig_map.add_trace(go.Scattermapbox(
+                        lat=valid_clinics['Latitude'], lon=valid_clinics['Longitude'], mode='markers+text',
+                        marker=dict(size=18, color='#1a1f36'), name='Our Clinics',
+                        text=valid_clinics.get('Clinic Code', 'Clinic').astype(str), textposition="bottom center", hoverinfo='text'
+                    ))
+                    center_lat = valid_clinics['Latitude'].mean()
+                    center_lon = valid_clinics['Longitude'].mean()
+                else:
+                    center_lat, center_lon = 20.5937, 78.9629
+            else:
+                center_lat, center_lon = 20.5937, 78.9629
+
+            fig_map.update_layout(
+                mapbox=dict(style="carto-positron", center=dict(lat=center_lat, lon=center_lon), zoom=10),
+                margin={"r":0,"t":0,"l":0,"b":0}, height=500,
+                legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99, bgcolor="rgba(255,255,255,0.85)")
+            )
+            st.plotly_chart(fig_map, use_container_width=True, config=PLOTLY_CFG)
         else:
             st.warning("No valid cities found in the Clinics file.")
     else:
-        st.warning("Clinic Lat/Lon data not found or formatted incorrectly. Please check the sidebar diagnostics.")
+        st.warning("Clinic Lat/Lon data not found. Please upload it via the sidebar.")
 
 # ═══════════════════════════════════════════════════════════════════════════
-# TAB 3: UNIFIED GIS MAP (WHITESPACE DISCOVERY)
+# TAB 3: NEW-CITY EXPANSION (WHITESPACE DISCOVERY)
 # ═══════════════════════════════════════════════════════════════════════════
 with tab3:
-    st.markdown("### Unified Geospatial Demand Discovery")
-    st.caption("A layered Mapbox engine showing Web 1Cx & Clinic 1Cx Pincodes + Active Clinics + IVF Competitors.")
+    st.markdown("### 🚀 New-City Expansion (Whitespace Discovery)")
+    st.caption("Identify entirely new markets driven by high organic digital demand, clinic spillover, competitor density, and **Total Addressable Population**.")
     
-    has_map_data = (not data['demand_web'].empty or not data['demand_clinic'].empty) and not data['pin_geo'].empty
+    has_new_city_data = (not data['demand_web'].empty or not data['demand_clinic'].empty) and not data['clinics'].empty
     
-    if has_map_data:
-        web_df = data['demand_web'].copy() if not data['demand_web'].empty else pd.DataFrame(columns=['Zip', 'Customer ID'])
-        web_df['Zip'] = pd.to_numeric(web_df.get('Zip', pd.Series()), errors='coerce')
-        web_agg = web_df.groupby('Zip')['Customer ID'].nunique().reset_index().rename(columns={'Customer ID': 'Web_1Cx'})
+    if has_new_city_data:
         
-        clinic_df = data['demand_clinic'].copy() if not data['demand_clinic'].empty else pd.DataFrame(columns=['Zip', 'Customer ID'])
-        clinic_df['Zip'] = pd.to_numeric(clinic_df.get('Zip', pd.Series()), errors='coerce')
-        clinic_agg = clinic_df.groupby('Zip')['Customer ID'].nunique().reset_index().rename(columns={'Customer ID': 'Clinic_1Cx'})
+        # 1. Identify Active Cities
+        data['clinics']['City'] = data['clinics']['City'].astype(str).str.title().str.strip()
+        active_cities = set(data['clinics']['City'].dropna().unique())
         
-        demand_by_pin = pd.merge(web_agg, clinic_agg, on='Zip', how='outer').fillna(0)
-        demand_by_pin['Total_1Cx'] = demand_by_pin['Web_1Cx'] + demand_by_pin['Clinic_1Cx']
-        
-        pin_geo = data['pin_geo'].copy()
-        if 'pincode' in pin_geo.columns:
-            map_df = demand_by_pin.merge(pin_geo, left_on='Zip', right_on='pincode', how='inner')
-            map_df = map_df.sort_values('Total_1Cx', ascending=False).head(2000)
-            
-            col_m, col_t = st.columns([2.5, 1])
-            with col_m:
-                fig_map = go.Figure()
-
-                max_1cx = map_df['Total_1Cx'].max()
-                sizeref = 2.0 * max_1cx / (35.**2) if max_1cx > 0 else 1
-                
-                fig_map.add_trace(go.Scattermapbox(
-                    lat=map_df["lat"], lon=map_df["lon"],
-                    mode='markers',
-                    marker=dict(
-                        size=map_df["Total_1Cx"],
-                        sizemode='area', sizeref=sizeref, sizemin=4,
-                        color=map_df["Total_1Cx"], colorscale="OrRd", showscale=True,
-                        colorbar=dict(title="Total 1Cx", x=0.02, y=0.5, len=0.7)
-                    ),
-                    text="<b>Zip: " + map_df["Zip"].astype(int).astype(str) + "</b><br>" + 
-                         "Online 1Cx: " + map_df["Web_1Cx"].astype(int).astype(str) + "<br>" + 
-                         "Clinic 1Cx: " + map_df["Clinic_1Cx"].astype(int).astype(str) + "<br>" + 
-                         "Total 1Cx: " + map_df["Total_1Cx"].astype(int).astype(str),
-                    name='Patient Demand', hoverinfo='text'
-                ))
-                
-                if not data['ivf_comp'].empty and 'Latitude' in data['ivf_comp'].columns and 'Longitude' in data['ivf_comp'].columns:
-                    ivf_df = data['ivf_comp'].dropna(subset=['Latitude', 'Longitude'])
-                    fig_map.add_trace(go.Scattermapbox(
-                        lat=ivf_df['Latitude'], lon=ivf_df['Longitude'],
-                        mode='markers',
-                        marker=dict(size=6, color='#64748b'), 
-                        name='IVF Competitors',
-                        text="<b>" + ivf_df.get('Clinic_Name', 'IVF Center').astype(str) + "</b>",
-                        hoverinfo='text'
-                    ))
-
-                if not data['clinics'].empty and 'Latitude' in data['clinics'].columns and 'Longitude' in data['clinics'].columns:
-                    clinics_df = data['clinics'].dropna(subset=['Latitude', 'Longitude'])
-                    fig_map.add_trace(go.Scattermapbox(
-                        lat=clinics_df['Latitude'], lon=clinics_df['Longitude'],
-                        mode='markers',
-                        marker=dict(size=14, color='#1a1f36'),
-                        name='Gynoveda Clinics',
-                        text="<b>" + clinics_df.get('City', 'Clinic').astype(str) + "</b>",
-                        hoverinfo='text'
-                    ))
-
-                fig_map.update_layout(
-                    mapbox=dict(style="carto-positron", center=dict(lat=20.5937, lon=78.9629), zoom=3.8),
-                    margin={"r":0,"t":0,"l":0,"b":0}, height=600,
-                    legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99, bgcolor="rgba(255,255,255,0.85)")
-                )
-                
-                st.plotly_chart(fig_map, use_container_width=True, config=PLOTLY_CFG)
-                
-            with col_t:
-                st.markdown("##### Competitor Density")
-                st.caption("Top Cities by IVF Competitor Count")
-                if not data['ivf_comp'].empty and 'City' in data['ivf_comp'].columns:
-                    comp_density = data['ivf_comp']['City'].value_counts().head(10).reset_index()
-                    comp_density.columns = ['City', 'IVF Centers']
-                    st.dataframe(comp_density, hide_index=True, use_container_width=True)
+        # 2. Extract Web Demand per City
+        df_w = data['demand_web'].copy() if not data['demand_web'].empty else pd.DataFrame(columns=['City', 'Customer ID', 'Zip'])
+        if 'City' in df_w.columns:
+            df_w['City'] = df_w['City'].astype(str).str.title().str.strip()
+            web_demand = df_w.groupby('City').agg(Web_Patients=('Customer ID', 'nunique')).reset_index()
         else:
-            st.warning("`pin_geocode.csv` is missing the 'pincode' column.")
+            web_demand = pd.DataFrame(columns=['City', 'Web_Patients'])
+            
+        # 3. Extract Clinic Spillover (Travel Demand)
+        df_c = data['demand_clinic'].copy() if not data['demand_clinic'].empty else pd.DataFrame(columns=['City', 'Customer ID', 'Zip'])
+        if 'City' in df_c.columns:
+            df_c['City'] = df_c['City'].astype(str).str.title().str.strip()
+            clinic_spillover = df_c.groupby('City').agg(Travel_Patients=('Customer ID', 'nunique')).reset_index()
+        else:
+            clinic_spillover = pd.DataFrame(columns=['City', 'Travel_Patients'])
+            
+        # 4. Extract IVF Density
+        df_ivf = data['ivf_comp'].copy() if not data['ivf_comp'].empty else pd.DataFrame(columns=['City', 'Clinic_Name'])
+        if 'City' in df_ivf.columns:
+            df_ivf['City'] = df_ivf['City'].astype(str).str.title().str.strip()
+            ivf_density = df_ivf.groupby('City').agg(IVF_Centers=('Clinic_Name', 'nunique')).reset_index()
+        else:
+            ivf_density = pd.DataFrame(columns=['City', 'IVF_Centers'])
+            
+        # 5. Merge Demand Data into Unserved Pool
+        unserved = pd.merge(web_demand, clinic_spillover, on='City', how='outer').fillna(0)
+        unserved = pd.merge(unserved, ivf_density, on='City', how='outer').fillna(0)
+        
+        # 🔥 NEW: 6. Extract Demographic Population Data
+        df_pop = data.get('population', pd.DataFrame())
+        if not df_pop.empty and 'City' in df_pop.columns and 'Population' in df_pop.columns:
+            df_pop['City'] = df_pop['City'].astype(str).str.title().str.strip()
+            df_pop['Population'] = pd.to_numeric(df_pop['Population'], errors='coerce').fillna(0)
+            city_pop = df_pop.groupby('City')['Population'].sum().reset_index()
+            unserved = pd.merge(unserved, city_pop, on='City', how='left')
+        else:
+            unserved['Population'] = np.nan
+        
+        # Drop active cities from the expansion list
+        unserved = unserved[~unserved['City'].isin(active_cities)]
+        unserved = unserved[~unserved['City'].isin(['Nan', 'None', '-', '', 'NaN'])]
+        
+        # Calculate Total Demand (Web + Travel)
+        unserved['Total_Demand'] = unserved['Web_Patients'] + unserved['Travel_Patients']
+        unserved = unserved[unserved['Total_Demand'] > 0].sort_values('Total_Demand', ascending=False)
+        
+        if not unserved.empty:
+            st.markdown("##### Opportunity Breakdown")
+            
+            # Format dropdown with high-level stats
+            city_options = [f"{row['City']} (Total Demand: {int(row['Total_Demand']):,} | IVF: {int(row['IVF_Centers'])})" for _, row in unserved.iterrows()]
+            sel_new_city_str = st.selectbox("Select Prospective New City", city_options)
+            sel_new_city = sel_new_city_str.split(" (")[0]
+            
+            city_stats = unserved[unserved['City'] == sel_new_city].iloc[0]
+            
+            # 🔥 NEW: 5-Column Display with Population Penetration
+            nc1, nc2, nc3, nc4, nc5 = st.columns(5)
+            nc1.metric("Total Local Demand", f"{int(city_stats['Total_Demand']):,}", "Unique Patients")
+            nc2.metric("Digital Demand", f"{int(city_stats['Web_Patients']):,}", "Web Orders")
+            nc3.metric("Clinic Spillover", f"{int(city_stats['Travel_Patients']):,}", "Travelled to other cities")
+            nc4.metric("IVF Competitors", f"{int(city_stats['IVF_Centers']):,}", "Market Saturation", delta_color="inverse")
+            
+            if pd.notna(city_stats.get('Population')) and city_stats['Population'] > 0:
+                pop_val = city_stats['Population']
+                penetration = (city_stats['Total_Demand'] / pop_val) * 100000 
+                nc5.metric("Total Population", f"{pop_val/1e5:.1f}L", f"{penetration:.1f} pts per 100k")
+            else:
+                nc5.metric("Total Population", "No Data", "Upload Population CSV")
+            
+            st.markdown("---")
+            st.markdown(f"#### 🗺️ Whitespace Map: {sel_new_city}")
+            
+            t1, t2 = st.columns(2)
+            show_demand_new = t1.toggle("🔥 Show Digital & Spillover Hotspots", value=True, key='tog_d_new')
+            show_comp_new = t2.toggle("🏥 Show IVF Competitors", value=True, key='tog_c_new')
+            
+            fig_new_map = go.Figure()
+            lat_list, lon_list = [], []
+            
+            # --- New-City Demand Layer ---
+            if show_demand_new and not data['pin_geo'].empty:
+                w_df_new = df_w[df_w['City'] == sel_new_city].copy()
+                c_df_new = df_c[df_c['City'] == sel_new_city].copy()
+                
+                w_agg_new = pd.DataFrame(columns=['Zip', 'Web_1Cx'])
+                if not w_df_new.empty and 'Zip' in w_df_new.columns:
+                    w_df_new['Zip'] = pd.to_numeric(w_df_new['Zip'], errors='coerce')
+                    w_agg_new = w_df_new.groupby('Zip')['Customer ID'].nunique().reset_index().rename(columns={'Customer ID': 'Web_1Cx'})
+                    
+                c_agg_new = pd.DataFrame(columns=['Zip', 'Travel_1Cx'])
+                if not c_df_new.empty and 'Zip' in c_df_new.columns:
+                    c_df_new['Zip'] = pd.to_numeric(c_df_new['Zip'], errors='coerce')
+                    c_agg_new = c_df_new.groupby('Zip')['Customer ID'].nunique().reset_index().rename(columns={'Customer ID': 'Travel_1Cx'})
+                    
+                demand_pin_new = pd.merge(w_agg_new, c_agg_new, on='Zip', how='outer').fillna(0)
+                demand_pin_new['Total_1Cx'] = demand_pin_new['Web_1Cx'] + demand_pin_new['Travel_1Cx']
+                
+                if not demand_pin_new.empty:
+                    pin_geo = data['pin_geo'].copy()
+                    map_df_new = demand_pin_new.merge(pin_geo, left_on='Zip', right_on='pincode', how='inner')
+                    
+                    if not map_df_new.empty:
+                        sizeref = 2.0 * map_df_new['Total_1Cx'].max() / (35.**2) if map_df_new['Total_1Cx'].max() > 0 else 1
+                        fig_new_map.add_trace(go.Scattermapbox(
+                            lat=map_df_new["lat"], lon=map_df_new["lon"], mode='markers',
+                            marker=dict(size=map_df_new["Total_1Cx"], sizemode='area', sizeref=sizeref, sizemin=6,
+                                        color=map_df_new["Total_1Cx"], colorscale="OrRd", showscale=True,
+                                        colorbar=dict(title="Total Demand", x=0.02, y=0.5, len=0.7)),
+                            text="<b>Zip: " + map_df_new["Zip"].astype(int).astype(str) + "</b><br>" +
+                                 "Web Patients: " + map_df_new["Web_1Cx"].astype(int).astype(str) + "<br>" +
+                                 "Spillover Patients: " + map_df_new["Travel_1Cx"].astype(int).astype(str),
+                            name='Patient Demand', hoverinfo='text'
+                        ))
+                        lat_list.extend(map_df_new['lat'].tolist())
+                        lon_list.extend(map_df_new['lon'].tolist())
+
+            # --- New-City Competitor Layer ---
+            if show_comp_new and not df_ivf.empty and 'Latitude' in df_ivf.columns and 'Longitude' in df_ivf.columns:
+                ivf_df_new = df_ivf[df_ivf['City'] == sel_new_city].dropna(subset=['Latitude', 'Longitude'])
+                if not ivf_df_new.empty:
+                    fig_new_map.add_trace(go.Scattermapbox(
+                        lat=ivf_df_new['Latitude'], lon=ivf_df_new['Longitude'], mode='markers',
+                        marker=dict(size=8, color='#64748b'), name='IVF Competitors',
+                        text="<b>" + ivf_df_new.get('Clinic_Name', 'IVF Center').astype(str) + "</b>", hoverinfo='text'
+                    ))
+                    lat_list.extend(ivf_df_new['Latitude'].tolist())
+                    lon_list.extend(ivf_df_new['Longitude'].tolist())
+            
+            # Auto-center map based on available points
+            if lat_list and lon_list:
+                center_lat = sum(lat_list) / len(lat_list)
+                center_lon = sum(lon_list) / len(lon_list)
+            else:
+                center_lat, center_lon = 20.5937, 78.9629 # Default India
+                
+            fig_new_map.update_layout(
+                mapbox=dict(style="carto-positron", center=dict(lat=center_lat, lon=center_lon), zoom=10),
+                margin={"r":0,"t":0,"l":0,"b":0}, height=500,
+                legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99, bgcolor="rgba(255,255,255,0.85)")
+            )
+            st.plotly_chart(fig_new_map, use_container_width=True, config=PLOTLY_CFG)
+            
+            # Show Competitor Density Table for this specific city
+            if not df_ivf.empty and show_comp_new:
+                st.markdown("##### Known Competitors in this Whitespace")
+                ivf_show = df_ivf[df_ivf['City'] == sel_new_city]
+                if not ivf_show.empty:
+                    show_cols = [c for c in ['Clinic_Name', 'Brand_Name', 'Final_Tier', 'Area/Locality'] if c in ivf_show.columns]
+                    st.dataframe(ivf_show[show_cols], hide_index=True, use_container_width=True)
+                else:
+                    st.caption("No registered IVF competitors found in this city's database.")
+        else:
+            st.info("No unserved cities found with active web demand.")
     else:
-        st.warning("Upload `pin_geocode.csv`, `Clinics Lat log`, and Demand Datasets to enable the Unified GIS Map.")
-
-    st.markdown("---")
-    st.markdown("#### 📅 Year-wise & Pincode-wise Demand Trend")
-    st.caption("Analyzing historical growth in top Zip Codes to ensure demand is accelerating, not flattening.")
-    
-    if not data['demand_web'].empty and 'Date' in data['demand_web'].columns and 'Zip' in data['demand_web'].columns:
-        trend_df = data['demand_web'].copy()
-        trend_df['Year'] = pd.to_datetime(trend_df['Date'], errors='coerce').dt.year.fillna(0).astype(int)
-        trend_df = trend_df[trend_df['Year'] > 2000]
-        
-        trend_df['Zip'] = trend_df['Zip'].astype(str).str.replace(".0", "", regex=False)
-        trend_df['Quantity'] = pd.to_numeric(trend_df['Quantity'], errors='coerce').fillna(1)
-
-        yearly_pin_demand = trend_df.groupby(['Year', 'Zip']).agg(Total_Quantity=('Quantity', 'sum')).reset_index()
-        top_pins = yearly_pin_demand.groupby('Zip')['Total_Quantity'].sum().nlargest(15).index.tolist()
-        plot_data = yearly_pin_demand[yearly_pin_demand['Zip'].isin(top_pins)].copy()
-        plot_data['Year'] = plot_data['Year'].astype(str)
-
-        fig_trend = px.bar(
-            plot_data, x='Zip', y='Total_Quantity', color='Year', barmode='group',
-            color_discrete_sequence=px.colors.sequential.Plasma,
-            title="Top 15 Web Demand Pincodes: Year-over-Year Growth"
-        )
-        
-        fig_trend.update_layout(
-            xaxis_title="Pincode (Zip)", yaxis_title="Total Order Quantity",
-            legend_title="Year", height=450, xaxis={'categoryorder':'total descending'}
-        )
-        
-        st.plotly_chart(fig_trend, use_container_width=True, config=PLOTLY_CFG)
-    else:
-        st.warning("Missing 'Date' or 'Zip' columns in Website Demand dataset.")
+        st.warning("Upload `Clinics Lat log`, `First Time customer - clinic`, and `First Time customer - website` to enable New-City Discovery.")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TAB 4: PHASED ROI FORECASTER (12-MONTH HORIZON)
@@ -448,9 +582,188 @@ with tab4:
         )
         st.plotly_chart(fig_phased, use_container_width=True, config=PLOTLY_CFG)
 
+# ═══════════════════════════════════════════════════════════════════════════
+# TAB 5: PINCODE LOOK-ALIKE O2O ENGINE (SMOOTHED APPLES-TO-APPLES MATCHING)
+# ═══════════════════════════════════════════════════════════════════════════
+with tab5:
+    st.markdown("### 🔄 Pincode Look-Alike O2O Engine")
+    st.caption("Matches unserved pincode hotspots to historical clusters to project accurate physical clinic revenues.")
+
+    if not data['demand_clinic'].empty and not data['demand_web'].empty:
+        
+        st.markdown("#### 1. Proven O2O Multipliers (Served Clusters)")
+        st.info("The engine isolates the specific web demand in the exact local SubCity where a clinic was launched, calculating a highly accurate Apples-to-Apples O2O Multiplier for that local cluster.")
+        
+        df_c = data['demand_clinic'].copy()
+        df_w = data['demand_web'].copy()
+        df_c['Total'] = pd.to_numeric(df_c['Total'], errors='coerce')
+        df_w['Total'] = pd.to_numeric(df_w['Total'], errors='coerce')
+        df_c['Date'] = pd.to_datetime(df_c['Date'], errors='coerce')
+        df_w['Date'] = pd.to_datetime(df_w['Date'], errors='coerce')
+        df_w['Zip'] = pd.to_numeric(df_w['Zip'], errors='coerce')
+        
+        clinic_subcity_map = df_c.groupby('Clinic Loc')['SubCity'].agg(lambda x: x.mode().iloc[0] if len(x.mode())>0 else None).reset_index()
+        
+        clinic_rev = df_c.groupby('Clinic Loc').agg(
+            Total_Clinic_Rev=('Total', 'sum'),
+            Min_Date=('Date', 'min'),
+            Max_Date=('Date', 'max')
+        ).reset_index()
+        clinic_rev['Months_Active'] = ((clinic_rev['Max_Date'] - clinic_rev['Min_Date']).dt.days / 30).clip(lower=1)
+        clinic_rev['Avg_Mo_Clinic_Rev'] = clinic_rev['Total_Clinic_Rev'] / clinic_rev['Months_Active']
+        
+        served_clusters = pd.merge(clinic_rev, clinic_subcity_map, on='Clinic Loc', how='inner').dropna(subset=['SubCity'])
+        
+        web_subcity = df_w.groupby('SubCity').agg(
+            Total_Web_Rev=('Total', 'sum'),
+            Web_Unique_Patients=('Customer ID', 'nunique'),
+            Min_Date=('Date', 'min'),
+            Max_Date=('Date', 'max')
+        ).reset_index()
+        web_subcity['Months_Active'] = ((web_subcity['Max_Date'] - web_subcity['Min_Date']).dt.days / 30).clip(lower=1)
+        web_subcity['Avg_Mo_Web_Rev'] = web_subcity['Total_Web_Rev'] / web_subcity['Months_Active']
+        web_subcity['Avg_Mo_Web_Patients'] = web_subcity['Web_Unique_Patients'] / web_subcity['Months_Active']
+        
+        o2o_clusters = pd.merge(served_clusters, web_subcity[['SubCity', 'Avg_Mo_Web_Rev', 'Avg_Mo_Web_Patients']], on='SubCity', how='inner')
+        o2o_clusters = o2o_clusters[(o2o_clusters['Avg_Mo_Web_Rev'] > 0) & (o2o_clusters['Avg_Mo_Web_Patients'] > 0)]
+        o2o_clusters['O2O_Multiplier'] = o2o_clusters['Avg_Mo_Clinic_Rev'] / o2o_clusters['Avg_Mo_Web_Rev']
+        o2o_clusters = o2o_clusters.sort_values('Avg_Mo_Clinic_Rev', ascending=False)
+        
+        plot_df = o2o_clusters.head(15) 
+        fig_o2o_proof = make_subplots(specs=[[{"secondary_y": True}]])
+        fig_o2o_proof.add_trace(go.Bar(x=plot_df['Clinic Loc'], y=plot_df['Avg_Mo_Web_Rev']/100000, name='Local Web Rev (₹L)', marker_color='#3b82f6'), secondary_y=False)
+        fig_o2o_proof.add_trace(go.Bar(x=plot_df['Clinic Loc'], y=plot_df['Avg_Mo_Clinic_Rev']/100000, name='Actual Clinic Rev (₹L)', marker_color='#10b981'), secondary_y=False)
+        fig_o2o_proof.add_trace(go.Scatter(x=plot_df['Clinic Loc'], y=plot_df['O2O_Multiplier'], name='O2O Multiplier (X)', mode='lines+markers+text',
+                                           text=plot_df['O2O_Multiplier'].round(1).astype(str) + "X", textposition="top center",
+                                           line=dict(color='#f97316', width=3), marker=dict(size=8)), secondary_y=True)
+
+        fig_o2o_proof.update_layout(
+            barmode='group', height=450, title='Actual Offline vs Online Performance by Local Catchment',
+            margin=dict(l=20, r=20, t=50, b=20), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        fig_o2o_proof.update_yaxes(title_text="Avg Monthly Rev (₹ Lacs)", secondary_y=False)
+        fig_o2o_proof.update_yaxes(title_text="O2O Multiplier (X)", secondary_y=True, range=[0, plot_df['O2O_Multiplier'].max() * 1.2])
+        st.plotly_chart(fig_o2o_proof, use_container_width=True, config=PLOTLY_CFG)
+
+        # --- 2. Pincode Hotspot Look-Alike Sandbox ---
+        st.markdown("---")
+        st.markdown("#### 2. Pincode Hotspot Look-Alike Engine (Smoothed & Safe)")
+        st.caption("Select an unserved Pincode. The engine finds the 3 'Served Clinic Clusters' with the closest matching historical Unique Web Patients to apply a blended, safe O2O multiplier.")
+        
+        if 'Zip' in df_w.columns:
+            unserved_pins = df_w.groupby('Zip').agg(
+                Total_Web_Rev=('Total', 'sum'),
+                Web_Unique_Patients=('Customer ID', 'nunique'),
+                City=('City', 'first'),
+                SubCity=('SubCity', 'first')
+            ).reset_index()
+            
+            unserved_pins['Avg_Mo_Web_Rev'] = unserved_pins['Total_Web_Rev'] / 60 
+            unserved_pins['Avg_Mo_Web_Patients'] = unserved_pins['Web_Unique_Patients'] / 60
+            
+            # 🔥 NEW: Merge Pincode Population Data If Available
+            df_pop = data.get('population', pd.DataFrame())
+            if not df_pop.empty and 'Zip' in df_pop.columns and 'Population' in df_pop.columns:
+                df_pop['Zip'] = pd.to_numeric(df_pop['Zip'], errors='coerce')
+                df_pop['Population'] = pd.to_numeric(df_pop['Population'], errors='coerce')
+                pin_pop = df_pop.groupby('Zip')['Population'].sum().reset_index()
+                unserved_pins = pd.merge(unserved_pins, pin_pop, on='Zip', how='left')
+            else:
+                unserved_pins['Population'] = np.nan
+            
+            active_subcities = set(o2o_clusters['SubCity'].unique())
+            unserved_pins = unserved_pins[~unserved_pins['SubCity'].isin(active_subcities)].copy()
+            unserved_pins = unserved_pins[unserved_pins['Avg_Mo_Web_Patients'] >= 0.5].sort_values('Avg_Mo_Web_Patients', ascending=False)
+            
+            if not unserved_pins.empty:
+                
+                safe_o2o_clusters = o2o_clusters[o2o_clusters['O2O_Multiplier'] <= 75].copy()
+                
+                def find_lookalike_smoothed(web_patients):
+                    if safe_o2o_clusters.empty: 
+                        return "None", 0, 1.0
+                    
+                    diffs = np.abs(safe_o2o_clusters['Avg_Mo_Web_Patients'] - web_patients)
+                    closest_3_idx = diffs.nsmallest(3).index
+                    closest_clinics = safe_o2o_clusters.loc[closest_3_idx]
+                    
+                    blended_multiplier = closest_clinics['O2O_Multiplier'].mean()
+                    primary_match_name = closest_clinics.iloc[0]['Clinic Loc']
+                    primary_match_pts = closest_clinics.iloc[0]['Avg_Mo_Web_Patients']
+                    
+                    return primary_match_name, primary_match_pts, blended_multiplier
+                
+                sc1, sc2 = st.columns([1, 2])
+                with sc1:
+                    cluster_options = [f"{int(row['Zip'])} ({row['City']} - {row['SubCity']}) [{row['Avg_Mo_Web_Patients']:.1f} pts/mo]" for _, row in unserved_pins.head(500).iterrows()]
+                    selected_cluster_str = st.selectbox("Select Unserved Pincode Hotspot", cluster_options)
+                    
+                    sel_zip = int(selected_cluster_str.split(" ")[0])
+                    cluster_data = unserved_pins[unserved_pins['Zip'] == sel_zip].iloc[0]
+                    
+                    base_web_rev = cluster_data['Avg_Mo_Web_Rev']
+                    base_web_patients = cluster_data['Avg_Mo_Web_Patients']
+                    
+                    sim_clinic, sim_clinic_pts, blended_mult = find_lookalike_smoothed(base_web_patients)
+                    projected_offline_sales = base_web_rev * blended_mult
+                    
+                    st.success(f"**🤖 Smoothed Look-Alike Match Found!**\n\nThis pincode mirrors the demand profile of **{sim_clinic}**.\n\nTo prevent extreme outliers, the engine blended the 3 closest historical clinic profiles, resulting in a safe O2O Multiplier of **{blended_mult:.1f}X**.")
+                    
+                with sc2:
+                    fig_o2o = go.Figure(go.Waterfall(
+                        name="O2O", orientation="v", measure=["absolute", "relative", "total"],
+                        x=["Current Web Rev/Mo", f"O2O Uplift ({blended_mult:.1f}X)", "Projected Clinic Rev/Mo"],
+                        textposition="outside",
+                        text=[fmt_inr(base_web_rev), f"+{fmt_inr(projected_offline_sales - base_web_rev)}", fmt_inr(projected_offline_sales)],
+                        y=[base_web_rev, projected_offline_sales - base_web_rev, projected_offline_sales],
+                        connector={"line":{"color":"rgb(63, 63, 63)"}},
+                        decreasing={"marker":{"color":"#ef4444"}},
+                        increasing={"marker":{"color":"#3b82f6"}},
+                        totals={"marker":{"color":"#10b981"}}
+                    ))
+                    
+                    fig_o2o.update_layout(
+                        title=f"Apples-to-Apples O2O Projection for Pincode {sel_zip}",
+                        showlegend=False, height=350, margin=dict(l=20, r=20, t=40, b=20),
+                        yaxis=dict(title="Monthly Revenue (₹)", showgrid=True, gridcolor='#f1f5f9')
+                    )
+                    st.plotly_chart(fig_o2o, use_container_width=True, config=PLOTLY_CFG)
+                    
+                with st.expander("View Top 100 Pincode Hotspots & Look-Alike Projections"):
+                    unserved_pins[['LookAlike_Clinic', 'LookAlike_Web_Pts', 'Applied_Multiplier']] = unserved_pins['Avg_Mo_Web_Patients'].apply(lambda x: pd.Series(find_lookalike_smoothed(x)))
+                    unserved_pins['Projected_Clinic_Rev'] = unserved_pins['Avg_Mo_Web_Rev'] * unserved_pins['Applied_Multiplier']
+                    
+                    # Add Penetration Rate if Population exists
+                    if 'Population' in unserved_pins.columns and unserved_pins['Population'].notna().any():
+                        unserved_pins['Penetration (pts/100k)'] = (unserved_pins['Avg_Mo_Web_Patients'] / unserved_pins['Population']) * 100000
+                        disp_cols = ['Zip', 'City', 'SubCity', 'Avg_Mo_Web_Patients', 'Population', 'Penetration (pts/100k)', 'LookAlike_Clinic', 'Projected_Clinic_Rev']
+                    else:
+                        disp_cols = ['Zip', 'City', 'SubCity', 'Avg_Mo_Web_Patients', 'Avg_Mo_Web_Rev', 'LookAlike_Clinic', 'Projected_Clinic_Rev']
+                        
+                    st.dataframe(
+                        unserved_pins[disp_cols].head(100).rename(columns={
+                            'Avg_Mo_Web_Patients': 'Web Patients/Mo',
+                            'Avg_Mo_Web_Rev': 'Web Rev/Mo (₹)',
+                            'LookAlike_Clinic': 'Matched Clinic Profile',
+                            'Projected_Clinic_Rev': 'Projected Clinic Rev/Mo (₹)'
+                        }).style.format({
+                            'Zip': "{:.0f}",
+                            'Web Patients/Mo': "{:.1f}",
+                            'Web Rev/Mo (₹)': "₹{:,.0f}",
+                            'Population': "{:,.0f}",
+                            'Penetration (pts/100k)': "{:.1f}",
+                            'Projected Clinic Rev/Mo (₹)': "₹{:,.0f}"
+                        }),
+                        hide_index=True, use_container_width=True
+                    )
+            else:
+                st.warning("Not enough unserved web demand data to run the simulator.")
+    else:
+        st.warning("Please ensure both 'Clinic' and 'Website' demand data are loaded via the sidebar to use the Dynamic O2O Engine.")
+
 # ── FOOTER ─────────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
-st.sidebar.caption("v10.0-Advanced Edition | System Active")
+st.sidebar.caption("v16.0-Advanced Edition | System Active")
 if st.sidebar.button("Force Global Re-Scan"):
     st.cache_data.clear()
     st.rerun()
