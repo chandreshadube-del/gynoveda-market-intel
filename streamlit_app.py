@@ -1,6 +1,6 @@
 """
 Gynoveda Expansion Intelligence - Advanced Master Edition
-Featuring Sidebar Data Upload, Phased Forecaster, Unified GIS & Pincode Look-Alike O2O Engine
+Featuring Sidebar Data Upload, Phased Forecaster, Unified GIS & Smoothed Look-Alike O2O Engine
 """
 
 import streamlit as st
@@ -399,7 +399,7 @@ with tab4:
         st.plotly_chart(fig_phased, use_container_width=True, config=PLOTLY_CFG)
 
 # ═══════════════════════════════════════════════════════════════════════════
-# TAB 5: PINCODE LOOK-ALIKE O2O ENGINE (APPLES-TO-APPLES MATCHING)
+# TAB 5: PINCODE LOOK-ALIKE O2O ENGINE (SMOOTHED APPLES-TO-APPLES MATCHING)
 # ═══════════════════════════════════════════════════════════════════════════
 with tab5:
     st.markdown("### 🔄 Pincode Look-Alike O2O Engine")
@@ -469,8 +469,8 @@ with tab5:
 
         # --- 2. Pincode Hotspot Look-Alike Sandbox ---
         st.markdown("---")
-        st.markdown("#### 2. Pincode Hotspot Look-Alike Engine")
-        st.caption("Select an unserved Pincode. The engine automatically finds a 'Served Clinic Cluster' with the exact same historical number of Unique Web Patients to apply a proven, Apples-to-Apples O2O multiplier.")
+        st.markdown("#### 2. Pincode Hotspot Look-Alike Engine (Smoothed & Safe)")
+        st.caption("Select an unserved Pincode. The engine finds the 3 'Served Clinic Clusters' with the closest matching historical Unique Web Patients to apply a blended, safe O2O multiplier (extreme anomalies >75X are automatically removed).")
         
         if 'Zip' in df_w.columns:
             # Group unserved web demand by Zip Code
@@ -492,12 +492,31 @@ with tab5:
             
             if not unserved_pins.empty:
                 
-                # The Core Matchmaking Function
-                def find_lookalike(web_patients):
-                    # Matches based on the closest number of Unique Web Patients per Month
-                    diffs = np.abs(o2o_clusters['Avg_Mo_Web_Patients'] - web_patients)
-                    idx = diffs.idxmin()
-                    return o2o_clusters.loc[idx, 'Clinic Loc'], o2o_clusters.loc[idx, 'Avg_Mo_Web_Patients'], o2o_clusters.loc[idx, 'O2O_Multiplier']
+                # --- The FIXED Core Matchmaking Function ---
+                # 1. Filter out extreme outliers (e.g., > 75X multiplier) from the reference pool
+                safe_o2o_clusters = o2o_clusters[o2o_clusters['O2O_Multiplier'] <= 75].copy()
+                
+                def find_lookalike_smoothed(web_patients):
+                    if safe_o2o_clusters.empty: # Fallback safeguard
+                        return "None", 0, 1.0
+                    
+                    # 2. Find the absolute differences in patient counts
+                    diffs = np.abs(safe_o2o_clusters['Avg_Mo_Web_Patients'] - web_patients)
+                    
+                    # 3. Get the indices of the 3 closest matching clinics (K-Nearest Neighbors)
+                    closest_3_idx = diffs.nsmallest(3).index
+                    
+                    # 4. Get the data for these 3 closest clinics
+                    closest_clinics = safe_o2o_clusters.loc[closest_3_idx]
+                    
+                    # 5. Blend (Average) their multipliers for a smoothed, realistic projection
+                    blended_multiplier = closest_clinics['O2O_Multiplier'].mean()
+                    
+                    # Return the name of the absolute closest clinic, but output the blended multiplier
+                    primary_match_name = closest_clinics.iloc[0]['Clinic Loc']
+                    primary_match_pts = closest_clinics.iloc[0]['Avg_Mo_Web_Patients']
+                    
+                    return primary_match_name, primary_match_pts, blended_multiplier
                 
                 sc1, sc2 = st.columns([1, 2])
                 with sc1:
@@ -510,16 +529,16 @@ with tab5:
                     base_web_rev = cluster_data['Avg_Mo_Web_Rev']
                     base_web_patients = cluster_data['Avg_Mo_Web_Patients']
                     
-                    # Apply Look-Alike Match based on Patient Count
-                    sim_clinic, sim_clinic_pts, sim_clinic_mult = find_lookalike(base_web_patients)
-                    projected_offline_sales = base_web_rev * sim_clinic_mult
+                    # Apply the new Smoothed Look-Alike Match
+                    sim_clinic, sim_clinic_pts, blended_mult = find_lookalike_smoothed(base_web_patients)
+                    projected_offline_sales = base_web_rev * blended_mult
                     
-                    st.success(f"**🤖 Look-Alike Match Found!**\n\nThis pincode's digital footprint (**{base_web_patients:.1f} unique patients/mo**) perfectly mirrors the pre-launch demand of the **{sim_clinic}** clinic (**{sim_clinic_pts:.1f} unique patients/mo**).\n\nApplying the **{sim_clinic}** proven O2O Multiplier of **{sim_clinic_mult:.1f}X**.")
+                    st.success(f"**🤖 Smoothed Look-Alike Match Found!**\n\nThis pincode mirrors the demand profile of **{sim_clinic}**.\n\nTo prevent extreme outliers, the engine blended the 3 closest historical clinic profiles, resulting in a safe O2O Multiplier of **{blended_mult:.1f}X**.")
                     
                 with sc2:
                     fig_o2o = go.Figure(go.Waterfall(
                         name="O2O", orientation="v", measure=["absolute", "relative", "total"],
-                        x=["Current Web Rev/Mo", f"O2O Uplift ({sim_clinic_mult:.1f}X)", "Projected Clinic Rev/Mo"],
+                        x=["Current Web Rev/Mo", f"O2O Uplift ({blended_mult:.1f}X)", "Projected Clinic Rev/Mo"],
                         textposition="outside",
                         text=[fmt_inr(base_web_rev), f"+{fmt_inr(projected_offline_sales - base_web_rev)}", fmt_inr(projected_offline_sales)],
                         y=[base_web_rev, projected_offline_sales - base_web_rev, projected_offline_sales],
@@ -538,7 +557,7 @@ with tab5:
                     
                 with st.expander("View Top 100 Pincode Hotspots & Look-Alike Projections"):
                     # Vectorized applying function for the table
-                    unserved_pins[['LookAlike_Clinic', 'LookAlike_Web_Pts', 'Applied_Multiplier']] = unserved_pins['Avg_Mo_Web_Patients'].apply(lambda x: pd.Series(find_lookalike(x)))
+                    unserved_pins[['LookAlike_Clinic', 'LookAlike_Web_Pts', 'Applied_Multiplier']] = unserved_pins['Avg_Mo_Web_Patients'].apply(lambda x: pd.Series(find_lookalike_smoothed(x)))
                     unserved_pins['Projected_Clinic_Rev'] = unserved_pins['Avg_Mo_Web_Rev'] * unserved_pins['Applied_Multiplier']
                     
                     st.dataframe(
@@ -564,7 +583,7 @@ with tab5:
 
 # ── FOOTER ─────────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
-st.sidebar.caption("v6.0-Advanced Edition | System Active")
+st.sidebar.caption("v7.0-Advanced Edition | System Active")
 if st.sidebar.button("Force Global Re-Scan"):
     st.cache_data.clear()
     st.rerun()
