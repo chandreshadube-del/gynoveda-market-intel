@@ -1,6 +1,6 @@
 """
 Gynoveda Expansion Intelligence - Advanced Master Edition
-Featuring Bulletproof File Upload, Phased Forecaster, Unified GIS & Smoothed Look-Alike O2O Engine
+Featuring Auto-Healing Data Uploader, Phased Forecaster & Unified GIS
 """
 
 import streamlit as st
@@ -62,20 +62,20 @@ def fmt_inr(v, prefix="₹", d=1):
 DATA = "mis_data"
 os.makedirs(DATA, exist_ok=True)
 
-# ── SIDEBAR: DATA UPLOADER ──────────────────────────────────────────────
+# ── SIDEBAR: AUTO-HEALING DATA UPLOADER ─────────────────────────────────
 with st.sidebar:
     st.markdown("### 📂 Data Management")
-    st.caption("Upload raw Excel or CSV files. The engine will auto-detect and update the dashboard.")
+    st.caption("Upload raw Excel or CSV files. The engine will auto-detect and correct column formats.")
     
     uploaded_files = st.file_uploader("Drop Files Here", accept_multiple_files=True, type=['csv', 'xlsx', 'xls'])
     
     if st.button("Process & Update Data", use_container_width=True, type="primary"):
         if uploaded_files:
-            with st.spinner("Processing files..."):
+            file_logs = []
+            with st.spinner("Analyzing and standardizing files..."):
                 for file in uploaded_files:
                     fname = file.name.lower()
                     
-                    # 🔥 FIXED: Bulletproof logic to catch singular "clinic", "latitude", "lon", etc.
                     if 'ivf' in fname or 'geotier' in fname:
                         std_name = 'std_ivf_comp.csv'
                     elif 'first time' in fname or 'customer' in fname:
@@ -83,7 +83,7 @@ with st.sidebar:
                             std_name = 'std_demand_clinic.csv'
                         else:
                             std_name = 'std_demand_web.csv'
-                    elif 'website' in fname or 'web' in fname:
+                    elif 'website' in fname or ('web' in fname and 'first time' in fname):
                         std_name = 'std_demand_web.csv'
                     elif 'show' in fname:
                         std_name = 'std_show_rate.csv'
@@ -96,36 +96,66 @@ with st.sidebar:
                     
                     try:
                         if file.name.endswith(('.xlsx', '.xls')):
-                            df = pd.read_excel(file)
+                            sheets = pd.read_excel(file, sheet_name=None)
+                            df = None
+                            for s_name, s_df in sheets.items():
+                                if not s_df.empty and len(s_df.columns) > 2:
+                                    df = s_df
+                                    break
+                            if df is None:
+                                df = list(sheets.values())[0]
                         else:
                             df = pd.read_csv(file)
                         
                         df.to_csv(f"{DATA}/{std_name}", index=False)
+                        file_logs.append(f"✅ **{std_name}** ({len(df)} rows)")
                     except Exception as e:
-                        st.error(f"Failed to process {file.name}: {e}")
+                        file_logs.append(f"❌ Error with {file.name}: {e}")
                 
-            st.success("✅ Data Updated Successfully!")
+            st.session_state['upload_logs'] = file_logs
             st.cache_data.clear()
             st.rerun()
         else:
             st.warning("Please upload files first.")
             
+    if 'upload_logs' in st.session_state:
+        with st.expander("🔍 Last Upload Diagnostics", expanded=True):
+            for log in st.session_state['upload_logs']:
+                st.markdown(log)
+
     st.markdown("---")
     if st.button("Force Global Re-Scan", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
-# ── DATA CORE (ADVANCED ENGINE) ─────────────────────────────────────────
+# ── DATA CORE (ADVANCED AUTO-CLEAN ENGINE) ──────────────────────────────
 @st.cache_data(ttl=300, show_spinner="Booting Expansion Engine...")
 def load_all_data():
     d = {}
     def _safe_load(filename):
         path = f"{DATA}/{filename}"
-        if os.path.exists(path): 
-            df = pd.read_csv(path)
-            # 🔥 FIXED: Strip hidden spaces from column names (e.g. "City " -> "City")
-            df.columns = df.columns.str.strip() 
-            return df
+        if os.path.exists(path):
+            try:
+                df = pd.read_csv(path)
+                df.columns = df.columns.str.strip()
+                col_lower = {str(c).lower().strip(): c for c in df.columns}
+                
+                for v in ['city', 'city name', 'clinic city']:
+                    if v in col_lower and 'City' not in df.columns:
+                        df.rename(columns={col_lower[v]: 'City'}, inplace=True); break
+                for v in ['latitude', 'lat']:
+                    if v in col_lower and 'Latitude' not in df.columns:
+                        df.rename(columns={col_lower[v]: 'Latitude'}, inplace=True); break
+                for v in ['longitude', 'lon', 'long', 'lng']:
+                    if v in col_lower and 'Longitude' not in df.columns:
+                        df.rename(columns={col_lower[v]: 'Longitude'}, inplace=True); break
+                for v in ['clinic code', 'code']:
+                    if v in col_lower and 'Clinic Code' not in df.columns:
+                        df.rename(columns={col_lower[v]: 'Clinic Code'}, inplace=True); break
+                        
+                return df
+            except Exception:
+                return pd.DataFrame()
         return pd.DataFrame()
 
     d['clinics'] = _safe_load("std_clinics.csv")
@@ -147,12 +177,11 @@ st.markdown(
     </div>""", unsafe_allow_html=True
 )
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Network Pulse", 
     "🌆 Same-City Expansion", 
     "🗺️ Unified GIS Map", 
-    "📈 Phased ROI Forecaster",
-    "🔄 Pincode Look-Alike O2O"
+    "📈 Phased ROI Forecaster"
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -192,15 +221,18 @@ with tab2:
     
     if not data['clinics'].empty and 'City' in data['clinics'].columns:
         cities = data['clinics']['City'].dropna().unique().tolist()
-        sel_city = st.selectbox("Select Target City for Deepening", sorted(cities))
-        
-        city_clinics = data['clinics'][data['clinics']['City'] == sel_city]
-        st.write(f"**Current Clinics in {sel_city}: {len(city_clinics)}**")
-        
-        show_cols = [c for c in ['Clinic Code', 'Clinic Address', 'Latitude', 'Longitude'] if c in city_clinics.columns]
-        st.dataframe(city_clinics[show_cols], use_container_width=True, hide_index=True)
+        if len(cities) > 0:
+            sel_city = st.selectbox("Select Target City for Deepening", sorted(cities))
+            
+            city_clinics = data['clinics'][data['clinics']['City'] == sel_city]
+            st.write(f"**Current Clinics in {sel_city}: {len(city_clinics)}**")
+            
+            show_cols = [c for c in ['Clinic Code', 'Clinic Address', 'Latitude', 'Longitude'] if c in city_clinics.columns]
+            st.dataframe(city_clinics[show_cols], use_container_width=True, hide_index=True)
+        else:
+            st.warning("No valid cities found in the Clinics file.")
     else:
-        st.warning("Clinic Lat/Lon data not found. Please upload it via the sidebar.")
+        st.warning("Clinic Lat/Lon data not found or formatted incorrectly. Please check the sidebar diagnostics.")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TAB 3: UNIFIED GIS MAP (WHITESPACE DISCOVERY)
@@ -251,10 +283,10 @@ with tab3:
                     name='Patient Demand', hoverinfo='text'
                 ))
                 
-                if not data['ivf_comp'].empty and 'Lat' in data['ivf_comp'].columns and 'Lon' in data['ivf_comp'].columns:
-                    ivf_df = data['ivf_comp'].dropna(subset=['Lat', 'Lon'])
+                if not data['ivf_comp'].empty and 'Latitude' in data['ivf_comp'].columns and 'Longitude' in data['ivf_comp'].columns:
+                    ivf_df = data['ivf_comp'].dropna(subset=['Latitude', 'Longitude'])
                     fig_map.add_trace(go.Scattermapbox(
-                        lat=ivf_df['Lat'], lon=ivf_df['Lon'],
+                        lat=ivf_df['Latitude'], lon=ivf_df['Longitude'],
                         mode='markers',
                         marker=dict(size=6, color='#64748b'), 
                         name='IVF Competitors',
@@ -416,171 +448,9 @@ with tab4:
         )
         st.plotly_chart(fig_phased, use_container_width=True, config=PLOTLY_CFG)
 
-# ═══════════════════════════════════════════════════════════════════════════
-# TAB 5: PINCODE LOOK-ALIKE O2O ENGINE (SMOOTHED APPLES-TO-APPLES MATCHING)
-# ═══════════════════════════════════════════════════════════════════════════
-with tab5:
-    st.markdown("### 🔄 Pincode Look-Alike O2O Engine")
-    st.caption("Matches unserved pincode hotspots to historical clusters to project accurate physical clinic revenues.")
-
-    if not data['demand_clinic'].empty and not data['demand_web'].empty:
-        
-        st.markdown("#### 1. Proven O2O Multipliers (Served Clusters)")
-        st.info("The engine isolates the specific web demand in the exact local SubCity where a clinic was launched, calculating a highly accurate Apples-to-Apples O2O Multiplier for that local cluster.")
-        
-        df_c = data['demand_clinic'].copy()
-        df_w = data['demand_web'].copy()
-        df_c['Total'] = pd.to_numeric(df_c['Total'], errors='coerce')
-        df_w['Total'] = pd.to_numeric(df_w['Total'], errors='coerce')
-        df_c['Date'] = pd.to_datetime(df_c['Date'], errors='coerce')
-        df_w['Date'] = pd.to_datetime(df_w['Date'], errors='coerce')
-        df_w['Zip'] = pd.to_numeric(df_w['Zip'], errors='coerce')
-        
-        clinic_subcity_map = df_c.groupby('Clinic Loc')['SubCity'].agg(lambda x: x.mode().iloc[0] if len(x.mode())>0 else None).reset_index()
-        
-        clinic_rev = df_c.groupby('Clinic Loc').agg(
-            Total_Clinic_Rev=('Total', 'sum'),
-            Min_Date=('Date', 'min'),
-            Max_Date=('Date', 'max')
-        ).reset_index()
-        clinic_rev['Months_Active'] = ((clinic_rev['Max_Date'] - clinic_rev['Min_Date']).dt.days / 30).clip(lower=1)
-        clinic_rev['Avg_Mo_Clinic_Rev'] = clinic_rev['Total_Clinic_Rev'] / clinic_rev['Months_Active']
-        
-        served_clusters = pd.merge(clinic_rev, clinic_subcity_map, on='Clinic Loc', how='inner').dropna(subset=['SubCity'])
-        
-        web_subcity = df_w.groupby('SubCity').agg(
-            Total_Web_Rev=('Total', 'sum'),
-            Web_Unique_Patients=('Customer ID', 'nunique'),
-            Min_Date=('Date', 'min'),
-            Max_Date=('Date', 'max')
-        ).reset_index()
-        web_subcity['Months_Active'] = ((web_subcity['Max_Date'] - web_subcity['Min_Date']).dt.days / 30).clip(lower=1)
-        web_subcity['Avg_Mo_Web_Rev'] = web_subcity['Total_Web_Rev'] / web_subcity['Months_Active']
-        web_subcity['Avg_Mo_Web_Patients'] = web_subcity['Web_Unique_Patients'] / web_subcity['Months_Active']
-        
-        o2o_clusters = pd.merge(served_clusters, web_subcity[['SubCity', 'Avg_Mo_Web_Rev', 'Avg_Mo_Web_Patients']], on='SubCity', how='inner')
-        o2o_clusters = o2o_clusters[(o2o_clusters['Avg_Mo_Web_Rev'] > 0) & (o2o_clusters['Avg_Mo_Web_Patients'] > 0)]
-        o2o_clusters['O2O_Multiplier'] = o2o_clusters['Avg_Mo_Clinic_Rev'] / o2o_clusters['Avg_Mo_Web_Rev']
-        o2o_clusters = o2o_clusters.sort_values('Avg_Mo_Clinic_Rev', ascending=False)
-        
-        plot_df = o2o_clusters.head(15) 
-        fig_o2o_proof = make_subplots(specs=[[{"secondary_y": True}]])
-        fig_o2o_proof.add_trace(go.Bar(x=plot_df['Clinic Loc'], y=plot_df['Avg_Mo_Web_Rev']/100000, name='Local Web Rev (₹L)', marker_color='#3b82f6'), secondary_y=False)
-        fig_o2o_proof.add_trace(go.Bar(x=plot_df['Clinic Loc'], y=plot_df['Avg_Mo_Clinic_Rev']/100000, name='Actual Clinic Rev (₹L)', marker_color='#10b981'), secondary_y=False)
-        fig_o2o_proof.add_trace(go.Scatter(x=plot_df['Clinic Loc'], y=plot_df['O2O_Multiplier'], name='O2O Multiplier (X)', mode='lines+markers+text',
-                                           text=plot_df['O2O_Multiplier'].round(1).astype(str) + "X", textposition="top center",
-                                           line=dict(color='#f97316', width=3), marker=dict(size=8)), secondary_y=True)
-
-        fig_o2o_proof.update_layout(
-            barmode='group', height=450, title='Actual Offline vs Online Performance by Local Catchment',
-            margin=dict(l=20, r=20, t=50, b=20), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-        fig_o2o_proof.update_yaxes(title_text="Avg Monthly Rev (₹ Lacs)", secondary_y=False)
-        fig_o2o_proof.update_yaxes(title_text="O2O Multiplier (X)", secondary_y=True, range=[0, plot_df['O2O_Multiplier'].max() * 1.2])
-        st.plotly_chart(fig_o2o_proof, use_container_width=True, config=PLOTLY_CFG)
-
-        # --- 2. Pincode Hotspot Look-Alike Sandbox ---
-        st.markdown("---")
-        st.markdown("#### 2. Pincode Hotspot Look-Alike Engine (Smoothed & Safe)")
-        st.caption("Select an unserved Pincode. The engine finds the 3 'Served Clinic Clusters' with the closest matching historical Unique Web Patients to apply a blended, safe O2O multiplier (extreme anomalies >75X are automatically removed).")
-        
-        if 'Zip' in df_w.columns:
-            unserved_pins = df_w.groupby('Zip').agg(
-                Total_Web_Rev=('Total', 'sum'),
-                Web_Unique_Patients=('Customer ID', 'nunique'),
-                City=('City', 'first'),
-                SubCity=('SubCity', 'first')
-            ).reset_index()
-            
-            unserved_pins['Avg_Mo_Web_Rev'] = unserved_pins['Total_Web_Rev'] / 60 
-            unserved_pins['Avg_Mo_Web_Patients'] = unserved_pins['Web_Unique_Patients'] / 60
-            
-            active_subcities = set(o2o_clusters['SubCity'].unique())
-            unserved_pins = unserved_pins[~unserved_pins['SubCity'].isin(active_subcities)].copy()
-            unserved_pins = unserved_pins[unserved_pins['Avg_Mo_Web_Patients'] >= 0.5].sort_values('Avg_Mo_Web_Patients', ascending=False)
-            
-            if not unserved_pins.empty:
-                
-                safe_o2o_clusters = o2o_clusters[o2o_clusters['O2O_Multiplier'] <= 75].copy()
-                
-                def find_lookalike_smoothed(web_patients):
-                    if safe_o2o_clusters.empty: 
-                        return "None", 0, 1.0
-                    
-                    diffs = np.abs(safe_o2o_clusters['Avg_Mo_Web_Patients'] - web_patients)
-                    closest_3_idx = diffs.nsmallest(3).index
-                    closest_clinics = safe_o2o_clusters.loc[closest_3_idx]
-                    
-                    blended_multiplier = closest_clinics['O2O_Multiplier'].mean()
-                    primary_match_name = closest_clinics.iloc[0]['Clinic Loc']
-                    primary_match_pts = closest_clinics.iloc[0]['Avg_Mo_Web_Patients']
-                    
-                    return primary_match_name, primary_match_pts, blended_multiplier
-                
-                sc1, sc2 = st.columns([1, 2])
-                with sc1:
-                    cluster_options = [f"{int(row['Zip'])} ({row['City']} - {row['SubCity']}) [{row['Avg_Mo_Web_Patients']:.1f} pts/mo]" for _, row in unserved_pins.head(500).iterrows()]
-                    selected_cluster_str = st.selectbox("Select Unserved Pincode Hotspot", cluster_options)
-                    
-                    sel_zip = int(selected_cluster_str.split(" ")[0])
-                    cluster_data = unserved_pins[unserved_pins['Zip'] == sel_zip].iloc[0]
-                    
-                    base_web_rev = cluster_data['Avg_Mo_Web_Rev']
-                    base_web_patients = cluster_data['Avg_Mo_Web_Patients']
-                    
-                    sim_clinic, sim_clinic_pts, blended_mult = find_lookalike_smoothed(base_web_patients)
-                    projected_offline_sales = base_web_rev * blended_mult
-                    
-                    st.success(f"**🤖 Smoothed Look-Alike Match Found!**\n\nThis pincode mirrors the demand profile of **{sim_clinic}**.\n\nTo prevent extreme outliers, the engine blended the 3 closest historical clinic profiles, resulting in a safe O2O Multiplier of **{blended_mult:.1f}X**.")
-                    
-                with sc2:
-                    fig_o2o = go.Figure(go.Waterfall(
-                        name="O2O", orientation="v", measure=["absolute", "relative", "total"],
-                        x=["Current Web Rev/Mo", f"O2O Uplift ({blended_mult:.1f}X)", "Projected Clinic Rev/Mo"],
-                        textposition="outside",
-                        text=[fmt_inr(base_web_rev), f"+{fmt_inr(projected_offline_sales - base_web_rev)}", fmt_inr(projected_offline_sales)],
-                        y=[base_web_rev, projected_offline_sales - base_web_rev, projected_offline_sales],
-                        connector={"line":{"color":"rgb(63, 63, 63)"}},
-                        decreasing={"marker":{"color":"#ef4444"}},
-                        increasing={"marker":{"color":"#3b82f6"}},
-                        totals={"marker":{"color":"#10b981"}}
-                    ))
-                    
-                    fig_o2o.update_layout(
-                        title=f"Apples-to-Apples O2O Projection for Pincode {sel_zip}",
-                        showlegend=False, height=350, margin=dict(l=20, r=20, t=40, b=20),
-                        yaxis=dict(title="Monthly Revenue (₹)", showgrid=True, gridcolor='#f1f5f9')
-                    )
-                    st.plotly_chart(fig_o2o, use_container_width=True, config=PLOTLY_CFG)
-                    
-                with st.expander("View Top 100 Pincode Hotspots & Look-Alike Projections"):
-                    unserved_pins[['LookAlike_Clinic', 'LookAlike_Web_Pts', 'Applied_Multiplier']] = unserved_pins['Avg_Mo_Web_Patients'].apply(lambda x: pd.Series(find_lookalike_smoothed(x)))
-                    unserved_pins['Projected_Clinic_Rev'] = unserved_pins['Avg_Mo_Web_Rev'] * unserved_pins['Applied_Multiplier']
-                    
-                    st.dataframe(
-                        unserved_pins[['Zip', 'City', 'SubCity', 'Avg_Mo_Web_Patients', 'Avg_Mo_Web_Rev', 'LookAlike_Clinic', 'Applied_Multiplier', 'Projected_Clinic_Rev']].head(100).rename(columns={
-                            'Avg_Mo_Web_Patients': 'Web Patients/Mo',
-                            'Avg_Mo_Web_Rev': 'Web Rev/Mo (₹)',
-                            'LookAlike_Clinic': 'Matched Clinic Profile',
-                            'Applied_Multiplier': 'Matched Multiplier',
-                            'Projected_Clinic_Rev': 'Projected Clinic Rev/Mo (₹)'
-                        }).style.format({
-                            'Zip': "{:.0f}",
-                            'Web Patients/Mo': "{:.1f}",
-                            'Web Rev/Mo (₹)': "₹{:,.0f}",
-                            'Matched Multiplier': "{:.1f}X",
-                            'Projected Clinic Rev/Mo (₹)': "₹{:,.0f}"
-                        }),
-                        hide_index=True, use_container_width=True
-                    )
-            else:
-                st.warning("Not enough unserved web demand data to run the simulator.")
-    else:
-        st.warning("Please ensure both 'Clinic' and 'Website' demand data are loaded via the sidebar to use the Dynamic O2O Engine.")
-
 # ── FOOTER ─────────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
-st.sidebar.caption("v8.0-Advanced Edition | System Active")
+st.sidebar.caption("v10.0-Advanced Edition | System Active")
 if st.sidebar.button("Force Global Re-Scan"):
     st.cache_data.clear()
     st.rerun()
