@@ -13,6 +13,8 @@ import math
 
 st.set_page_config(page_title="Gynoveda Expansion OS", layout="wide", page_icon="◉")
 
+# --- UI & FOLDER CONFIG ---
+PLOTLY_CFG = {'responsive': True, 'displayModeBar': False} # FIXED: Restored Plotly config
 DATA_DIR = "mis_data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -156,7 +158,7 @@ with tab1:
             x="City", y="Customer ID", title="Top Digital Demand Cities",
             color_discrete_sequence=['#c0392b']
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CFG)
 
 # ===================================================
 # 2. EXPANSION OPPORTUNITIES
@@ -166,6 +168,7 @@ with tab2:
     if web.empty:
         st.warning("Upload Web Demand data to view expansion whitespace.")
     else:
+        # Groupings
         web_city = web.groupby("City").agg(WebPatients=("Customer ID", "nunique")).reset_index() if "City" in web.columns else pd.DataFrame(columns=["City", "WebPatients"])
         clinic_city = clinic.groupby("City").agg(ClinicPatients=("Customer ID", "nunique")).reset_index() if not clinic.empty and "City" in clinic.columns else pd.DataFrame(columns=["City", "ClinicPatients"])
         ivf_city = ivf.groupby("City").size().reset_index(name="IVF") if not ivf.empty and "City" in ivf.columns else pd.DataFrame(columns=["City", "IVF"])
@@ -175,9 +178,10 @@ with tab2:
 
         served = df[df["City"].isin(clinic_cities)].copy()
         unserved = df[~df["City"].isin(clinic_cities)].copy()
-        unserved = unserved[unserved["WebPatients"] > 0]
+        unserved = unserved[unserved["WebPatients"] > 0] # Remove dead cities
 
         if not served.empty and not unserved.empty:
+            # AI Similarity
             served_matrix = normalize_matrix(served[["WebPatients", "IVF"]].fillna(0).values)
             unserved_matrix = normalize_matrix(unserved[["WebPatients", "IVF"]].fillna(0).values)
             similarity = cosine_similarity_matrix(unserved_matrix, served_matrix)
@@ -195,6 +199,7 @@ with tab2:
             city = st.selectbox("Select Unserved City to Map Hotspots", unserved.sort_values("WebPatients", ascending=False)["City"].head(20))
             city_web = web[web["City"] == city]
 
+            # Map
             if not city_web.empty and not data["pin"].empty and "Zip" in city_web.columns and "Zip" in data["pin"].columns:
                 pins = city_web.groupby("Zip")["Customer ID"].nunique().reset_index()
                 pins["Zip"] = pd.to_numeric(pins["Zip"], errors='coerce')
@@ -210,7 +215,7 @@ with tab2:
                         color_continuous_scale="OrRd", zoom=10, title=f"Digital Heatmap: {city}"
                     )
                     fig.update_layout(mapbox_style="carto-positron", margin={"r":0,"t":40,"l":0,"b":0})
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CFG)
 
 # ===================================================
 # 3. SITE SIMULATOR (SMOOTHED O2O)
@@ -222,20 +227,25 @@ with tab3:
     else:
         st.markdown("### 🧠 Predictive O2O Revenue Engine")
         
-        # 1. Build Reference Multipliers
+        # 1. Build Reference Multipliers (City Level to ensure data density)
         web_city_ref = data["web"].groupby("City").agg(WebRev=("Total", "sum"), WebPts=("Customer ID", "nunique")).reset_index()
         clin_city_ref = data["clinic"].groupby("City").agg(ClinRev=("Total", "sum")).reset_index()
         
+        # Assume 60 months of web data, calculate Monthly averages
         web_city_ref["Mo_WebRev"] = web_city_ref["WebRev"] / 60
         web_city_ref["Mo_WebPts"] = web_city_ref["WebPts"] / 60
+        
+        # Assume 12 months avg active clinic time for simple modeling
         clin_city_ref["Mo_ClinRev"] = clin_city_ref["ClinRev"] / 12
         
         ref_df = pd.merge(web_city_ref, clin_city_ref, on="City", how="inner")
         ref_df = ref_df[(ref_df["Mo_WebRev"] > 0) & (ref_df["Mo_ClinRev"] > 0)]
         ref_df["Multiplier"] = ref_df["Mo_ClinRev"] / ref_df["Mo_WebRev"]
+        
+        # MATH LOGIC: Cap outliers safely at 50X
         ref_df = ref_df[ref_df["Multiplier"] <= 50].copy()
         
-        # 2. Get Unserved Pincodes safely (🔥 BUG FIX HERE)
+        # 2. Get Unserved Pincodes
         web_pins = data["web"].copy()
         
         # Strip dirty strings and force Zip to integer to prevent indexing mismatches
@@ -251,7 +261,6 @@ with tab3:
         unserved_pins = unserved_pins[unserved_pins["Mo_WebPts"] > 0.5].sort_values("Mo_WebPts", ascending=False)
         
         if not unserved_pins.empty and not ref_df.empty:
-            # Cast list to strings explicitly for the selectbox
             pin_sel = st.selectbox("Select Target Pincode", unserved_pins["Zip"].astype(str))
             
             # 🔥 Safe filter logic (handles float/int string comparisons perfectly)
@@ -260,6 +269,7 @@ with tab3:
             if not match_df.empty:
                 target_pin = match_df.iloc[0]
                 
+                # MATH LOGIC: Blended K-Nearest Neighbors
                 diffs = np.abs(ref_df["Mo_WebPts"] - target_pin["Mo_WebPts"])
                 closest_3 = ref_df.loc[diffs.nsmallest(3).index]
                 blended_multiplier = closest_3["Multiplier"].mean()
@@ -267,6 +277,7 @@ with tab3:
                 
                 proj_rev = target_pin["Mo_WebRev"] * blended_multiplier
 
+                # Easy 5-second read
                 st.info(f"💡 **The Math:** Because this pincode has **{target_pin['Mo_WebPts']:.1f} digital patients/mo**, it mathematically behaves like our clinics in **{matched_cities}**. We applied their blended historical conversion multiplier of **{blended_multiplier:.1f}X**.")
 
                 c1, c2, c3 = st.columns(3)
@@ -285,8 +296,8 @@ with tab3:
                     increasing={"marker":{"color":"#3b82f6"}},
                     totals={"marker":{"color":"#10b981"}}
                 ))
-                fig.update_layout(title=f"Revenue Conversion Architecture for Pincode {pin_sel}", margin=dict(t=40, b=20), height=350)
-                st.plotly_chart(fig, use_container_width=True)
+                fig.update_layout(title=f"Revenue Conversion Architecture for {pin_sel}", margin=dict(t=40, b=20), height=350)
+                st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CFG)
             else:
                 st.error("Engine failed to locate the specified Pincode in the dataset.")
 
@@ -311,8 +322,10 @@ with tab4:
         revenue = st.number_input("Mature Rev per Clinic/mo (L)", value=15.0, step=1.0)
 
     with col_chart:
-        proj_timeline = 24 
+        # MATH LOGIC: Dynamic Array Staggering
+        proj_timeline = 24 # 2-year view
         
+        # Calculate how many clinics launch each month
         clinics_per_month = [0] * proj_timeline
         base_rate = total_clinics // rollout_months
         remainder = total_clinics % rollout_months
@@ -325,13 +338,14 @@ with tab4:
         total_capex_arr = np.zeros(proj_timeline)
         active_clinics_arr = np.zeros(proj_timeline)
         
-        ramp_multipliers = np.array([min(1.0, m/6) for m in range(proj_timeline)]) 
+        ramp_multipliers = np.array([min(1.0, m/6) for m in range(proj_timeline)]) # 6 month ramp to maturity
 
         for t in range(proj_timeline):
             total_capex_arr[t] = clinics_per_month[t] * capex
             active_clinics_arr[t] = np.sum(clinics_per_month[:t+1])
             total_opex_arr[t] = active_clinics_arr[t] * opex
             
+            # Sum revenue for all cohorts that have launched
             for i in range(t+1):
                 if clinics_per_month[i] > 0:
                     age = t - i
@@ -341,11 +355,13 @@ with tab4:
         cum_cashflow_arr = np.cumsum(net_cashflow_arr)
         max_burn = np.min(cum_cashflow_arr)
         
+        # KPIs
         rm1, rm2, rm3 = st.columns(3)
         rm1.metric("Total CapEx Required", fmt_inr(np.sum(total_capex_arr) * 1e5))
         rm2.metric("Peak Capital Burn", fmt_inr(abs(max_burn) * 1e5), "Deepest point of J-Curve", delta_color="inverse")
         rm3.metric("Year 2 Run-Rate (Mo)", fmt_inr(total_rev_arr[-1] * 1e5))
 
+        # Chart
         fig_phased = go.Figure()
         months_labels = [f"M{i+1}" for i in range(proj_timeline)]
         
