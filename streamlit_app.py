@@ -399,111 +399,127 @@ with tab4:
         st.plotly_chart(fig_phased, use_container_width=True, config=PLOTLY_CFG)
 
 # ═══════════════════════════════════════════════════════════════════════════
-# TAB 5: PINCODE LOOK-ALIKE O2O ENGINE
+# TAB 5: PINCODE LOOK-ALIKE O2O ENGINE (APPLES-TO-APPLES MATCHING)
 # ═══════════════════════════════════════════════════════════════════════════
 with tab5:
     st.markdown("### 🔄 Pincode Look-Alike O2O Engine")
-    st.caption("Matches unserved pincode hotspots to historical cities to project accurate physical clinic revenues.")
+    st.caption("Matches unserved pincode hotspots to historical clusters to project accurate physical clinic revenues.")
 
     if not data['demand_clinic'].empty and not data['demand_web'].empty:
         
-        # --- 1. Network-Wide O2O Proof ---
-        st.markdown("#### 1. Proven O2O Multipliers (Served Cities)")
+        st.markdown("#### 1. Proven O2O Multipliers (Served Clusters)")
+        st.info("The engine isolates the specific web demand in the exact local SubCity where a clinic was launched, calculating a highly accurate Apples-to-Apples O2O Multiplier for that local cluster.")
         
+        # Parse data safely
         df_c = data['demand_clinic'].copy()
-        df_c['Total'] = pd.to_numeric(df_c['Total'], errors='coerce')
-        df_c['Date'] = pd.to_datetime(df_c['Date'], errors='coerce')
-        
-        clinic_geo = df_c.groupby('Clinic Loc')['City'].agg(lambda x: x.mode().iloc[0] if len(x.mode())>0 else '').reset_index()
-        clinic_rev = df_c.groupby('Clinic Loc').agg(
-            Total_Clinic_Rev=('Total', 'sum'), Min_Date=('Date', 'min'), Max_Date=('Date', 'max')
-        ).reset_index()
-        
-        clinic_rev['Months_Active'] = ((clinic_rev['Max_Date'] - clinic_rev['Min_Date']).dt.days / 30).clip(lower=1)
-        clinic_rev['Avg_Mo_Clinic_Rev'] = clinic_rev['Total_Clinic_Rev'] / clinic_rev['Months_Active']
-        
-        clinic_stats = pd.merge(clinic_rev, clinic_geo, on='Clinic Loc', how='left')
-        city_clinic_stats = clinic_stats.groupby('City').agg(
-            Total_City_Clinic_Rev=('Avg_Mo_Clinic_Rev', 'sum'), Clinic_Count=('Clinic Loc', 'count')
-        ).reset_index()
-        
         df_w = data['demand_web'].copy()
+        df_c['Total'] = pd.to_numeric(df_c['Total'], errors='coerce')
         df_w['Total'] = pd.to_numeric(df_w['Total'], errors='coerce')
+        df_c['Date'] = pd.to_datetime(df_c['Date'], errors='coerce')
         df_w['Date'] = pd.to_datetime(df_w['Date'], errors='coerce')
         df_w['Zip'] = pd.to_numeric(df_w['Zip'], errors='coerce')
         
-        web_rev = df_w.groupby('City').agg(
-            Total_Web_Rev=('Total', 'sum'), Min_Date=('Date', 'min'), Max_Date=('Date', 'max')
+        # 1. Map Clinic Loc to its primary physical SubCity (Cluster)
+        clinic_subcity_map = df_c.groupby('Clinic Loc')['SubCity'].agg(lambda x: x.mode().iloc[0] if len(x.mode())>0 else None).reset_index()
+        
+        # 2. Calculate Actual Clinic Revenue
+        clinic_rev = df_c.groupby('Clinic Loc').agg(
+            Total_Clinic_Rev=('Total', 'sum'),
+            Min_Date=('Date', 'min'),
+            Max_Date=('Date', 'max')
         ).reset_index()
+        clinic_rev['Months_Active'] = ((clinic_rev['Max_Date'] - clinic_rev['Min_Date']).dt.days / 30).clip(lower=1)
+        clinic_rev['Avg_Mo_Clinic_Rev'] = clinic_rev['Total_Clinic_Rev'] / clinic_rev['Months_Active']
         
-        web_rev['Months_Active'] = ((web_rev['Max_Date'] - web_rev['Min_Date']).dt.days / 30).clip(lower=1)
-        web_rev['Avg_Mo_Web_Rev'] = web_rev['Total_Web_Rev'] / web_rev['Months_Active']
+        served_clusters = pd.merge(clinic_rev, clinic_subcity_map, on='Clinic Loc', how='inner').dropna(subset=['SubCity'])
         
-        o2o_city = pd.merge(city_clinic_stats, web_rev[['City', 'Avg_Mo_Web_Rev']], on='City', how='inner')
-        o2o_city = o2o_city[(o2o_city['Avg_Mo_Web_Rev'] > 0) & (o2o_city['City'] != '-')]
-        o2o_city['O2O_Multiplier'] = o2o_city['Total_City_Clinic_Rev'] / o2o_city['Avg_Mo_Web_Rev']
-        o2o_city = o2o_city.sort_values('Total_City_Clinic_Rev', ascending=False)
+        # 3. Calculate Web Demand for ALL SubCities
+        web_subcity = df_w.groupby('SubCity').agg(
+            Total_Web_Rev=('Total', 'sum'),
+            Web_Unique_Patients=('Customer ID', 'nunique'),
+            Min_Date=('Date', 'min'),
+            Max_Date=('Date', 'max')
+        ).reset_index()
+        web_subcity['Months_Active'] = ((web_subcity['Max_Date'] - web_subcity['Min_Date']).dt.days / 30).clip(lower=1)
+        web_subcity['Avg_Mo_Web_Rev'] = web_subcity['Total_Web_Rev'] / web_subcity['Months_Active']
+        web_subcity['Avg_Mo_Web_Patients'] = web_subcity['Web_Unique_Patients'] / web_subcity['Months_Active']
         
-        plot_df = o2o_city.head(15) 
+        # 4. Merge Served Clinics with their specific Web SubCity Demand
+        o2o_clusters = pd.merge(served_clusters, web_subcity[['SubCity', 'Avg_Mo_Web_Rev', 'Avg_Mo_Web_Patients']], on='SubCity', how='inner')
+        o2o_clusters = o2o_clusters[(o2o_clusters['Avg_Mo_Web_Rev'] > 0) & (o2o_clusters['Avg_Mo_Web_Patients'] > 0)]
+        o2o_clusters['O2O_Multiplier'] = o2o_clusters['Avg_Mo_Clinic_Rev'] / o2o_clusters['Avg_Mo_Web_Rev']
+        o2o_clusters = o2o_clusters.sort_values('Avg_Mo_Clinic_Rev', ascending=False)
+        
+        # Display top clusters chart
+        plot_df = o2o_clusters.head(15) 
         fig_o2o_proof = make_subplots(specs=[[{"secondary_y": True}]])
-        fig_o2o_proof.add_trace(go.Bar(x=plot_df['City'], y=plot_df['Avg_Mo_Web_Rev']/100000, name='Web Rev (₹L)', marker_color='#3b82f6'), secondary_y=False)
-        fig_o2o_proof.add_trace(go.Bar(x=plot_df['City'], y=plot_df['Total_City_Clinic_Rev']/100000, name='Clinic Rev (₹L)', marker_color='#10b981'), secondary_y=False)
-        fig_o2o_proof.add_trace(go.Scatter(x=plot_df['City'], y=plot_df['O2O_Multiplier'], name='O2O Multiplier (X)', mode='lines+markers+text',
+        fig_o2o_proof.add_trace(go.Bar(x=plot_df['Clinic Loc'], y=plot_df['Avg_Mo_Web_Rev']/100000, name='Local Web Rev (₹L)', marker_color='#3b82f6'), secondary_y=False)
+        fig_o2o_proof.add_trace(go.Bar(x=plot_df['Clinic Loc'], y=plot_df['Avg_Mo_Clinic_Rev']/100000, name='Actual Clinic Rev (₹L)', marker_color='#10b981'), secondary_y=False)
+        fig_o2o_proof.add_trace(go.Scatter(x=plot_df['Clinic Loc'], y=plot_df['O2O_Multiplier'], name='O2O Multiplier (X)', mode='lines+markers+text',
                                            text=plot_df['O2O_Multiplier'].round(1).astype(str) + "X", textposition="top center",
                                            line=dict(color='#f97316', width=3), marker=dict(size=8)), secondary_y=True)
 
         fig_o2o_proof.update_layout(
-            barmode='group', height=450, title='Actual Offline vs Online Performance by City (Top 15)',
+            barmode='group', height=450, title='Actual Offline vs Online Performance by Local Catchment',
             margin=dict(l=20, r=20, t=50, b=20), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
         fig_o2o_proof.update_yaxes(title_text="Avg Monthly Rev (₹ Lacs)", secondary_y=False)
         fig_o2o_proof.update_yaxes(title_text="O2O Multiplier (X)", secondary_y=True, range=[0, plot_df['O2O_Multiplier'].max() * 1.2])
-
         st.plotly_chart(fig_o2o_proof, use_container_width=True, config=PLOTLY_CFG)
-        
+
         # --- 2. Pincode Hotspot Look-Alike Sandbox ---
         st.markdown("---")
         st.markdown("#### 2. Pincode Hotspot Look-Alike Engine")
-        st.caption("Select an unserved Pincode. The engine automatically finds a demographically similar 'Served City' to apply a proven, real-world O2O multiplier.")
+        st.caption("Select an unserved Pincode. The engine automatically finds a 'Served Clinic Cluster' with the exact same historical number of Unique Web Patients to apply a proven, Apples-to-Apples O2O multiplier.")
         
         if 'Zip' in df_w.columns:
-            cluster_agg = df_w.groupby(['Zip']).agg(
-                Total_Web_Rev=('Total', 'sum'), Quantity=('Quantity', 'sum'),
-                City=('City', 'first'), SubCity=('SubCity', 'first')
+            # Group unserved web demand by Zip Code
+            unserved_pins = df_w.groupby('Zip').agg(
+                Total_Web_Rev=('Total', 'sum'),
+                Web_Unique_Patients=('Customer ID', 'nunique'),
+                City=('City', 'first'),
+                SubCity=('SubCity', 'first')
             ).reset_index()
-            cluster_agg['Avg_Mo_Web_Rev'] = cluster_agg['Total_Web_Rev'] / 60 
             
-            existing_cities = set(o2o_city['City'].unique())
-            cluster_agg = cluster_agg[~cluster_agg['City'].isin(existing_cities)]
-            cluster_agg = cluster_agg[cluster_agg['Avg_Mo_Web_Rev'] > 2000].sort_values('Avg_Mo_Web_Rev', ascending=False)
+            # Using 60 months as standard timeline for website
+            unserved_pins['Avg_Mo_Web_Rev'] = unserved_pins['Total_Web_Rev'] / 60 
+            unserved_pins['Avg_Mo_Web_Patients'] = unserved_pins['Web_Unique_Patients'] / 60
             
-            if not cluster_agg.empty:
-                # Helper function for matching Look-Alike City
-                def find_similar(rev):
-                    diffs = np.abs(o2o_city['Avg_Mo_Web_Rev'] - rev)
+            # Remove zips that fall inside already served SubCities
+            active_subcities = set(o2o_clusters['SubCity'].unique())
+            unserved_pins = unserved_pins[~unserved_pins['SubCity'].isin(active_subcities)].copy()
+            unserved_pins = unserved_pins[unserved_pins['Avg_Mo_Web_Patients'] >= 0.5].sort_values('Avg_Mo_Web_Patients', ascending=False)
+            
+            if not unserved_pins.empty:
+                
+                # The Core Matchmaking Function
+                def find_lookalike(web_patients):
+                    # Matches based on the closest number of Unique Web Patients per Month
+                    diffs = np.abs(o2o_clusters['Avg_Mo_Web_Patients'] - web_patients)
                     idx = diffs.idxmin()
-                    return o2o_city.loc[idx, 'City'], o2o_city.loc[idx, 'Avg_Mo_Web_Rev'], o2o_city.loc[idx, 'O2O_Multiplier']
+                    return o2o_clusters.loc[idx, 'Clinic Loc'], o2o_clusters.loc[idx, 'Avg_Mo_Web_Patients'], o2o_clusters.loc[idx, 'O2O_Multiplier']
                 
                 sc1, sc2 = st.columns([1, 2])
                 with sc1:
-                    cluster_options = [f"{int(row['Zip'])} ({row['City']} - {row['SubCity']})" for _, row in cluster_agg.head(500).iterrows()]
+                    cluster_options = [f"{int(row['Zip'])} ({row['City']} - {row['SubCity']}) [{row['Avg_Mo_Web_Patients']:.1f} pts/mo]" for _, row in unserved_pins.head(500).iterrows()]
                     selected_cluster_str = st.selectbox("Select Unserved Pincode Hotspot", cluster_options)
                     
                     sel_zip = int(selected_cluster_str.split(" ")[0])
-                    cluster_data = cluster_agg[cluster_agg['Zip'] == sel_zip].iloc[0]
+                    cluster_data = unserved_pins[unserved_pins['Zip'] == sel_zip].iloc[0]
                     
                     base_web_rev = cluster_data['Avg_Mo_Web_Rev']
+                    base_web_patients = cluster_data['Avg_Mo_Web_Patients']
                     
-                    # Apply Look-Alike Match
-                    sim_city, sim_city_web, sim_city_mult = find_similar(base_web_rev)
-                    projected_offline_sales = base_web_rev * sim_city_mult
+                    # Apply Look-Alike Match based on Patient Count
+                    sim_clinic, sim_clinic_pts, sim_clinic_mult = find_lookalike(base_web_patients)
+                    projected_offline_sales = base_web_rev * sim_clinic_mult
                     
-                    st.info(f"**🤖 AI Look-Alike Match Found!**\n\nThis pincode's digital footprint (**₹{base_web_rev:,.0f}/mo**) most closely mirrors the historical web demand of **{sim_city}** (₹{sim_city_web:,.0f}/mo).\n\nApplying **{sim_city}**'s proven O2O Multiplier of **{sim_city_mult:.1f}X**.")
+                    st.success(f"**🤖 Look-Alike Match Found!**\n\nThis pincode's digital footprint (**{base_web_patients:.1f} unique patients/mo**) perfectly mirrors the pre-launch demand of the **{sim_clinic}** clinic (**{sim_clinic_pts:.1f} unique patients/mo**).\n\nApplying the **{sim_clinic}** proven O2O Multiplier of **{sim_clinic_mult:.1f}X**.")
                     
                 with sc2:
                     fig_o2o = go.Figure(go.Waterfall(
                         name="O2O", orientation="v", measure=["absolute", "relative", "total"],
-                        x=["Current Web Rev/Mo", f"O2O Uplift ({sim_city_mult:.1f}X)", "Projected Clinic Rev/Mo"],
+                        x=["Current Web Rev/Mo", f"O2O Uplift ({sim_clinic_mult:.1f}X)", "Projected Clinic Rev/Mo"],
                         textposition="outside",
                         text=[fmt_inr(base_web_rev), f"+{fmt_inr(projected_offline_sales - base_web_rev)}", fmt_inr(projected_offline_sales)],
                         y=[base_web_rev, projected_offline_sales - base_web_rev, projected_offline_sales],
@@ -514,26 +530,29 @@ with tab5:
                     ))
                     
                     fig_o2o.update_layout(
-                        title=f"Look-Alike O2O Projection for Pincode {sel_zip}",
+                        title=f"Apples-to-Apples O2O Projection for Pincode {sel_zip}",
                         showlegend=False, height=350, margin=dict(l=20, r=20, t=40, b=20),
                         yaxis=dict(title="Monthly Revenue (₹)", showgrid=True, gridcolor='#f1f5f9')
                     )
                     st.plotly_chart(fig_o2o, use_container_width=True, config=PLOTLY_CFG)
                     
                 with st.expander("View Top 100 Pincode Hotspots & Look-Alike Projections"):
-                    cluster_agg[['Similar_City', 'Sim_Web_Rev', 'Applied_Multiplier']] = cluster_agg['Avg_Mo_Web_Rev'].apply(lambda x: pd.Series(find_similar(x)))
-                    cluster_agg['Projected_Clinic_Rev'] = cluster_agg['Avg_Mo_Web_Rev'] * cluster_agg['Applied_Multiplier']
+                    # Vectorized applying function for the table
+                    unserved_pins[['LookAlike_Clinic', 'LookAlike_Web_Pts', 'Applied_Multiplier']] = unserved_pins['Avg_Mo_Web_Patients'].apply(lambda x: pd.Series(find_lookalike(x)))
+                    unserved_pins['Projected_Clinic_Rev'] = unserved_pins['Avg_Mo_Web_Rev'] * unserved_pins['Applied_Multiplier']
                     
                     st.dataframe(
-                        cluster_agg[['Zip', 'City', 'SubCity', 'Avg_Mo_Web_Rev', 'Similar_City', 'Applied_Multiplier', 'Projected_Clinic_Rev']].head(100).rename(columns={
-                            'Avg_Mo_Web_Rev': 'Avg Web Rev/Mo (₹)',
-                            'Similar_City': 'Look-Alike City',
-                            'Applied_Multiplier': 'O2O Multiplier',
+                        unserved_pins[['Zip', 'City', 'SubCity', 'Avg_Mo_Web_Patients', 'Avg_Mo_Web_Rev', 'LookAlike_Clinic', 'Applied_Multiplier', 'Projected_Clinic_Rev']].head(100).rename(columns={
+                            'Avg_Mo_Web_Patients': 'Web Patients/Mo',
+                            'Avg_Mo_Web_Rev': 'Web Rev/Mo (₹)',
+                            'LookAlike_Clinic': 'Matched Clinic Profile',
+                            'Applied_Multiplier': 'Matched Multiplier',
                             'Projected_Clinic_Rev': 'Projected Clinic Rev/Mo (₹)'
                         }).style.format({
                             'Zip': "{:.0f}",
-                            'Avg Web Rev/Mo (₹)': "₹{:,.0f}",
-                            'O2O Multiplier': "{:.1f}X",
+                            'Web Patients/Mo': "{:.1f}",
+                            'Web Rev/Mo (₹)': "₹{:,.0f}",
+                            'Matched Multiplier': "{:.1f}X",
                             'Projected Clinic Rev/Mo (₹)': "₹{:,.0f}"
                         }),
                         hide_index=True, use_container_width=True
@@ -545,7 +564,7 @@ with tab5:
 
 # ── FOOTER ─────────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
-st.sidebar.caption("v5.0-Advanced Edition | System Active")
+st.sidebar.caption("v6.0-Advanced Edition | System Active")
 if st.sidebar.button("Force Global Re-Scan"):
     st.cache_data.clear()
     st.rerun()
