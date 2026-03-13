@@ -1,6 +1,6 @@
 """
 Gynoveda Expansion Intelligence - Advanced Master Edition
-Featuring Sidebar Data Upload, O2O Simulator & Phased ROI Forecaster
+Featuring Sidebar Data Upload, O2O Simulator, Phased Forecaster & Unified GIS
 """
 
 import streamlit as st
@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import os
+import os, math
 
 # ── CONFIG & THEME ──────────────────────────────────────────────────────
 st.set_page_config(page_title="Gynoveda · Expansion Intel", layout="wide", page_icon="◉")
@@ -74,11 +74,11 @@ with st.sidebar:
                 for file in uploaded_files:
                     fname = file.name.lower()
                     
-                    # 🔥 FIXED SMART DETECTION LOGIC
-                    if 'lat' in fname or 'log' in fname:
-                        std_name = 'std_clinics.csv'
-                    elif 'ivf' in fname or 'geotier' in fname:
+                    # 🔥 FIXED: More robust priority-based file detection
+                    if 'ivf' in fname or 'geotier' in fname:
                         std_name = 'std_ivf_comp.csv'
+                    elif 'lat log' in fname or ('clinics' in fname and 'lat' in fname):
+                        std_name = 'std_clinics.csv'
                     elif 'clinic' in fname and ('first time' in fname or 'customer' in fname):
                         std_name = 'std_demand_clinic.csv'
                     elif 'website' in fname or ('web' in fname and 'first time' in fname):
@@ -143,7 +143,7 @@ st.markdown(
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Network Pulse", 
     "🌆 Same-City Expansion", 
-    "🗺️ New-City Whitespace", 
+    "🗺️ Unified GIS Map", 
     "📈 Phased ROI Forecaster",
     "🔄 O2O Simulator"
 ])
@@ -154,7 +154,6 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
     st.markdown("### Executive Summary")
     
-    # 🔥 FIXED: 1Cx uses unique Customer ID count
     active_clinics = len(data['clinics']) if not data['clinics'].empty else 0
     total_competitors = len(data['ivf_comp']) if not data['ivf_comp'].empty else 0
     
@@ -170,8 +169,8 @@ with tab1:
     
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Active Clinics", f"{active_clinics}", "Network Size")
-    c2.metric("Unique Clinic 1Cx", f"{total_clinic_1cx:,.0f}", "Unique Patient IDs")
-    c3.metric("Unique Web Customers", f"{total_web_orders:,.0f}", "Digital Demand")
+    c2.metric("Unique Clinic 1Cx", f"{total_clinic_1cx:,.0f}", "Unique Offline Patients")
+    c3.metric("Unique Web Customers", f"{total_web_orders:,.0f}", "Unique Digital Demand")
     c4.metric("IVF Competitors", f"{total_competitors:,.0f}", "Threat Landscape")
 
     st.markdown("---")
@@ -197,106 +196,137 @@ with tab2:
         st.warning("Clinic Lat/Lon data not found. Please upload it via the sidebar.")
 
 # ═══════════════════════════════════════════════════════════════════════════
-# TAB 3: NEW CITIES WHITESPACE (MAPBOX VISUALIZATION)
+# TAB 3: UNIFIED GIS MAP (WHITESPACE DISCOVERY)
 # ═══════════════════════════════════════════════════════════════════════════
 with tab3:
-    st.markdown("### Geospatial Whitespace Discovery")
-    st.caption("Visualizing web demand clusters to find optimal locations for net-new clinic launches.")
+    st.markdown("### Unified Geospatial Demand Discovery")
+    st.caption("A layered Mapbox engine showing Web 1Cx & Clinic 1Cx Pincodes + Active Clinics + IVF Competitors.")
     
-    has_map_data = not data['demand_web'].empty and not data['pin_geo'].empty and not data['clinics'].empty
+    has_map_data = (not data['demand_web'].empty or not data['demand_clinic'].empty) and not data['pin_geo'].empty
     
     if has_map_data:
-        web_df = data['demand_web'].copy()
-        if 'Zip' in web_df.columns:
-            web_df['Zip'] = pd.to_numeric(web_df['Zip'], errors='coerce')
-            demand_by_pin = web_df.groupby('Zip').agg(Orders=('Quantity', 'sum')).reset_index()
+        # 1. Aggregate Website 1Cx Demand
+        web_df = data['demand_web'].copy() if not data['demand_web'].empty else pd.DataFrame(columns=['Zip', 'Customer ID'])
+        web_df['Zip'] = pd.to_numeric(web_df.get('Zip', pd.Series()), errors='coerce')
+        web_agg = web_df.groupby('Zip')['Customer ID'].nunique().reset_index().rename(columns={'Customer ID': 'Web_1Cx'})
+        
+        # 2. Aggregate Clinic 1Cx Demand
+        clinic_df = data['demand_clinic'].copy() if not data['demand_clinic'].empty else pd.DataFrame(columns=['Zip', 'Customer ID'])
+        clinic_df['Zip'] = pd.to_numeric(clinic_df.get('Zip', pd.Series()), errors='coerce')
+        clinic_agg = clinic_df.groupby('Zip')['Customer ID'].nunique().reset_index().rename(columns={'Customer ID': 'Clinic_1Cx'})
+        
+        # 3. Merge Demands into Master Pincode Frame
+        demand_by_pin = pd.merge(web_agg, clinic_agg, on='Zip', how='outer').fillna(0)
+        demand_by_pin['Total_1Cx'] = demand_by_pin['Web_1Cx'] + demand_by_pin['Clinic_1Cx']
+        
+        # 4. Attach Geocodes
+        pin_geo = data['pin_geo'].copy()
+        if 'pincode' in pin_geo.columns:
+            map_df = demand_by_pin.merge(pin_geo, left_on='Zip', right_on='pincode', how='inner')
+            # Get the top active pincodes to ensure browser doesn't crash, but display a high volume
+            map_df = map_df.sort_values('Total_1Cx', ascending=False).head(2000)
             
-            pin_geo = data['pin_geo'].copy()
-            if 'pincode' in pin_geo.columns:
-                map_df = demand_by_pin.merge(pin_geo, left_on='Zip', right_on='pincode', how='inner')
-                map_df = map_df.sort_values('Orders', ascending=False).head(1000)
-                
-                col_m, col_t = st.columns([2.5, 1])
-                with col_m:
-                    fig_map = px.scatter_mapbox(
-                        map_df, lat="lat", lon="lon", 
-                        color="Orders", size="Orders",
-                        color_continuous_scale=px.colors.sequential.OrRd,
-                        hover_name="Zip",
-                        hover_data={"Orders": True, "lat": False, "lon": False},
-                        zoom=3.5, center={"lat": 20.5937, "lon": 78.9629},
-                        height=500, labels={'Orders': 'Web Demand'}
-                    )
-                    
-                    clinics = data['clinics'].dropna(subset=['Latitude', 'Longitude'])
-                    fig_map.add_trace(go.Scattermapbox(
-                        lat=clinics['Latitude'], lon=clinics['Longitude'],
-                        mode='markers', marker=dict(size=12, color='#1a1f36', symbol='circle'),
-                        name='Active Clinics', text=clinics.get('City', '')
-                    ))
-                    
-                    fig_map.update_layout(
-                        mapbox_style="carto-positron", 
-                        margin={"r":0,"t":0,"l":0,"b":0},
-                        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(255,255,255,0.8)")
-                    )
-                    st.plotly_chart(fig_map, use_container_width=True, config=PLOTLY_CFG)
-                    
-                with col_t:
-                    st.markdown("##### Competitor Density")
-                    st.caption("Top Cities by IVF Competitor Count")
-                    if not data['ivf_comp'].empty and 'City' in data['ivf_comp'].columns:
-                        comp_density = data['ivf_comp']['City'].value_counts().head(10).reset_index()
-                        comp_density.columns = ['City', 'IVF Centers']
-                        st.dataframe(comp_density, hide_index=True, use_container_width=True)
-                        
-            else:
-                st.warning("`pin_geocode.csv` is missing the 'pincode' column.")
-        else:
-            st.warning("Web demand data is missing the 'Zip' column.")
-    else:
-        st.warning("Upload `pin_geocode.csv`, `Clinics Lat log`, and `First Time customer - website` to enable mapping.")
+            col_m, col_t = st.columns([2.5, 1])
+            with col_m:
+                fig_map = go.Figure()
 
-    # 🔥 FIXED: Year-Wise & Pincode-Wise Plot Engine Added Here!
+                # --- LAYER A: Pincode Demand (Heat Bubbles) ---
+                max_1cx = map_df['Total_1Cx'].max()
+                sizeref = 2.0 * max_1cx / (35.**2) if max_1cx > 0 else 1
+                
+                fig_map.add_trace(go.Scattermapbox(
+                    lat=map_df["lat"], lon=map_df["lon"],
+                    mode='markers',
+                    marker=dict(
+                        size=map_df["Total_1Cx"],
+                        sizemode='area', sizeref=sizeref, sizemin=4,
+                        color=map_df["Total_1Cx"], colorscale="OrRd", showscale=True,
+                        colorbar=dict(title="Total 1Cx", x=0.02, y=0.5, len=0.7)
+                    ),
+                    text="<b>Zip: " + map_df["Zip"].astype(int).astype(str) + "</b><br>" + 
+                         "Online 1Cx: " + map_df["Web_1Cx"].astype(int).astype(str) + "<br>" + 
+                         "Clinic 1Cx: " + map_df["Clinic_1Cx"].astype(int).astype(str) + "<br>" + 
+                         "Total 1Cx: " + map_df["Total_1Cx"].astype(int).astype(str),
+                    name='Patient Demand', hoverinfo='text'
+                ))
+                
+                # --- LAYER B: IVF Competitors (Slate Grey) ---
+                if not data['ivf_comp'].empty and 'Lat' in data['ivf_comp'].columns and 'Lon' in data['ivf_comp'].columns:
+                    ivf_df = data['ivf_comp'].dropna(subset=['Lat', 'Lon'])
+                    fig_map.add_trace(go.Scattermapbox(
+                        lat=ivf_df['Lat'], lon=ivf_df['Lon'],
+                        mode='markers',
+                        marker=dict(size=6, color='#64748b'), # Slate grey
+                        name='IVF Competitors',
+                        text="<b>" + ivf_df.get('Clinic_Name', 'IVF Center').astype(str) + "</b>",
+                        hoverinfo='text'
+                    ))
+
+                # --- LAYER C: Active Clinics (Navy Blue) ---
+                if not data['clinics'].empty and 'Latitude' in data['clinics'].columns and 'Longitude' in data['clinics'].columns:
+                    clinics_df = data['clinics'].dropna(subset=['Latitude', 'Longitude'])
+                    fig_map.add_trace(go.Scattermapbox(
+                        lat=clinics_df['Latitude'], lon=clinics_df['Longitude'],
+                        mode='markers',
+                        marker=dict(size=14, color='#1a1f36'), # Navy blue
+                        name='Gynoveda Clinics',
+                        text="<b>" + clinics_df.get('City', 'Clinic').astype(str) + "</b>",
+                        hoverinfo='text'
+                    ))
+
+                # Build Map Layout
+                fig_map.update_layout(
+                    mapbox=dict(
+                        style="carto-positron",
+                        center=dict(lat=20.5937, lon=78.9629),
+                        zoom=3.8
+                    ),
+                    margin={"r":0,"t":0,"l":0,"b":0},
+                    height=600,
+                    legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99, bgcolor="rgba(255,255,255,0.85)")
+                )
+                
+                st.plotly_chart(fig_map, use_container_width=True, config=PLOTLY_CFG)
+                
+            with col_t:
+                st.markdown("##### Competitor Density")
+                st.caption("Top Cities by IVF Competitor Count")
+                if not data['ivf_comp'].empty and 'City' in data['ivf_comp'].columns:
+                    comp_density = data['ivf_comp']['City'].value_counts().head(10).reset_index()
+                    comp_density.columns = ['City', 'IVF Centers']
+                    st.dataframe(comp_density, hide_index=True, use_container_width=True)
+        else:
+            st.warning("`pin_geocode.csv` is missing the 'pincode' column.")
+    else:
+        st.warning("Upload `pin_geocode.csv`, `Clinics Lat log`, and Demand Datasets to enable the Unified GIS Map.")
+
+    # ── Year-Wise & Pincode-Wise Plot Engine ──
     st.markdown("---")
     st.markdown("#### 📅 Year-wise & Pincode-wise Demand Trend")
     st.caption("Analyzing historical growth in top Zip Codes to ensure demand is accelerating, not flattening.")
     
     if not data['demand_web'].empty and 'Date' in data['demand_web'].columns and 'Zip' in data['demand_web'].columns:
         trend_df = data['demand_web'].copy()
-        
-        # Extract Year from Date
         trend_df['Year'] = pd.to_datetime(trend_df['Date'], errors='coerce').dt.year.fillna(0).astype(int)
-        trend_df = trend_df[trend_df['Year'] > 2000] # Clean bad dates
+        trend_df = trend_df[trend_df['Year'] > 2000]
         
-        # Treat Zip as string for plotting
         trend_df['Zip'] = trend_df['Zip'].astype(str).str.replace(".0", "", regex=False)
         trend_df['Quantity'] = pd.to_numeric(trend_df['Quantity'], errors='coerce').fillna(1)
 
-        # Aggregate by Year and Zip
         yearly_pin_demand = trend_df.groupby(['Year', 'Zip']).agg(Total_Quantity=('Quantity', 'sum')).reset_index()
-        
-        # Get Top 15 Pincodes by absolute overall volume
         top_pins = yearly_pin_demand.groupby('Zip')['Total_Quantity'].sum().nlargest(15).index.tolist()
         plot_data = yearly_pin_demand[yearly_pin_demand['Zip'].isin(top_pins)].copy()
-        plot_data['Year'] = plot_data['Year'].astype(str) # Convert year to string to plot distinct colors
+        plot_data['Year'] = plot_data['Year'].astype(str)
 
         fig_trend = px.bar(
-            plot_data, 
-            x='Zip', 
-            y='Total_Quantity', 
-            color='Year', 
-            barmode='group',
+            plot_data, x='Zip', y='Total_Quantity', color='Year', barmode='group',
             color_discrete_sequence=px.colors.sequential.Plasma,
             title="Top 15 Web Demand Pincodes: Year-over-Year Growth"
         )
         
         fig_trend.update_layout(
-            xaxis_title="Pincode (Zip)",
-            yaxis_title="Total Order Quantity",
-            legend_title="Year",
-            height=450,
-            xaxis={'categoryorder':'total descending'}
+            xaxis_title="Pincode (Zip)", yaxis_title="Total Order Quantity",
+            legend_title="Year", height=450, xaxis={'categoryorder':'total descending'}
         )
         
         st.plotly_chart(fig_trend, use_container_width=True, config=PLOTLY_CFG)
@@ -323,11 +353,7 @@ with tab4:
     months_labels = pd.date_range(start="2026-04-01", periods=n_months_proj, freq='MS').strftime("%b '%y").tolist()
     
     default_launches = [0, 0, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2] + [0]*12
-    
-    schedule_df = pd.DataFrame({
-        "Month": months_labels,
-        "Clinics to Launch": default_launches
-    })
+    schedule_df = pd.DataFrame({"Month": months_labels, "Clinics to Launch": default_launches})
     
     c_sched, c_metrics = st.columns([1, 3])
     
@@ -336,9 +362,7 @@ with tab4:
         edited_schedule = st.data_editor(
             schedule_df,
             column_config={"Clinics to Launch": st.column_config.NumberColumn(min_value=0, max_value=20, step=1)},
-            hide_index=True,
-            height=400,
-            use_container_width=True
+            hide_index=True, height=400, use_container_width=True
         )
         launches = edited_schedule["Clinics to Launch"].values
         
