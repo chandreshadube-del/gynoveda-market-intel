@@ -1,6 +1,6 @@
 """
 Gynoveda Expansion Intelligence OS
-Final Production Master
+FINAL MASTER VERSION WITH PINCODE WHITESPACE ENGINE
 """
 
 import streamlit as st
@@ -8,13 +8,11 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics.pairwise import cosine_similarity
 import os
 
-# ----------------------------------------------------
+# ---------------------------------------------------
 # CONFIG
-# ----------------------------------------------------
+# ---------------------------------------------------
 
 st.set_page_config(
     page_title="Gynoveda Expansion OS",
@@ -25,9 +23,9 @@ st.set_page_config(
 DATA_DIR="mis_data"
 os.makedirs(DATA_DIR,exist_ok=True)
 
-# ----------------------------------------------------
+# ---------------------------------------------------
 # UTILITIES
-# ----------------------------------------------------
+# ---------------------------------------------------
 
 def fmt_inr(v):
     if pd.isna(v):
@@ -38,9 +36,24 @@ def fmt_inr(v):
         return f"₹{v/1e5:.1f} L"
     return f"₹{v:,.0f}"
 
-# ----------------------------------------------------
+# ---------------------------------------------------
+# LIGHTWEIGHT SIMILARITY ENGINE
+# ---------------------------------------------------
+
+def normalize_matrix(X):
+    mean=np.mean(X,axis=0)
+    std=np.std(X,axis=0)
+    std[std==0]=1
+    return (X-mean)/std
+
+def cosine_similarity_matrix(A,B):
+    A=A/np.linalg.norm(A,axis=1,keepdims=True)
+    B=B/np.linalg.norm(B,axis=1,keepdims=True)
+    return np.dot(A,B.T)
+
+# ---------------------------------------------------
 # DATA LOADER
-# ----------------------------------------------------
+# ---------------------------------------------------
 
 @st.cache_data
 def load_all():
@@ -64,9 +77,9 @@ def load_all():
 
 data=load_all()
 
-# ----------------------------------------------------
-# SIDEBAR
-# ----------------------------------------------------
+# ---------------------------------------------------
+# SIDEBAR UPLOAD
+# ---------------------------------------------------
 
 with st.sidebar:
 
@@ -104,15 +117,11 @@ with st.sidebar:
         st.cache_data.clear()
         st.success("Data Updated")
 
-# ----------------------------------------------------
+# ---------------------------------------------------
 # HEADER
-# ----------------------------------------------------
+# ---------------------------------------------------
 
 st.title("Gynoveda Expansion Intelligence OS")
-
-# ----------------------------------------------------
-# TABS
-# ----------------------------------------------------
 
 tab1,tab2,tab3,tab4=st.tabs([
 "🏥 Network Health",
@@ -121,9 +130,9 @@ tab1,tab2,tab3,tab4=st.tabs([
 "💰 Capital Planner"
 ])
 
-# ====================================================
+# ===================================================
 # NETWORK HEALTH
-# ====================================================
+# ===================================================
 
 with tab1:
 
@@ -152,9 +161,9 @@ with tab1:
 
         st.plotly_chart(fig,use_container_width=True)
 
-# ====================================================
+# ===================================================
 # EXPANSION OPPORTUNITIES
-# ====================================================
+# ===================================================
 
 with tab2:
 
@@ -165,7 +174,7 @@ with tab2:
     pop=data["population"]
 
     if web.empty:
-        st.warning("Upload web demand")
+        st.warning("Upload web demand data")
     else:
 
         web_city=web.groupby("City").agg(
@@ -185,35 +194,25 @@ with tab2:
 
         df.fillna(0,inplace=True)
 
-        # population merge
         if not pop.empty and "City" in pop:
 
             pop_city=pop.groupby("City")["Population"].sum().reset_index()
-
             df=df.merge(pop_city,on="City",how="left")
 
         df["DemandDensity"]=df["WebPatients"]/df["Population"].replace(0,np.nan)
 
         clinic_cities=set(clinics["City"].dropna())
 
-        served=df[df["City"].isin(clinic_cities)]
-        unserved=df[~df["City"].isin(clinic_cities)]
+        served=df[df["City"].isin(clinic_cities)].copy()
+        unserved=df[~df["City"].isin(clinic_cities)].copy()
 
-        features=served[[
-            "WebPatients",
-            "DemandDensity",
-            "IVF"
-        ]].fillna(0)
+        served_matrix=served[["WebPatients","DemandDensity","IVF"]].fillna(0).values
+        unserved_matrix=unserved[["WebPatients","DemandDensity","IVF"]].fillna(0).values
 
-        scaler=StandardScaler()
+        served_matrix=normalize_matrix(served_matrix)
+        unserved_matrix=normalize_matrix(unserved_matrix)
 
-        X=scaler.fit_transform(features)
-
-        unserved_features=scaler.transform(
-            unserved[["WebPatients","DemandDensity","IVF"]].fillna(0)
-        )
-
-        similarity=cosine_similarity(unserved_features,X)
+        similarity=cosine_similarity_matrix(unserved_matrix,served_matrix)
 
         best=similarity.argmax(axis=1)
 
@@ -258,18 +257,57 @@ with tab2:
 
                 st.plotly_chart(fig,use_container_width=True)
 
-# ====================================================
+        # --------------------------------
+        # PINCODE CLINIC LOCATION ENGINE
+        # --------------------------------
+
+        st.markdown("### Top Demand Neighborhoods")
+
+        city_pins=city_web.groupby("Zip").agg(
+            WebPatients=("Customer ID","nunique"),
+            WebRevenue=("Total","sum")
+        ).reset_index()
+
+        city_pins["PatientsMo"]=city_pins["WebPatients"]/60
+
+        top_pins=city_pins.sort_values(
+            "PatientsMo",
+            ascending=False
+        ).head(10)
+
+        st.dataframe(
+            top_pins[["Zip","PatientsMo"]],
+            hide_index=True,
+            use_container_width=True
+        )
+
+        if not top_pins.empty:
+
+            best_pin=top_pins.iloc[0]
+
+            st.success(
+f"""
+Recommended Clinic Catchment
+
+Pincode: **{best_pin['Zip']}**
+
+Estimated demand:
+**{best_pin['PatientsMo']:.1f} patients/month**
+
+This is the strongest demand cluster in the city.
+"""
+            )
+
+# ===================================================
 # SITE SIMULATOR
-# ====================================================
+# ===================================================
 
 with tab3:
 
     web=data["web"]
 
     if web.empty:
-
         st.warning("Upload web demand")
-
     else:
 
         pins=web.groupby("Zip").agg(
@@ -303,9 +341,9 @@ with tab3:
 
         st.plotly_chart(fig,use_container_width=True)
 
-# ====================================================
+# ===================================================
 # CAPITAL PLANNER
-# ====================================================
+# ===================================================
 
 with tab4:
 
@@ -321,7 +359,6 @@ with tab4:
     total_capex=clinics*capex
 
     cash=-total_capex
-
     curve=[]
 
     for m in range(months):
